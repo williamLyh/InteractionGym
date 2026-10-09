@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Server Trace</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0; --soft: #f0f0ed;
+  --user: #2f6fd6; --user-soft: #dbe7fb; --agent: #d9731a; --agent-soft: #fbe6d3;
+  --listen: #c9c9cf; --sel: #8a3ffc; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151517; --panel: #1e1e21; --ink: #ececef; --muted: #9a9aa2; --line: #333338; --soft: #26262a;
+    --user: #6ea0ff; --user-soft: #1f3252; --agent: #ffa35c; --agent-soft: #4a2e16;
+    --listen: #45454d; --sel: #b58cff; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
+.nav a.back { font-size: 12px; color: var(--muted); text-decoration: none; margin-right: 14px; } .nav a.back:hover { color: var(--ink); } .nav { margin-bottom: 6px; }
+h1 { font-size: 18px; margin: 0 0 4px; } .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+.chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+.card h3 { margin: 0; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp { flex: 1; }
+.strip { overflow-x: auto; padding: 10px 14px 12px; }
+.lane { position: relative; height: 22px; margin-bottom: 4px; }
+.lane .lbl { position: sticky; left: 0; z-index: 2; font-size: 11px; color: var(--muted); background: var(--panel); padding-right: 6px; line-height: 22px; display: inline-block; width: 56px; }
+.bar { position: absolute; top: 2px; height: 18px; border-radius: 4px; font-size: 11px; line-height: 18px; padding: 0 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bar.user { background: var(--user-soft); color: var(--user); } .bar.agent { background: var(--agent-soft); color: var(--agent); }
+.cell { position: absolute; top: 2px; height: 18px; border-radius: 3px; cursor: pointer; border: 2px solid transparent; }
+.cell.listen { background: var(--listen); } .cell.speak { background: var(--agent); } .cell.prompt { background: var(--user); }
+.cell.sel { border-color: var(--sel); }
+.axis { position: relative; height: 16px; font-size: 10px; color: var(--muted); }
+.axis span { position: absolute; transform: translateX(-50%); }
+.tablewrap { max-height: 70vh; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+td.num { font-family: var(--mono); text-align: right; white-space: nowrap; } td.mono { font-family: var(--mono); white-space: nowrap; }
+tr.unit { cursor: pointer; } tr.unit.sel { background: var(--soft); box-shadow: inset 3px 0 0 var(--sel); }
+.dec { font-size: 11px; } .dec.speak { color: var(--agent); } .dec.listen { color: var(--muted); } .dec.prompt { color: var(--user); }
+.toks { font-family: var(--mono); font-size: 11.5px; line-height: 1.9; word-break: break-all; }
+.tok { display: inline-block; padding: 0 4px; margin: 0 2px 2px 0; border-radius: 4px; background: var(--soft); border: 1px solid transparent; white-space: pre; }
+.tok.sp { border-color: var(--sel); color: var(--sel); }
+.tok .n { color: var(--muted); font-size: 10px; margin-left: 2px; }
+.stage { color: var(--muted); font-size: 11px; margin-right: 6px; }
+label { user-select: none; }
+</style>
+</head>
+<body>
+<main><nav class="nav">__BACK_LINK__</nav><div id="main"></div></main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const EP = DATA.episode, TR = DATA.trace || {units: []};  // the trajectory, and its agent trace (a separate record)
+const UNIT = TR.unit_ms || 1000, PX = 0.06;  // px per ms on the strip
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+let sel = null;
+
+function render() {
+  const units = TR.units || [], dur = EP.meta.duration_ms || 0;
+  const decisions = units.map(u => ({listen: '.', speak: 'S', prompt: 'P'}[u.decision] || '?')).join('');
+  const width = Math.max(dur, ...units.map(u => u.end_ms || 0)) * PX + 80;
+  const bars = role => EP.turns.filter(t => t.role === role && t.end_time > t.start_time).map(t =>
+    `<div class="bar ${role}" style="left:${56 + t.start_time * PX}px;width:${(t.end_time - t.start_time) * PX}px" title="${esc(t.start_time + '–' + t.end_time + 'ms  ' + t.text)}">${esc(t.text)}</div>`).join('');
+  const cells = units.filter(u => u.unit_index >= 0 && u.end_ms != null).map(u =>
+    `<div class="cell ${esc(u.decision)}" data-i="${u.unit_index}" style="left:${56 + (u.end_ms - UNIT) * PX + 1}px;width:${UNIT * PX - 2}px" title="unit ${u.unit_index} · ${u.end_ms - UNIT}–${u.end_ms}ms · ${esc(u.decision)}"></div>`).join('');
+  const ticks = [];
+  for (let t = 0; t <= dur; t += 5000) ticks.push(`<span style="left:${56 + t * PX}px">${t / 1000}s</span>`);
+  $('#main').innerHTML = `
+    <h1>${esc(EP.meta.episode_id)} <span class="hint">agent server trace — the agent's own model, for monitoring and debugging (not part of the environment)</span></h1>
+    <div class="chips">
+      <span class="chip">server <b>${esc(TR.server || '—')}</b></span><span class="chip">model <b>${esc(TR.model || '—')}</b></span>
+      <span class="chip">unit <b>${esc(TR.unit_ms ?? '—')} ms</b></span><span class="chip">clock <b>${esc(TR.clock || '—')}</b></span>
+      <span class="chip">units <b>${units.length}</b></span><span class="chip" style="font-family:var(--mono)">${esc(decisions)}</span>
+    </div>
+    <section class="card"><h3>Units on the episode timeline <span class="hint">one cell per model unit (grey listen · orange speak); click to inspect</span></h3>
+      <div class="strip"><div style="width:${width}px">
+        <div class="lane"><span class="lbl">user</span>${bars('user')}</div>
+        <div class="lane"><span class="lbl">agent</span>${bars('agent')}</div>
+        <div class="lane"><span class="lbl">units</span>${cells}</div>
+        <div class="axis">${ticks.join('')}</div>
+      </div></div></section>
+    <section class="card"><h3>Tokens per unit <span class="hint">what was appended to the model's context (in) and what it generated (out); special tokens outlined</span><span class="sp"></span>
+      <label class="hint"><input type="checkbox" id="collapse" checked> collapse runs</label>
+      <label class="hint"><input type="checkbox" id="speakonly"> speak units only</label></h3>
+      <div class="tablewrap"><table><thead><tr><th style="text-align:right">unit</th><th>input window</th><th>decision</th><th>tokens</th></tr></thead><tbody id="units"></tbody></table></div></section>`;
+  document.querySelectorAll('.cell').forEach(c => c.onclick = () => select(+c.dataset.i, true));
+  $('#collapse').onchange = renderTable; $('#speakonly').onchange = renderTable;
+  renderTable();
+}
+
+function tokSpan(tok, special, n) {
+  const [id, text] = tok;
+  return `<span class="tok${special ? ' sp' : ''}" title="id ${id}${n > 1 ? ' ×' + n : ''}">${esc(text === '' ? '∅' : text)}${n > 1 ? `<span class="n">×${n}</span>` : ''}</span>`;
+}
+function toks(list, special, collapse) {
+  if (!list || !list.length) return '<span class="hint">—</span>';
+  const out = [];
+  for (let i = 0; i < list.length;) {
+    let j = i + 1;
+    if (collapse) while (j < list.length && list[j][0] === list[i][0]) j++;
+    out.push(tokSpan(list[i], special.has(list[i][0]), j - i));
+    i = j;
+  }
+  return out.join('');
+}
+function renderTable() {
+  const collapse = $('#collapse').checked, speakOnly = $('#speakonly').checked;
+  $('#units').innerHTML = (TR.units || []).filter(u => !speakOnly || u.decision === 'speak').map(u => {
+    const special = new Set(u.special_ids || []);
+    const win = u.unit_index < 0 ? 'session start' : (u.end_ms != null ? `${u.end_ms - UNIT}–${u.end_ms}ms` : '');
+    const stages = (u.stages || []).map(st => `<div><span class="stage">${esc(st.stage)} in (${(st.input || []).length})</span>${toks(st.input, special, collapse)}</div>
+      <div><span class="stage">${esc(st.stage)} out (${(st.output || []).length})</span>${toks(st.output, special, collapse)}</div>`).join('');
+    return `<tr class="unit" id="u${u.unit_index}" data-i="${u.unit_index}"><td class="num">${u.unit_index}</td><td class="mono">${win}</td>
+      <td><span class="dec ${esc(u.decision)}">${esc(u.decision)}</span></td><td class="toks">${stages}</td></tr>`;
+  }).join('');
+  document.querySelectorAll('tr.unit').forEach(r => r.onclick = () => select(+r.dataset.i, false));
+  mark();
+}
+function select(i, scroll) {
+  sel = i; mark();
+  try { history.replaceState(null, '', '#unit=' + i); } catch (e) {}
+  if (scroll) {
+    const row = document.getElementById('u' + i), wrap = $('.tablewrap');
+    if (row) { wrap.scrollTop = row.offsetTop - wrap.clientHeight / 3; wrap.scrollIntoView({block: 'nearest'}); }
+  }
+}
+function mark() {
+  document.querySelectorAll('[data-i]').forEach(el => el.classList.toggle('sel', +el.dataset.i === sel));
+}
+render();
+const m = /unit=(-?\d+)/.exec(location.hash);
+if (m) requestAnimationFrame(() => select(+m[1], true));  // after layout
+</script>
+</body>
+</html>

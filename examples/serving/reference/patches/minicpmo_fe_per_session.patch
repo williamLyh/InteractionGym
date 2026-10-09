@@ -1,0 +1,26 @@
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/stage0.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/stage0.py
+@@ -116,9 +116,23 @@
+             if state.streaming_processor is not None:
+                 return state.streaming_processor
+             processor = copy.copy(processor)
++            # The streaming mel processor that set_streaming_mode() builds below
++            # keeps a reference to processor.audio_processor and re-points its
++            # log-mel floor in place on every chunk (set_spac_log_norm(): fixed
++            # -10 dB floor below 5 s of buffer, max-8 dB above). copy.copy()
++            # shares that feature extractor with self.processor and with every
++            # other session, so one session's stream changed the normalisation
++            # of another session's audio -- including the non-streaming
++            # process_audio() of a new session's reference voice. Give each
++            # session its own feature extractor.
++            shared_fe = getattr(self.processor, "audio_processor", None)
++            if shared_fe is not None:
++                processor.audio_processor = copy.deepcopy(shared_fe)
+             shared_mel = getattr(self.processor, "_streaming_mel_processor", None)
+             if shared_mel is not None:
+                 processor._streaming_mel_processor = copy.deepcopy(shared_mel)
++                if shared_fe is not None and hasattr(processor._streaming_mel_processor, "feature_extractor"):
++                    processor._streaming_mel_processor.feature_extractor = processor.audio_processor
+             state.streaming_processor = processor
+         if processor is None:
+             return None

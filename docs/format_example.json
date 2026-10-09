@@ -1,0 +1,76 @@
+{
+ "schema": 1,
+ "meta": {
+  "episode_id": "restaurant-booking/000123",
+  "run_id": "2026-09-30_demo",
+  "seed": 17,
+  "media_root": "runs/media",
+  "task": {
+   "id": "restaurant-booking",
+   "scenario": {"persona": "You are Alex, a busy but friendly person calling a restaurant.", "instructions": "Book a table for two people tonight at around 7pm. Correct the agent if it gets a detail wrong.", "first_turn": "Hi, I'd like to book a table for tonight."},
+   "initial_state": {"tables": {"T7": {"seats": 4, "free": ["19:00"]}}},
+   "criteria": {"state": {"bookings": [{"table": "T7", "time": "19:00", "people": 2}]}}
+  },
+  "env": {
+   "components": {"user": "UserSim", "tools": "ToolWorld", "mic": "Mixer"},
+   "tool_schema_mode": "all",
+   "instructions": "You are the booking assistant of Trattoria Roma. Confirm the party size and time before booking.",
+   "tools": [{"name": "check_availability", "description": "Check whether a table is free.", "parameters": {"type": "object", "properties": {"date": {"type": "string"}, "time": {"type": "string", "description": "HH:MM"}, "people": {"type": "integer"}}, "required": ["date", "time", "people"]}, "service": "restaurant"}, {"name": "book_table", "description": "Book a table.", "parameters": {"type": "object", "properties": {"table": {"type": "string"}, "time": {"type": "string"}, "people": {"type": "integer"}}, "required": ["table", "time", "people"]}, "service": "restaurant"}],
+   "agent_context": {"caller_phone": "+44 7700 900123"}
+  },
+  "user": {
+   "component": "user",
+   "mode": "online",
+   "persona": "You are Alex, a busy but friendly person calling a restaurant.",
+   "goal": "Book a table for two people tonight at around 7pm. Correct the agent if it gets a detail wrong.",
+   "voice": {"speaker": "vivian", "tts": {"model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "sr": 16000}},
+   "llm": {"model": "Qwen3.8-27B", "params": {"max_tokens": 80}},
+   "barge_in": {"type": "llm", "llm": {"model": "Qwen3.8-27B", "params": {"max_tokens": 80}}, "min_words": 5},
+   "turn_taking": {"speaks_first": true, "respond_after_ms": 1000, "nudge_after_ms": 5000, "check_ms": 1000, "reaction_ms": 300, "yield_after_ms": 1000}
+  },
+  "duration_ms": 21171,
+  "end_reason": "idle"
+ },
+ "background": [
+   {"media": {"kind": "audio", "uri": "media/b4/b452ae2b69574d167c049ee8ac48980e5ef2bc685828f3da3c81fe77e5beb90b.wav", "sr": 16000, "start_ms": 120000, "end_ms": 141171}, "gain_db": -18, "loop": false}
+ ],
+ "turns": [
+   {"id": "u0", "role": "user", "start_time": 0, "end_time": 2647, "text": "Hi, I'd like to book a table for tonight.", "media": {"kind": "audio", "uri": "media/a9/a97e9ca4ec5f7ed98192e338b9a0f660295417d95b30965f0f68cabc7cdbdaa4.wav", "sr": 16000, "start_ms": 0, "end_ms": 2647}},
+   {"id": "a0", "role": "agent", "start_time": 3000, "end_time": 4176, "text": "Sure, how many people?"},
+   {"id": "n0", "role": "user", "start_time": 3400, "end_time": 3800, "text": "", "kind": "noise", "media": {"kind": "audio", "uri": "media/c7/c79e07572d8c4b2c0aa053728fb7390366e57fa4d4aeda4e9232d2ff55002a00.wav", "sr": 16000, "start_ms": 4200, "end_ms": 4600}},
+   {"id": "u1", "role": "user", "start_time": 5176, "end_time": 6647, "text": "Two people, around seven please.", "media": {"kind": "audio", "uri": "media/d2/d221b291e5dd768c732acb3547ea4b61c67fa3aad939ac5e3e91b593cf3f3106.wav", "sr": 16000, "start_ms": 0, "end_ms": 1471}},
+   {"id": "a1", "role": "agent", "start_time": 7000, "end_time": 7588, "text": "One moment.", "tool_calls": [{"id": "call_1", "name": "check_availability", "arguments": {"date": "tonight", "time": "19:00", "people": 4}, "call_time": 7000, "result_time": 8200, "content": "{\"available\": true, \"table\": \"T7\"}", "error": false}]},
+   {"id": "a2", "role": "agent", "start_time": 8400, "end_time": 12000, "text": "Great, I have a table for four people at seven pm, and I wi", "unsaid": "ll send a confirmation to your phone."},
+   {"id": "u2", "role": "user", "start_time": 9600, "end_time": 9894, "text": "mm-hmm", "kind": "backchannel", "media": {"kind": "audio", "uri": "media/30/306780a5b8303439beca969ce3d485af025b8d148e0c19a1e8bccfd9b70ca28c.wav", "sr": 16000, "start_ms": 0, "end_ms": 294}},
+   {"id": "u3", "role": "user", "start_time": 11700, "end_time": 13171, "text": "No, no, just two people.", "media": {"kind": "audio", "uri": "media/2e/2eb7525ad1318e4e371f8c31066792a5bab3057cfc523672f237da296d5abfe0.wav", "sr": 16000, "start_ms": 0, "end_ms": 1471}, "words": [["No,", 0, 260], ["no,", 300, 560], ["just", 640, 900], ["two", 940, 1150], ["people.", 1180, 1471]]},
+   {"id": "a3", "role": "agent", "start_time": 13500, "end_time": 17029, "text": "Sorry about that, I've changed it to two people at seven pm.", "tool_calls": [{"id": "call_2", "name": "book_table", "arguments": {"table": "T7", "time": "19:00", "people": 2}, "call_time": 13500, "result_time": 13800, "content": "{\"booking_id\": \"B1029\", \"people\": 2}", "error": false}]},
+   {"id": "u4", "role": "user", "start_time": 14500, "end_time": 16265, "text": "hold on, I'm on the phone", "kind": "aside", "media": {"kind": "audio", "uri": "media/07/071d3ee9f5c915f266eb46ccf7a44fbea0dec1e53d708515d10b98e95e55e5ba.wav", "sr": 16000, "start_ms": 31200, "end_ms": 32965}},
+   {"id": "u5", "role": "user", "start_time": 18029, "end_time": 18911, "text": "Perfect, thank you!", "media": {"kind": "audio", "uri": "media/90/904a8cdd68b31351fbf3dca3eb1c28f36d27f07ec45bd251b49a6b1e14bb3bc4.wav", "sr": 16000, "start_ms": 0, "end_ms": 882}},
+   {"id": "a4", "role": "agent", "start_time": 19200, "end_time": 20671, "text": "You're welcome, enjoy your dinner!"}
+ ],
+ "eval": {
+  "reward": {
+   "total": 1.0,
+   "parts": {"outcome": 1.0}
+  },
+  "duplex": {
+   "n0": {"behavior": "noise", "target": "a0", "reaction": "continued"},
+   "u2": {"behavior": "backchannel", "target": "a2", "reaction": "continued"},
+   "u3": {"behavior": "barge_in", "target": "a2", "reaction": "yielded", "latency_ms": 300},
+   "u4": {"behavior": "aside", "target": "a3", "reaction": "continued"}
+  },
+  "scores": {
+   "events": [
+    {"turn": "u0", "expects": "respond", "outcome": "responded", "latency_ms": 353, "score": 0.8509536616872778, "target": "a0", "resolved_ms": 3000, "user_start_ms": 0, "user_end_ms": 2647},
+    {"turn": "n0", "expects": "ignore", "outcome": "ignored", "score": 1.0, "target": "a0", "resolved_ms": 3800, "user_start_ms": 3400, "user_end_ms": 3800},
+    {"turn": "u1", "expects": "respond", "outcome": "responded", "latency_ms": 353, "score": 0.8509536616872778, "target": "a1", "resolved_ms": 7000, "user_start_ms": 5176, "user_end_ms": 6647},
+    {"turn": "u2", "expects": "ignore", "outcome": "ignored", "score": 1.0, "target": "a2", "resolved_ms": 9894, "user_start_ms": 9600, "user_end_ms": 9894},
+    {"turn": "u3", "expects": "yield", "outcome": "yielded", "score": 0.9210868228757567, "latency_ms": 300, "target": "a2", "resolved_ms": 13500, "reply": "a3", "response_ms": 329, "user_start_ms": 11700, "user_end_ms": 13171},
+    {"turn": "u4", "expects": "ignore", "outcome": "ignored", "score": 1.0, "target": "a3", "resolved_ms": 16265, "user_start_ms": 14500, "user_end_ms": 16265},
+    {"turn": "u5", "expects": "respond", "outcome": "responded", "latency_ms": 289, "score": 0.934491978076374, "target": "a4", "resolved_ms": 19200, "user_start_ms": 18029, "user_end_ms": 18911}
+   ],
+   "by_expectation": {"respond": 0.8788, "ignore": 1.0, "yield": 0.9211},
+   "total": 0.9368
+  }
+ }
+}

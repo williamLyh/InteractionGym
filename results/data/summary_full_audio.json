@@ -1,0 +1,6946 @@
+{
+ "fdb": {
+  "v1.0/candor_pause_handling": {
+   "n": 216,
+   "TOR": {
+    "est": 0.3056,
+    "lo": 0.2454,
+    "hi": 0.3704,
+    "n": 216
+   },
+   "respond": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 216
+   },
+   "yield": {
+    "est": 0.5593,
+    "lo": 0.431,
+    "hi": 0.6863,
+    "n": 216
+   },
+   "wait": {
+    "est": 0.7004,
+    "lo": 0.6421,
+    "hi": 0.7581,
+    "n": 216
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 216
+   },
+   "score": {
+    "est": 0.5584,
+    "lo": 0.4994,
+    "hi": 0.6201,
+    "n": 216
+   },
+   "outcomes": {
+    "wait": {
+     "waited": 194,
+     "took_floor": 73,
+     "kept_talking": 10
+    },
+    "respond": {
+     "censored": 140,
+     "talked_over": 16,
+     "no_response": 1
+    },
+    "yield": {
+     "kept_talking": 26,
+     "yielded": 33
+    }
+   },
+   "timing": {
+    "episodes": 216,
+    "user_turns": 493,
+    "turn_take_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 216
+    },
+    "turn_take_rate_clean": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 216
+    },
+    "latency_median_ms": null,
+    "latency_p90_ms": null,
+    "yield_rate": {
+     "est": 0.4118,
+     "lo": 0.1667,
+     "hi": 0.6429,
+     "n": 216
+    },
+    "yield_latency_median_ms": {
+     "est": 2130.0,
+     "lo": 760.0,
+     "hi": 3130.0,
+     "n": 216
+    },
+    "cut_in_rate": {
+     "est": 0.0599,
+     "lo": 0.0393,
+     "hi": 0.082,
+     "n": 216
+    },
+    "collision_share": {
+     "est": 0.1197,
+     "lo": 0.0943,
+     "hi": 0.1475,
+     "n": 216
+    },
+    "collisions_per_episode": {
+     "est": 0.2731,
+     "lo": 0.2176,
+     "hi": 0.3333,
+     "n": 216
+    },
+    "collision_yield_rate": {
+     "est": 0.5593,
+     "lo": 0.431,
+     "hi": 0.6863,
+     "n": 216
+    },
+    "nondirected_ok_rate": null,
+    "barge_ins": 17,
+    "collisions": 59,
+    "nondirected": 0
+   }
+  },
+  "v1.0/candor_turn_taking": {
+   "n": 119,
+   "TOR": {
+    "est": 0.958,
+    "lo": 0.916,
+    "hi": 0.9916,
+    "n": 119
+   },
+   "latency": {
+    "est": 1.2785,
+    "lo": 1.1326,
+    "hi": 1.4221,
+    "n": 114
+   },
+   "respond": {
+    "est": 0.8151,
+    "lo": 0.7395,
+    "hi": 0.8824,
+    "n": 119
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 119
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 119
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 119
+   },
+   "score": {
+    "est": 0.2768,
+    "lo": 0.2355,
+    "hi": 0.3183,
+    "n": 119
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 97,
+     "talked_over": 20,
+     "no_response": 2
+    }
+   },
+   "timing": {
+    "episodes": 119,
+    "user_turns": 119,
+    "turn_take_rate": {
+     "est": 0.8739,
+     "lo": 0.8067,
+     "hi": 0.9328,
+     "n": 119
+    },
+    "turn_take_rate_clean": {
+     "est": 0.8739,
+     "lo": 0.8067,
+     "hi": 0.9328,
+     "n": 119
+    },
+    "latency_median_ms": {
+     "est": 1070.0,
+     "lo": 870.0,
+     "hi": 1110.0,
+     "n": 119
+    },
+    "latency_p90_ms": {
+     "est": 1690.0,
+     "lo": 1390.0,
+     "hi": 1970.0,
+     "n": 119
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.1681,
+     "lo": 0.1092,
+     "hi": 0.2437,
+     "n": 119
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 119
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 119
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "v1.0/icc_backchannel": {
+   "n": 55,
+   "TOR": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 55
+   },
+   "freq": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 55
+   },
+   "JSD": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 55
+   },
+   "respond": {
+    "est": 0.0909,
+    "lo": 0.0,
+    "hi": 0.2353,
+    "n": 55
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 55
+   },
+   "wait": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 55
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 55
+   },
+   "score": {
+    "est": 0.4054,
+    "lo": 0.2414,
+    "hi": 0.5526,
+    "n": 55
+   },
+   "outcomes": {
+    "respond": {
+     "censored": 33,
+     "talked_over": 20,
+     "responded": 2
+    },
+    "wait": {
+     "waited": 15
+    }
+   },
+   "timing": {
+    "episodes": 55,
+    "user_turns": 70,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 55
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 55
+    },
+    "latency_median_ms": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 55
+    },
+    "latency_p90_ms": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 55
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.2857,
+     "lo": 0.1818,
+     "hi": 0.4032,
+     "n": 55
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 55
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 55
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "v1.0/synthetic_pause_handling": {
+   "n": 137,
+   "TOR": {
+    "est": 0.1533,
+    "lo": 0.0949,
+    "hi": 0.2117,
+    "n": 137
+   },
+   "respond": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 137
+   },
+   "yield": {
+    "est": 0.04,
+    "lo": 0.0,
+    "hi": 0.1379,
+    "n": 137
+   },
+   "wait": {
+    "est": 0.8029,
+    "lo": 0.7372,
+    "hi": 0.8686,
+    "n": 137
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 137
+   },
+   "score": {
+    "est": 0.6716,
+    "lo": 0.5805,
+    "hi": 0.7652,
+    "n": 137
+   },
+   "outcomes": {
+    "wait": {
+     "waited": 110,
+     "took_floor": 27
+    },
+    "respond": {
+     "censored": 110,
+     "talked_over": 2
+    },
+    "yield": {
+     "kept_talking": 24,
+     "yielded": 1
+    }
+   },
+   "timing": {
+    "episodes": 137,
+    "user_turns": 274,
+    "turn_take_rate": null,
+    "turn_take_rate_clean": null,
+    "latency_median_ms": null,
+    "latency_p90_ms": null,
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0161,
+     "lo": 0.004,
+     "hi": 0.0325,
+     "n": 137
+    },
+    "collision_share": {
+     "est": 0.0912,
+     "lo": 0.0584,
+     "hi": 0.1241,
+     "n": 137
+    },
+    "collisions_per_episode": {
+     "est": 0.1825,
+     "lo": 0.1168,
+     "hi": 0.2482,
+     "n": 137
+    },
+    "collision_yield_rate": {
+     "est": 0.04,
+     "lo": 0.0,
+     "hi": 0.1379,
+     "n": 137
+    },
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 25,
+    "nondirected": 0
+   }
+  },
+  "v1.0/synthetic_user_interruption": {
+   "n": 200,
+   "TOR": {
+    "est": 0.94,
+    "lo": 0.905,
+    "hi": 0.97,
+    "n": 200
+   },
+   "latency": {
+    "est": 1.5274,
+    "lo": 1.4024,
+    "hi": 1.6529,
+    "n": 188
+   },
+   "rating": {
+    "est": 4.4415,
+    "lo": 4.2234,
+    "hi": 4.6223,
+    "n": 188
+   },
+   "respond": {
+    "est": 0.9698,
+    "lo": 0.9492,
+    "hi": 0.9886,
+    "n": 200
+   },
+   "yield": {
+    "est": 0.5481,
+    "lo": 0.4609,
+    "hi": 0.6319,
+    "n": 200
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 200
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 200
+   },
+   "score": {
+    "est": 0.2633,
+    "lo": 0.2438,
+    "hi": 0.2856,
+    "n": 200
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 257,
+     "talked_over": 8
+    },
+    "yield": {
+     "kept_talking": 54,
+     "yielded": 74,
+     "talked_over": 7
+    }
+   },
+   "timing": {
+    "episodes": 200,
+    "user_turns": 400,
+    "turn_take_rate": {
+     "est": 0.905,
+     "lo": 0.88,
+     "hi": 0.9325,
+     "n": 200
+    },
+    "turn_take_rate_clean": {
+     "est": 0.905,
+     "lo": 0.88,
+     "hi": 0.9325,
+     "n": 200
+    },
+    "latency_median_ms": {
+     "est": 1030.0,
+     "lo": 965.0,
+     "hi": 1090.0,
+     "n": 200
+    },
+    "latency_p90_ms": {
+     "est": 1890.0,
+     "lo": 1779.0,
+     "hi": 1991.0,
+     "n": 200
+    },
+    "yield_rate": {
+     "est": 0.6,
+     "lo": 0.5154,
+     "hi": 0.6791,
+     "n": 200
+    },
+    "yield_latency_median_ms": {
+     "est": 1845.0,
+     "lo": 1659.0,
+     "hi": 2087.0,
+     "n": 200
+    },
+    "cut_in_rate": {
+     "est": 0.0375,
+     "lo": 0.02,
+     "hi": 0.0575,
+     "n": 200
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 200
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 200
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 135,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "v1.5/background_speech": {
+   "n": 100,
+   "stop": {
+    "est": 0.8705,
+    "lo": 0.7735,
+    "hi": 0.9699,
+    "n": 88
+   },
+   "resp": {
+    "est": 1.5877,
+    "lo": 1.3689,
+    "hi": 1.8002,
+    "n": 68
+   },
+   "C_RESPOND": {
+    "est": 0.5,
+    "lo": 0.4,
+    "hi": 0.6,
+    "n": 100
+   },
+   "C_RESUME": {
+    "est": 0.47,
+    "lo": 0.37,
+    "hi": 0.57,
+    "n": 100
+   },
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 100
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "ignore": {
+    "est": 0.61,
+    "lo": 0.51,
+    "hi": 0.71,
+    "n": 100
+   },
+   "score": {
+    "est": 0.5082,
+    "lo": 0.451,
+    "hi": 0.5598,
+    "n": 100
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 100
+    },
+    "ignore": {
+     "replied": 39,
+     "ignored": 61
+    }
+   },
+   "timing": {
+    "episodes": 100,
+    "user_turns": 100,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 840.0,
+     "lo": 750.0,
+     "hi": 950.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 1320.0,
+     "lo": 1180.0,
+     "hi": 1390.0,
+     "n": 100
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 0.61,
+     "lo": 0.51,
+     "hi": 0.71,
+     "n": 100
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 100
+   }
+  },
+  "v1.5/talking_to_other": {
+   "n": 100,
+   "stop": {
+    "est": 1.3593,
+    "lo": 1.2325,
+    "hi": 1.485,
+    "n": 90
+   },
+   "resp": {
+    "est": 1.6465,
+    "lo": 1.458,
+    "hi": 1.8373,
+    "n": 76
+   },
+   "C_RESPOND": {
+    "est": 0.56,
+    "lo": 0.46,
+    "hi": 0.66,
+    "n": 100
+   },
+   "C_RESUME": {
+    "est": 0.3,
+    "lo": 0.21,
+    "hi": 0.39,
+    "n": 100
+   },
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 100
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "ignore": {
+    "est": 0.4,
+    "lo": 0.3,
+    "hi": 0.5,
+    "n": 100
+   },
+   "score": {
+    "est": 0.4088,
+    "lo": 0.3572,
+    "hi": 0.463,
+    "n": 100
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 100
+    },
+    "ignore": {
+     "ignored": 40,
+     "replied": 60
+    }
+   },
+   "timing": {
+    "episodes": 100,
+    "user_turns": 100,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 930.0,
+     "lo": 780.0,
+     "hi": 980.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 1280.0,
+     "lo": 1170.0,
+     "hi": 1300.0,
+     "n": 100
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 0.4,
+     "lo": 0.3,
+     "hi": 0.5,
+     "n": 100
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 100
+   }
+  },
+  "v1.5/user_backchannel": {
+   "n": 98,
+   "stop": {
+    "est": 0.6095,
+    "lo": 0.5679,
+    "hi": 0.6488,
+    "n": 93
+   },
+   "resp": {
+    "est": 1.997,
+    "lo": 1.5197,
+    "hi": 2.5024,
+    "n": 29
+   },
+   "C_RESPOND": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 98
+   },
+   "C_RESUME": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 98
+   },
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 98
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 98
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 98
+   },
+   "ignore": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 98
+   },
+   "score": {
+    "est": 0.68,
+    "lo": 0.661,
+    "hi": 0.7,
+    "n": 98
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 98
+    },
+    "ignore": {
+     "ignored": 98
+    }
+   },
+   "timing": {
+    "episodes": 98,
+    "user_turns": 98,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 98
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 98
+    },
+    "latency_median_ms": {
+     "est": 970.0,
+     "lo": 890.0,
+     "hi": 1050.0,
+     "n": 98
+    },
+    "latency_p90_ms": {
+     "est": 1270.0,
+     "lo": 1210.0,
+     "hi": 1330.0,
+     "n": 98
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 98
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 98
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 98
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 98
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 98
+   }
+  },
+  "v1.5/user_interruption": {
+   "n": 200,
+   "stop": {
+    "est": 1.5075,
+    "lo": 1.3943,
+    "hi": 1.6149,
+    "n": 183
+   },
+   "resp": {
+    "est": 1.9319,
+    "lo": 1.8227,
+    "hi": 2.0346,
+    "n": 157
+   },
+   "C_RESPOND": {
+    "est": 0.77,
+    "lo": 0.71,
+    "hi": 0.83,
+    "n": 200
+   },
+   "C_RESUME": {
+    "est": 0.195,
+    "lo": 0.14,
+    "hi": 0.25,
+    "n": 200
+   },
+   "respond": {
+    "est": 0.968,
+    "lo": 0.9435,
+    "hi": 0.9905,
+    "n": 200
+   },
+   "yield": {
+    "est": 0.5691,
+    "lo": 0.4973,
+    "hi": 0.6409,
+    "n": 200
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 200
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 200
+   },
+   "score": {
+    "est": 0.2434,
+    "lo": 0.2245,
+    "hi": 0.263,
+    "n": 200
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 212,
+     "talked_over": 7
+    },
+    "yield": {
+     "talked_over": 6,
+     "kept_talking": 72,
+     "yielded": 103
+    }
+   },
+   "timing": {
+    "episodes": 200,
+    "user_turns": 400,
+    "turn_take_rate": {
+     "est": 0.8825,
+     "lo": 0.8525,
+     "hi": 0.91,
+     "n": 200
+    },
+    "turn_take_rate_clean": {
+     "est": 0.8825,
+     "lo": 0.8525,
+     "hi": 0.91,
+     "n": 200
+    },
+    "latency_median_ms": {
+     "est": 1010.0,
+     "lo": 940.0,
+     "hi": 1046.0,
+     "n": 200
+    },
+    "latency_p90_ms": {
+     "est": 1824.0,
+     "lo": 1706.0,
+     "hi": 1927.0,
+     "n": 200
+    },
+    "yield_rate": {
+     "est": 0.6022,
+     "lo": 0.5326,
+     "hi": 0.6704,
+     "n": 200
+    },
+    "yield_latency_median_ms": {
+     "est": 1867.0,
+     "lo": 1780.0,
+     "hi": 1995.0,
+     "n": 200
+    },
+    "cut_in_rate": {
+     "est": 0.0325,
+     "lo": 0.0175,
+     "hi": 0.05,
+     "n": 200
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 200
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 200
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 181,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  }
+ },
+ "et": {
+  "easy_turn/backchannel": {
+   "n": 100,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 100
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "ignore": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 100
+   },
+   "score": {
+    "est": 0.7134,
+    "lo": 0.6901,
+    "hi": 0.7367,
+    "n": 100
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 100
+    },
+    "ignore": {
+     "ignored": 100
+    }
+   },
+   "timing": {
+    "episodes": 100,
+    "user_turns": 100,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 790.0,
+     "lo": 750.0,
+     "hi": 893.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 1330.0,
+     "lo": 1190.0,
+     "hi": 1670.0,
+     "n": 100
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 100
+   }
+  },
+  "easy_turn/complete": {
+   "n": 300,
+   "respond": {
+    "est": 0.99,
+    "lo": 0.9767,
+    "hi": 1.0,
+    "n": 300
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "score": {
+    "est": 0.4108,
+    "lo": 0.3818,
+    "hi": 0.4395,
+    "n": 300
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 297,
+     "talked_over": 3
+    }
+   },
+   "timing": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": {
+     "est": 0.9933,
+     "lo": 0.9833,
+     "hi": 1.0,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9933,
+     "lo": 0.9833,
+     "hi": 1.0,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 850.0,
+     "lo": 810.0,
+     "hi": 920.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 1520.0,
+     "lo": 1350.0,
+     "hi": 1650.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.01,
+     "lo": 0.0,
+     "hi": 0.0233,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "easy_turn/incomplete": {
+   "n": 300,
+   "respond": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "wait": {
+    "est": 0.0033,
+    "lo": 0.0,
+    "hi": 0.01,
+    "n": 300
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 300
+   },
+   "score": {
+    "est": 0.0033,
+    "lo": 0.0,
+    "hi": 0.01,
+    "n": 300
+   },
+   "outcomes": {
+    "wait": {
+     "took_floor": 299,
+     "waited": 1
+    }
+   },
+   "timing": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": null,
+    "turn_take_rate_clean": null,
+    "latency_median_ms": null,
+    "latency_p90_ms": null,
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.02,
+     "lo": 0.0067,
+     "hi": 0.0367,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "easy_turn/wait": {
+   "n": 100,
+   "respond": {
+    "est": 0.99,
+    "lo": 0.97,
+    "hi": 1.0,
+    "n": 100
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "wait": {
+    "est": 0.08,
+    "lo": 0.03,
+    "hi": 0.14,
+    "n": 100
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 100
+   },
+   "score": {
+    "est": 0.2581,
+    "lo": 0.221,
+    "hi": 0.2976,
+    "n": 100
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 99,
+     "talked_over": 1
+    },
+    "wait": {
+     "kept_talking": 58,
+     "took_floor": 34,
+     "waited": 8
+    }
+   },
+   "timing": {
+    "episodes": 100,
+    "user_turns": 200,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 830.0,
+     "lo": 740.0,
+     "hi": 930.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 1310.0,
+     "lo": 1170.0,
+     "hi": 1560.0,
+     "n": 100
+    },
+    "yield_rate": {
+     "est": 0.3895,
+     "lo": 0.2947,
+     "hi": 0.4947,
+     "n": 100
+    },
+    "yield_latency_median_ms": {
+     "est": 1640.0,
+     "lo": 1230.0,
+     "hi": 1730.0,
+     "n": 100
+    },
+    "cut_in_rate": {
+     "est": 0.05,
+     "lo": 0.025,
+     "hi": 0.08,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 95,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  }
+ },
+ "hd": {
+  "humdial/en/ask": {
+   "n": 25,
+   "respond": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1096,
+    "lo": 0.0878,
+    "hi": 0.1349,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 24,
+     "talked_over": 1
+    },
+    "yield": {
+     "yielded": 24,
+     "kept_talking": 1
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.96,
+     "lo": 0.9,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.96,
+     "lo": 0.9,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1280.0,
+     "lo": 1100.0,
+     "hi": 1440.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1900.0,
+     "lo": 1710.0,
+     "hi": 2050.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2750.0,
+     "lo": 2140.0,
+     "hi": 3180.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.02,
+     "lo": 0.0,
+     "hi": 0.06,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/en/backchannel": {
+   "n": 25,
+   "respond": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "score": {
+    "est": 0.605,
+    "lo": 0.5694,
+    "hi": 0.6431,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 24,
+     "talked_over": 1
+    },
+    "ignore": {
+     "ignored": 25
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1470.0,
+     "lo": 1020.0,
+     "hi": 1730.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2320.0,
+     "lo": 1820.0,
+     "hi": 2870.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.04,
+     "lo": 0.0,
+     "hi": 0.12,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 25
+   }
+  },
+  "humdial/en/deny": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.16,
+    "lo": 0.04,
+    "hi": 0.32,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1131,
+    "lo": 0.0857,
+    "hi": 0.1454,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "yield": {
+     "kept_talking": 21,
+     "yielded": 4
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.78,
+     "lo": 0.68,
+     "hi": 0.86,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.78,
+     "lo": 0.68,
+     "hi": 0.86,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1250.0,
+     "lo": 1150.0,
+     "hi": 1560.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1900.0,
+     "lo": 1620.0,
+     "hi": 2080.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.16,
+     "lo": 0.04,
+     "hi": 0.32,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2040.0,
+     "lo": 1510.0,
+     "hi": 2350.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/en/others_talk_to_user_after": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.6154,
+    "lo": 0.4231,
+    "hi": 0.8,
+    "n": 25
+   },
+   "score": {
+    "est": 0.4156,
+    "lo": 0.3051,
+    "hi": 0.5208,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "ignore": {
+     "ignored": 16,
+     "replied": 10
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1470.0,
+     "lo": 1180.0,
+     "hi": 1700.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2010.0,
+     "lo": 1760.0,
+     "hi": 2640.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 0.6154,
+     "lo": 0.4231,
+     "hi": 0.8,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 26
+   }
+  },
+  "humdial/en/others_talk_to_user_before": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.85,
+    "lo": 0.6818,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.2,
+    "lo": 0.04,
+    "hi": 0.4,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1494,
+    "lo": 0.0704,
+    "hi": 0.2472,
+    "n": 25
+   },
+   "outcomes": {
+    "ignore": {
+     "ignored": 5,
+     "replied": 20
+    },
+    "respond": {
+     "responded": 5
+    },
+    "yield": {
+     "yielded": 17,
+     "kept_talking": 2,
+     "talked_over": 1
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 0.92,
+     "lo": 0.8,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1150.0,
+     "lo": 910.0,
+     "hi": 1340.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1500.0,
+     "lo": 1340.0,
+     "hi": 1740.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.8,
+     "lo": 0.64,
+     "hi": 0.96,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.8,
+     "lo": 0.64,
+     "hi": 0.96,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 0.9,
+     "lo": 0.75,
+     "hi": 1.0,
+     "n": 25
+    },
+    "nondirected_ok_rate": {
+     "est": 0.2,
+     "lo": 0.04,
+     "hi": 0.4,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 20,
+    "nondirected": 25
+   }
+  },
+  "humdial/en/pause": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 25
+   },
+   "wait": {
+    "est": 0.44,
+    "lo": 0.24,
+    "hi": 0.64,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.2848,
+    "lo": 0.1628,
+    "hi": 0.4186,
+    "n": 25
+   },
+   "outcomes": {
+    "wait": {
+     "took_floor": 14,
+     "waited": 11
+    },
+    "yield": {
+     "kept_talking": 15
+    },
+    "respond": {
+     "responded": 10
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.52,
+     "lo": 0.32,
+     "hi": 0.72,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1180.0,
+     "lo": 910.0,
+     "hi": 1260.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1560.0,
+     "lo": 1190.0,
+     "hi": 1610.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0286,
+     "lo": 0.0,
+     "hi": 0.0938,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.3,
+     "lo": 0.2,
+     "hi": 0.4,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.6,
+     "lo": 0.4,
+     "hi": 0.8,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 15,
+    "nondirected": 0
+   }
+  },
+  "humdial/en/repeat": {
+   "n": 25,
+   "respond": {
+    "est": 0.8889,
+    "lo": 0.7742,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.7391,
+    "lo": 0.5455,
+    "hi": 0.9091,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1304,
+    "lo": 0.0892,
+    "hi": 0.1797,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 24,
+     "talked_over": 3
+    },
+    "yield": {
+     "yielded": 17,
+     "kept_talking": 5,
+     "talked_over": 1
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.84,
+     "lo": 0.74,
+     "hi": 0.92,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.84,
+     "lo": 0.74,
+     "hi": 0.92,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1360.0,
+     "lo": 1120.0,
+     "hi": 1580.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2160.0,
+     "lo": 1750.0,
+     "hi": 2320.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.7826,
+     "lo": 0.6,
+     "hi": 0.9524,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2630.0,
+     "lo": 2250.0,
+     "hi": 3030.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.08,
+     "lo": 0.02,
+     "hi": 0.16,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 23,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/en/shift": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1551,
+    "lo": 0.1128,
+    "hi": 0.2012,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "yield": {
+     "yielded": 24,
+     "kept_talking": 1
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.98,
+     "lo": 0.94,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.98,
+     "lo": 0.94,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1140.0,
+     "lo": 960.0,
+     "hi": 1290.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1850.0,
+     "lo": 1450.0,
+     "hi": 2250.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 3010.0,
+     "lo": 2380.0,
+     "hi": 3350.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/en/talk_to_others": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.625,
+    "lo": 0.4167,
+    "hi": 0.8261,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.44,
+    "lo": 0.24,
+    "hi": 0.64,
+    "n": 25
+   },
+   "score": {
+    "est": 0.2149,
+    "lo": 0.1523,
+    "hi": 0.2824,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 26
+    },
+    "yield": {
+     "kept_talking": 8,
+     "yielded": 15,
+     "no_response": 1
+    },
+    "ignore": {
+     "replied": 14,
+     "ignored": 11
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.92,
+     "lo": 0.84,
+     "hi": 0.98,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1450.0,
+     "lo": 1350.0,
+     "hi": 1760.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2200.0,
+     "lo": 2000.0,
+     "hi": 3110.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.48,
+     "lo": 0.44,
+     "hi": 0.5,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 0.6667,
+     "lo": 0.4583,
+     "hi": 0.84,
+     "n": 25
+    },
+    "nondirected_ok_rate": {
+     "est": 0.44,
+     "lo": 0.24,
+     "hi": 0.64,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 24,
+    "nondirected": 25
+   }
+  },
+  "humdial/en/wait": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1004,
+    "lo": 0.0682,
+    "hi": 0.1402,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "wait": {
+     "kept_talking": 23,
+     "took_floor": 2
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1350.0,
+     "lo": 1230.0,
+     "hi": 1800.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2220.0,
+     "lo": 1820.0,
+     "hi": 4690.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.08,
+     "lo": 0.0,
+     "hi": 0.2,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 1490.0,
+     "lo": 1490.0,
+     "hi": 1650.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.02,
+     "lo": 0.0,
+     "hi": 0.06,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/ask": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.6957,
+    "lo": 0.5,
+    "hi": 0.8696,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.2045,
+    "lo": 0.156,
+    "hi": 0.261,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 27
+    },
+    "yield": {
+     "kept_talking": 7,
+     "yielded": 16
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.94,
+     "lo": 0.86,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.94,
+     "lo": 0.86,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1119.0,
+     "lo": 930.0,
+     "hi": 1340.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1729.0,
+     "lo": 1569.0,
+     "hi": 1840.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.6957,
+     "lo": 0.5,
+     "hi": 0.8696,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2160.0,
+     "lo": 1860.0,
+     "hi": 2410.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 23,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/backchannel": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "score": {
+    "est": 0.7187,
+    "lo": 0.6699,
+    "hi": 0.7719,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "ignore": {
+     "ignored": 25
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 799.0,
+     "lo": 579.0,
+     "hi": 1269.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1399.0,
+     "lo": 1289.0,
+     "hi": 2299.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 25
+   }
+  },
+  "humdial/zh/deny": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.3333,
+    "lo": 0.16,
+    "hi": 0.5217,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1794,
+    "lo": 0.1382,
+    "hi": 0.2264,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 26
+    },
+    "yield": {
+     "yielded": 8,
+     "kept_talking": 16
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.84,
+     "lo": 0.74,
+     "hi": 0.92,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.84,
+     "lo": 0.74,
+     "hi": 0.92,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1160.0,
+     "lo": 959.0,
+     "hi": 1349.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1810.0,
+     "lo": 1639.0,
+     "hi": 2600.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.3333,
+     "lo": 0.16,
+     "hi": 0.5217,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2000.0,
+     "lo": 1270.0,
+     "hi": 2510.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 24,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/others_talk_to_user_after": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.48,
+    "lo": 0.28,
+    "hi": 0.68,
+    "n": 25
+   },
+   "score": {
+    "est": 0.3681,
+    "lo": 0.2723,
+    "hi": 0.4617,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "ignore": {
+     "ignored": 12,
+     "replied": 13
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1159.0,
+     "lo": 929.0,
+     "hi": 1379.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2189.0,
+     "lo": 1389.0,
+     "hi": 3159.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": {
+     "est": 0.48,
+     "lo": 0.28,
+     "hi": 0.68,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 25
+   }
+  },
+  "humdial/zh/others_talk_to_user_before": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.9565,
+    "lo": 0.8636,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 25
+   },
+   "score": {
+    "est": 0.0988,
+    "lo": 0.0517,
+    "hi": 0.156,
+    "n": 25
+   },
+   "outcomes": {
+    "ignore": {
+     "replied": 25
+    },
+    "yield": {
+     "yielded": 22,
+     "talked_over": 1
+    },
+    "respond": {
+     "responded": 2
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 25,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1540.0,
+     "lo": 950.0,
+     "hi": 1980.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2370.0,
+     "lo": 2081.0,
+     "hi": 2570.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.92,
+     "lo": 0.8,
+     "hi": 1.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.92,
+     "lo": 0.8,
+     "hi": 1.0,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "nondirected_ok_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 23,
+    "nondirected": 25
+   }
+  },
+  "humdial/zh/pause": {
+   "n": 25,
+   "respond": {
+    "est": 0.8182,
+    "lo": 0.5385,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.1429,
+    "lo": 0.0,
+    "hi": 0.3571,
+    "n": 25
+   },
+   "wait": {
+    "est": 0.44,
+    "lo": 0.24,
+    "hi": 0.64,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.2733,
+    "lo": 0.1521,
+    "hi": 0.3894,
+    "n": 25
+   },
+   "outcomes": {
+    "wait": {
+     "took_floor": 14,
+     "waited": 11
+    },
+    "yield": {
+     "kept_talking": 12,
+     "yielded": 2
+    },
+    "respond": {
+     "talked_over": 2,
+     "responded": 9
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.56,
+     "lo": 0.36,
+     "hi": 0.76,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9091,
+     "lo": 0.6923,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1090.0,
+     "lo": 860.0,
+     "hi": 1300.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1770.0,
+     "lo": 1140.0,
+     "hi": 2340.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0556,
+     "lo": 0.0,
+     "hi": 0.1389,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.28,
+     "lo": 0.18,
+     "hi": 0.38,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.56,
+     "lo": 0.36,
+     "hi": 0.76,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 0.1429,
+     "lo": 0.0,
+     "hi": 0.3571,
+     "n": 25
+    },
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 14,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/repeat": {
+   "n": 25,
+   "respond": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.96,
+    "lo": 0.88,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1426,
+    "lo": 0.1156,
+    "hi": 0.1707,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 24,
+     "talked_over": 1
+    },
+    "yield": {
+     "yielded": 24,
+     "talked_over": 1
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.98,
+     "lo": 0.94,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.98,
+     "lo": 0.94,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1189.0,
+     "lo": 919.0,
+     "hi": 1269.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1899.0,
+     "lo": 1449.0,
+     "hi": 2449.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2150.0,
+     "lo": 1860.0,
+     "hi": 2910.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.04,
+     "lo": 0.0,
+     "hi": 0.1,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/shift": {
+   "n": 25,
+   "respond": {
+    "est": 0.9259,
+    "lo": 0.8333,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.8696,
+    "lo": 0.7083,
+    "hi": 1.0,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.238,
+    "lo": 0.1885,
+    "hi": 0.2926,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25,
+     "talked_over": 2
+    },
+    "yield": {
+     "yielded": 20,
+     "kept_talking": 3
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.96,
+     "lo": 0.9,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.96,
+     "lo": 0.9,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 990.0,
+     "lo": 819.0,
+     "hi": 1160.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1530.0,
+     "lo": 1450.0,
+     "hi": 1729.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.8696,
+     "lo": 0.7083,
+     "hi": 1.0,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 2230.0,
+     "lo": 1860.0,
+     "hi": 2470.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.04,
+     "lo": 0.0,
+     "hi": 0.1,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 23,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "humdial/zh/talk_to_others": {
+   "n": 25,
+   "respond": {
+    "est": 0.9615,
+    "lo": 0.8929,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": 0.625,
+    "lo": 0.4348,
+    "hi": 0.8333,
+    "n": 25
+   },
+   "wait": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "ignore": {
+    "est": 0.28,
+    "lo": 0.12,
+    "hi": 0.48,
+    "n": 25
+   },
+   "score": {
+    "est": 0.2122,
+    "lo": 0.1507,
+    "hi": 0.2773,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25,
+     "talked_over": 1
+    },
+    "yield": {
+     "kept_talking": 7,
+     "yielded": 15,
+     "talked_over": 2
+    },
+    "ignore": {
+     "replied": 18,
+     "ignored": 7
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 0.92,
+     "lo": 0.84,
+     "hi": 0.98,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9615,
+     "lo": 0.8929,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1299.0,
+     "lo": 1140.0,
+     "hi": 1559.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 2250.0,
+     "lo": 1930.0,
+     "hi": 2550.0,
+     "n": 25
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0385,
+     "lo": 0.0,
+     "hi": 0.1071,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.48,
+     "lo": 0.44,
+     "hi": 0.5,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.96,
+     "lo": 0.88,
+     "hi": 1.0,
+     "n": 25
+    },
+    "collision_yield_rate": {
+     "est": 0.7083,
+     "lo": 0.52,
+     "hi": 0.88,
+     "n": 25
+    },
+    "nondirected_ok_rate": {
+     "est": 0.28,
+     "lo": 0.12,
+     "hi": 0.48,
+     "n": 25
+    },
+    "barge_ins": 0,
+    "collisions": 24,
+    "nondirected": 25
+   }
+  },
+  "humdial/zh/wait": {
+   "n": 25,
+   "respond": {
+    "est": 1.0,
+    "lo": 1.0,
+    "hi": 1.0,
+    "n": 25
+   },
+   "yield": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "wait": {
+    "est": 0.0,
+    "lo": 0.0,
+    "hi": 0.0,
+    "n": 25
+   },
+   "ignore": {
+    "est": null,
+    "lo": null,
+    "hi": null,
+    "n": 25
+   },
+   "score": {
+    "est": 0.1563,
+    "lo": 0.1161,
+    "hi": 0.1994,
+    "n": 25
+   },
+   "outcomes": {
+    "respond": {
+     "responded": 25
+    },
+    "wait": {
+     "took_floor": 4,
+     "kept_talking": 21
+    }
+   },
+   "timing": {
+    "episodes": 25,
+    "user_turns": 50,
+    "turn_take_rate": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "turn_take_rate_clean": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 25
+    },
+    "latency_median_ms": {
+     "est": 1079.0,
+     "lo": 819.0,
+     "hi": 1379.0,
+     "n": 25
+    },
+    "latency_p90_ms": {
+     "est": 1719.0,
+     "lo": 1389.0,
+     "hi": 1959.0,
+     "n": 25
+    },
+    "yield_rate": {
+     "est": 0.16,
+     "lo": 0.04,
+     "hi": 0.32,
+     "n": 25
+    },
+    "yield_latency_median_ms": {
+     "est": 1230.0,
+     "lo": 800.0,
+     "hi": 1650.0,
+     "n": 25
+    },
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 25,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  }
+ },
+ "fdb3": {
+  "cascaded-natural": {
+   "n": 300,
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "pass_A": {
+    "est": 0.62,
+    "lo": 0.5267,
+    "hi": 0.7067,
+    "n": 300
+   },
+   "pass_B_first": {
+    "est": 0.61,
+    "lo": 0.52,
+    "hi": 0.6967,
+    "n": 300
+   },
+   "pass_B_final": {
+    "est": 0.72,
+    "lo": 0.6333,
+    "hi": 0.8,
+    "n": 300
+   },
+   "pass_B_strict": {
+    "est": 0.6867,
+    "lo": 0.6,
+    "hi": 0.77,
+    "n": 300
+   },
+   "pass_B_final_minus_A": {
+    "est": 0.1,
+    "lo": 0.05,
+    "hi": 0.1567,
+    "n": 300
+   },
+   "recovered": {
+    "est": 0.2982,
+    "lo": 0.1849,
+    "hi": 0.4216,
+    "n": 114
+   },
+   "lenient_pass_A": {
+    "est": 0.65,
+    "lo": 0.5633,
+    "hi": 0.7333,
+    "n": 300
+   },
+   "lenient_pass_B_first": {
+    "est": 0.6467,
+    "lo": 0.56,
+    "hi": 0.73,
+    "n": 300
+   },
+   "lenient_pass_B_final": {
+    "est": 0.7867,
+    "lo": 0.71,
+    "hi": 0.8567,
+    "n": 300
+   },
+   "lenient_pass_B_strict": {
+    "est": 0.7533,
+    "lo": 0.6733,
+    "hi": 0.83,
+    "n": 300
+   },
+   "lenient_pass_B_final_minus_A": {
+    "est": 0.1367,
+    "lo": 0.08,
+    "hi": 0.1967,
+    "n": 300
+   },
+   "lenient_recovered": {
+    "est": 0.4286,
+    "lo": 0.2973,
+    "hi": 0.5667,
+    "n": 105
+   },
+   "consistency_calls": 0.6966666666666667,
+   "consistency_speech": 0.45666666666666667,
+   "consistency_first_response": 0.5633333333333334,
+   "official_timing_A": {
+    "turn_take": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.2133,
+     "lo": 0.17,
+     "hi": 0.2633,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 3094.0,
+     "lo": 2767.0,
+     "hi": 3157.0,
+     "n": 236
+    }
+   },
+   "response_quality_A": {
+    "est": 0.75,
+    "lo": 0.6767,
+    "hi": 0.82,
+    "n": 300
+   },
+   "score_A": {
+    "est": 0.0534,
+    "lo": 0.0365,
+    "hi": 0.0765,
+    "n": 300
+   },
+   "timing_A": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": {
+     "est": 0.9767,
+     "lo": 0.9533,
+     "hi": 0.9933,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9767,
+     "lo": 0.9533,
+     "hi": 0.9933,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 2756.0,
+     "lo": 2381.0,
+     "hi": 2861.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 3463.0,
+     "lo": 3343.0,
+     "hi": 4119.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.2133,
+     "lo": 0.14,
+     "hi": 0.2933,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "official_timing_B": {
+    "turn_take": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.2033,
+     "lo": 0.16,
+     "hi": 0.2533,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 3087.0,
+     "lo": 2817.0,
+     "hi": 3133.0,
+     "n": 239
+    }
+   },
+   "response_quality_B": {
+    "est": 0.9167,
+    "lo": 0.8733,
+    "hi": 0.9533,
+    "n": 300
+   },
+   "score_B": {
+    "est": 0.0844,
+    "lo": 0.077,
+    "hi": 0.0941,
+    "n": 300
+   },
+   "timing_B": {
+    "episodes": 300,
+    "user_turns": 819,
+    "turn_take_rate": {
+     "est": 0.9743,
+     "lo": 0.9549,
+     "hi": 0.9893,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9743,
+     "lo": 0.9549,
+     "hi": 0.9893,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 1647.0,
+     "lo": 1623.0,
+     "hi": 1690.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 3381.0,
+     "lo": 3262.0,
+     "hi": 3474.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0891,
+     "lo": 0.0627,
+     "hi": 0.1188,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "cascaded-official": {
+   "n": 300,
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "pass_A": {
+    "est": 0.62,
+    "lo": 0.5267,
+    "hi": 0.7033,
+    "n": 300
+   },
+   "pass_B_first": {
+    "est": 0.6167,
+    "lo": 0.5233,
+    "hi": 0.7,
+    "n": 300
+   },
+   "pass_B_final": {
+    "est": 0.72,
+    "lo": 0.6367,
+    "hi": 0.7967,
+    "n": 300
+   },
+   "pass_B_strict": {
+    "est": 0.6633,
+    "lo": 0.58,
+    "hi": 0.7467,
+    "n": 300
+   },
+   "pass_B_final_minus_A": {
+    "est": 0.1,
+    "lo": 0.05,
+    "hi": 0.1533,
+    "n": 300
+   },
+   "recovered": {
+    "est": 0.307,
+    "lo": 0.1909,
+    "hi": 0.4386,
+    "n": 114
+   },
+   "lenient_pass_A": {
+    "est": 0.68,
+    "lo": 0.5967,
+    "hi": 0.76,
+    "n": 300
+   },
+   "lenient_pass_B_first": {
+    "est": 0.6767,
+    "lo": 0.5867,
+    "hi": 0.7567,
+    "n": 300
+   },
+   "lenient_pass_B_final": {
+    "est": 0.8067,
+    "lo": 0.74,
+    "hi": 0.87,
+    "n": 300
+   },
+   "lenient_pass_B_strict": {
+    "est": 0.75,
+    "lo": 0.6733,
+    "hi": 0.82,
+    "n": 300
+   },
+   "lenient_pass_B_final_minus_A": {
+    "est": 0.1267,
+    "lo": 0.07,
+    "hi": 0.1867,
+    "n": 300
+   },
+   "lenient_recovered": {
+    "est": 0.4479,
+    "lo": 0.3107,
+    "hi": 0.5914,
+    "n": 96
+   },
+   "consistency_calls": 0.5866666666666667,
+   "consistency_speech": 0.42,
+   "consistency_first_response": 0.52,
+   "official_timing_A": {
+    "turn_take": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.2133,
+     "lo": 0.1667,
+     "hi": 0.2633,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 2629.0,
+     "lo": 2572.5,
+     "hi": 2710.5,
+     "n": 236
+    }
+   },
+   "response_quality_A": {
+    "est": 0.7667,
+    "lo": 0.69,
+    "hi": 0.8367,
+    "n": 300
+   },
+   "score_A": {
+    "est": 0.0544,
+    "lo": 0.0398,
+    "hi": 0.0745,
+    "n": 300
+   },
+   "timing_A": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": {
+     "est": 0.93,
+     "lo": 0.88,
+     "hi": 0.9733,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.93,
+     "lo": 0.88,
+     "hi": 0.9733,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 2345.0,
+     "lo": 2257.0,
+     "hi": 2467.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 3316.0,
+     "lo": 3040.0,
+     "hi": 3489.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.2133,
+     "lo": 0.1367,
+     "hi": 0.2933,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "official_timing_B": {
+    "turn_take": {
+     "est": 0.99,
+     "lo": 0.9767,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.2067,
+     "lo": 0.16,
+     "hi": 0.2533,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 2651.0,
+     "lo": 2587.0,
+     "hi": 2701.0,
+     "n": 235
+    }
+   },
+   "response_quality_B": {
+    "est": 0.8967,
+    "lo": 0.85,
+    "hi": 0.94,
+    "n": 300
+   },
+   "score_B": {
+    "est": 0.0845,
+    "lo": 0.0773,
+    "hi": 0.0942,
+    "n": 300
+   },
+   "timing_B": {
+    "episodes": 300,
+    "user_turns": 779,
+    "turn_take_rate": {
+     "est": 0.9628,
+     "lo": 0.9402,
+     "hi": 0.9821,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9628,
+     "lo": 0.9402,
+     "hi": 0.9821,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 1661.0,
+     "lo": 1642.0,
+     "hi": 1723.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 3444.0,
+     "lo": 3262.0,
+     "hi": 3569.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0899,
+     "lo": 0.0599,
+     "hi": 0.1226,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "cascaded-official-ep3000": {
+   "n": 300,
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "pass_A": {
+    "est": 0.6233,
+    "lo": 0.5367,
+    "hi": 0.7067,
+    "n": 300
+   },
+   "pass_B_first": {
+    "est": 0.6433,
+    "lo": 0.56,
+    "hi": 0.7267,
+    "n": 300
+   },
+   "pass_B_final": {
+    "est": 0.73,
+    "lo": 0.6467,
+    "hi": 0.81,
+    "n": 300
+   },
+   "pass_B_strict": {
+    "est": 0.6867,
+    "lo": 0.6067,
+    "hi": 0.7667,
+    "n": 300
+   },
+   "pass_B_final_minus_A": {
+    "est": 0.1067,
+    "lo": 0.0567,
+    "hi": 0.16,
+    "n": 300
+   },
+   "recovered": {
+    "est": 0.3186,
+    "lo": 0.198,
+    "hi": 0.4464,
+    "n": 113
+   },
+   "lenient_pass_A": {
+    "est": 0.6833,
+    "lo": 0.6033,
+    "hi": 0.7633,
+    "n": 300
+   },
+   "lenient_pass_B_first": {
+    "est": 0.6833,
+    "lo": 0.6033,
+    "hi": 0.7633,
+    "n": 300
+   },
+   "lenient_pass_B_final": {
+    "est": 0.79,
+    "lo": 0.72,
+    "hi": 0.8533,
+    "n": 300
+   },
+   "lenient_pass_B_strict": {
+    "est": 0.7433,
+    "lo": 0.67,
+    "hi": 0.81,
+    "n": 300
+   },
+   "lenient_pass_B_final_minus_A": {
+    "est": 0.1067,
+    "lo": 0.0533,
+    "hi": 0.16,
+    "n": 300
+   },
+   "lenient_recovered": {
+    "est": 0.4,
+    "lo": 0.2762,
+    "hi": 0.5326,
+    "n": 95
+   },
+   "consistency_calls": 0.5733333333333334,
+   "consistency_speech": 0.44666666666666666,
+   "consistency_first_response": 0.54,
+   "official_timing_A": {
+    "turn_take": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 4919.0,
+     "lo": 4865.5,
+     "hi": 4978.0,
+     "n": 300
+    }
+   },
+   "response_quality_A": {
+    "est": 0.7933,
+    "lo": 0.7267,
+    "hi": 0.8567,
+    "n": 300
+   },
+   "score_A": {
+    "est": 0.0067,
+    "lo": 0.0056,
+    "hi": 0.0081,
+    "n": 300
+   },
+   "timing_A": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": {
+     "est": 0.6733,
+     "lo": 0.5967,
+     "hi": 0.7467,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.6733,
+     "lo": 0.5967,
+     "hi": 0.7467,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 4438.0,
+     "lo": 4387.0,
+     "hi": 4509.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 4756.0,
+     "lo": 4695.0,
+     "hi": 4825.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "official_timing_B": {
+    "turn_take": {
+     "est": 0.97,
+     "lo": 0.95,
+     "hi": 0.9867,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 4902.0,
+     "lo": 4865.0,
+     "hi": 4957.0,
+     "n": 291
+    }
+   },
+   "response_quality_B": {
+    "est": 0.9,
+    "lo": 0.86,
+    "hi": 0.9367,
+    "n": 300
+   },
+   "score_B": {
+    "est": 0.0096,
+    "lo": 0.0088,
+    "hi": 0.0104,
+    "n": 300
+   },
+   "timing_B": {
+    "episodes": 300,
+    "user_turns": 768,
+    "turn_take_rate": {
+     "est": 0.781,
+     "lo": 0.7364,
+     "hi": 0.8261,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.781,
+     "lo": 0.7364,
+     "hi": 0.8261,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 3827.0,
+     "lo": 3810.0,
+     "hi": 3840.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 4651.0,
+     "lo": 4583.0,
+     "hi": 4737.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.013,
+     "lo": 0.0026,
+     "hi": 0.0283,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  },
+  "minicpmo": {
+   "n": 300,
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "fulfilled_A": {
+    "est": 0.8167,
+    "lo": 0.74,
+    "hi": 0.89,
+    "n": 300
+   },
+   "fulfilled_B_first": {
+    "est": 0.8667,
+    "lo": 0.8033,
+    "hi": 0.92,
+    "n": 300
+   },
+   "fulfilled_B_final": {
+    "est": 0.9833,
+    "lo": 0.9633,
+    "hi": 0.9967,
+    "n": 300
+   },
+   "fulfilled_B_final_minus_A": {
+    "est": 0.1667,
+    "lo": 0.0933,
+    "hi": 0.2433,
+    "n": 300
+   },
+   "slot_score_A": {
+    "est": 0.8888,
+    "lo": 0.8341,
+    "hi": 0.9348,
+    "n": 300
+   },
+   "slot_score_B_final": {
+    "est": 0.9939,
+    "lo": 0.9872,
+    "hi": 0.9994,
+    "n": 300
+   },
+   "recovered": {
+    "est": 0.9636,
+    "lo": 0.9074,
+    "hi": 1.0,
+    "n": 55
+   },
+   "consistency_first_text": 0.07333333333333333,
+   "consistency_first_response": 0.56,
+   "consistency_outcome": 0.7233333333333334,
+   "official_timing_A": {
+    "turn_take": {
+     "est": 1.0,
+     "lo": 1.0,
+     "hi": 1.0,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.11,
+     "lo": 0.0767,
+     "hi": 0.1467,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 1020.0,
+     "lo": 920.0,
+     "hi": 1080.0,
+     "n": 267
+    }
+   },
+   "response_quality_A": {
+    "est": 0.2967,
+    "lo": 0.2133,
+    "hi": 0.3867,
+    "n": 300
+   },
+   "score_A": {
+    "est": 0.4458,
+    "lo": 0.3887,
+    "hi": 0.5041,
+    "n": 300
+   },
+   "timing_A": {
+    "episodes": 300,
+    "user_turns": 300,
+    "turn_take_rate": {
+     "est": 0.92,
+     "lo": 0.8667,
+     "hi": 0.9667,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.92,
+     "lo": 0.8667,
+     "hi": 0.9667,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 740.0,
+     "lo": 620.0,
+     "hi": 820.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 1080.0,
+     "lo": 1040.0,
+     "hi": 1260.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.13,
+     "lo": 0.07,
+     "hi": 0.2,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "official_timing_B": {
+    "turn_take": {
+     "est": 0.9733,
+     "lo": 0.9533,
+     "hi": 0.99,
+     "n": 300
+    },
+    "interrupted": {
+     "est": 0.05,
+     "lo": 0.0267,
+     "hi": 0.0767,
+     "n": 300
+    },
+    "first_response_ms_median": {
+     "est": 1340.0,
+     "lo": 1260.0,
+     "hi": 1380.0,
+     "n": 277
+    }
+   },
+   "response_quality_B": {
+    "est": 0.89,
+    "lo": 0.8467,
+    "hi": 0.93,
+    "n": 300
+   },
+   "score_B": {
+    "est": 0.2284,
+    "lo": 0.2129,
+    "hi": 0.2456,
+    "n": 300
+   },
+   "timing_B": {
+    "episodes": 300,
+    "user_turns": 1365,
+    "turn_take_rate": {
+     "est": 0.867,
+     "lo": 0.8457,
+     "hi": 0.8889,
+     "n": 300
+    },
+    "turn_take_rate_clean": {
+     "est": 0.867,
+     "lo": 0.8457,
+     "hi": 0.8889,
+     "n": 300
+    },
+    "latency_median_ms": {
+     "est": 1200.0,
+     "lo": 1100.0,
+     "hi": 1260.0,
+     "n": 300
+    },
+    "latency_p90_ms": {
+     "est": 2061.0,
+     "lo": 1953.0,
+     "hi": 2172.0,
+     "n": 300
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.1363,
+     "lo": 0.1146,
+     "hi": 0.1589,
+     "n": 300
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 300
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   }
+  }
+ },
+ "fdb2": {
+  "window_180s": {
+   "cascaded": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 3.5912,
+     "lo": 3.4976,
+     "hi": 3.6827,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.4574,
+     "lo": 4.3924,
+     "hi": 4.5191,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.8673,
+     "lo": 0.7765,
+     "hi": 0.9507,
+     "n": 396
+    },
+    "if_A": {
+     "est": 3.2505,
+     "lo": 3.1163,
+     "hi": 3.3897,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.1378,
+     "lo": 4.0419,
+     "hi": 4.2329,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.8889,
+     "lo": 0.7735,
+     "hi": 1.0069,
+     "n": 396
+    },
+    "task_A": {
+     "est": 3.2933,
+     "lo": 3.0559,
+     "hi": 3.5214,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.3233,
+     "lo": 4.1769,
+     "hi": 4.4688,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 1.03,
+     "lo": 0.8333,
+     "hi": 1.2367,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 3.5972,
+     "lo": 3.5031,
+     "hi": 3.6889,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.4636,
+     "lo": 4.399,
+     "hi": 4.5242,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.8676,
+     "lo": 0.7753,
+     "hi": 0.9503,
+     "n": 396
+    },
+    "if_r_A": {
+     "est": 3.2861,
+     "lo": 3.152,
+     "hi": 3.4245,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.1695,
+     "lo": 4.0728,
+     "hi": 4.2627,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.8849,
+     "lo": 0.7706,
+     "hi": 1.0011,
+     "n": 396
+    },
+    "task_r_A": {
+     "est": 3.3167,
+     "lo": 3.0822,
+     "hi": 3.5461,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.3733,
+     "lo": 4.2284,
+     "hi": 4.5135,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 1.0567,
+     "lo": 0.8567,
+     "hi": 1.27,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.6762,
+     "lo": 0.6282,
+     "hi": 0.7222,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 2.73,
+     "lo": 2.535,
+     "hi": 2.9175,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.87,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.783,
+      "lo": 0.7499,
+      "hi": 0.8129,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.7579,
+      "lo": 0.7202,
+      "hi": 0.7945,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1622.0,
+      "lo": 1610.0,
+      "hi": 1636.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1854.0,
+      "lo": 1840.0,
+      "hi": 1868.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0179,
+      "lo": 0.0108,
+      "hi": 0.0252,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.3588,
+      "lo": 0.3303,
+      "hi": 0.3868,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 2.03,
+      "lo": 1.89,
+      "hi": 2.175,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.9963,
+      "lo": 0.9915,
+      "hi": 1.0,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 812,
+     "nondirected": 0
+    },
+    "score_A": {
+     "est": 0.2027,
+     "lo": 0.1875,
+     "hi": 0.2177,
+     "n": 400
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.6731078904991948,
+     "timing": 0.43585614600107353,
+     "content": 0.20987654320987653,
+     "invalid_llm": 0.3188405797101449
+    },
+    "stage_score_B": {
+     "est": 0.8614,
+     "lo": 0.8293,
+     "hi": 0.8922,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 3.285,
+     "lo": 3.15,
+     "hi": 3.4125,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.82,
+     "lo": 0.7725,
+     "hi": 0.8625,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2222,
+     "turn_take_rate": {
+      "est": 0.9739,
+      "lo": 0.9604,
+      "hi": 0.9855,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9739,
+      "lo": 0.9604,
+      "hi": 0.9855,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1634.0,
+      "lo": 1621.0,
+      "hi": 1649.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1864.0,
+      "lo": 1850.0,
+      "hi": 1878.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0122,
+      "lo": 0.0071,
+      "hi": 0.0176,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collision_yield_rate": null,
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 0,
+     "nondirected": 0
+    },
+    "score_B": {
+     "est": 0.1046,
+     "lo": 0.1025,
+     "hi": 0.1068,
+     "n": 400
+    },
+    "validity_B": {
+     "turns": 1822,
+     "invalid": 0.2327113062568606,
+     "timing": 0.0,
+     "content": 0.07244785949506037,
+     "invalid_llm": 0.2327113062568606
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.1835,
+     "lo": 0.1402,
+     "hi": 0.2281,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.0807,
+     "lo": 0.049,
+     "hi": 0.1146,
+     "n": 400
+    }
+   },
+   "minicpmo": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 4.1039,
+     "lo": 4.0353,
+     "hi": 4.1701,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.3921,
+     "lo": 4.3351,
+     "hi": 4.4489,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.2877,
+     "lo": 0.2104,
+     "hi": 0.3679,
+     "n": 399
+    },
+    "if_A": {
+     "est": 3.9339,
+     "lo": 3.8512,
+     "hi": 4.0143,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.2611,
+     "lo": 4.1923,
+     "hi": 4.3294,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.3269,
+     "lo": 0.234,
+     "hi": 0.4236,
+     "n": 399
+    },
+    "task_A": {
+     "est": 3.8067,
+     "lo": 3.629,
+     "hi": 3.9784,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.33,
+     "lo": 4.1968,
+     "hi": 4.4581,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 0.5233,
+     "lo": 0.35,
+     "hi": 0.7067,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 4.1195,
+     "lo": 4.0496,
+     "hi": 4.1843,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.4404,
+     "lo": 4.3866,
+     "hi": 4.4938,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.3206,
+     "lo": 0.2429,
+     "hi": 0.4024,
+     "n": 399
+    },
+    "if_r_A": {
+     "est": 3.9604,
+     "lo": 3.8799,
+     "hi": 4.0393,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.3866,
+     "lo": 4.3183,
+     "hi": 4.4501,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.4262,
+     "lo": 0.3322,
+     "hi": 0.5189,
+     "n": 399
+    },
+    "task_r_A": {
+     "est": 3.87,
+     "lo": 3.6926,
+     "hi": 4.0401,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.4367,
+     "lo": 4.3087,
+     "hi": 4.5536,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 0.5667,
+     "lo": 0.4033,
+     "hi": 0.73,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.8336,
+     "lo": 0.8022,
+     "hi": 0.8642,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 3.37,
+     "lo": 3.255,
+     "hi": 3.48,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.8725,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.8057,
+      "lo": 0.7864,
+      "hi": 0.8247,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9577,
+      "lo": 0.9404,
+      "hi": 0.9741,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1080.0,
+      "lo": 1040.0,
+      "hi": 1120.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 2093.0,
+      "lo": 1972.0,
+      "hi": 2291.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0204,
+      "lo": 0.0105,
+      "hi": 0.0312,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.5886,
+      "lo": 0.5601,
+      "hi": 0.6169,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 3.33,
+      "lo": 3.17,
+      "hi": 3.4825,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.5668,
+      "lo": 0.5344,
+      "hi": 0.5991,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 1332,
+     "nondirected": 0
+    },
+    "score_A": {
+     "est": 0.1674,
+     "lo": 0.1578,
+     "hi": 0.177,
+     "n": 400
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.8480944712828771,
+     "timing": 0.714975845410628,
+     "content": 0.2227589908749329,
+     "invalid_llm": 0.31615673644659154
+    },
+    "stage_score_B": {
+     "est": 0.9012,
+     "lo": 0.8761,
+     "hi": 0.9234,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 3.3025,
+     "lo": 3.19,
+     "hi": 3.41,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.7,
+     "lo": 0.645,
+     "hi": 0.75,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2084,
+     "turn_take_rate": {
+      "est": 0.9577,
+      "lo": 0.9422,
+      "hi": 0.9722,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9577,
+      "lo": 0.9422,
+      "hi": 0.9722,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1302.0,
+      "lo": 1266.0,
+      "hi": 1340.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1994.0,
+      "lo": 1934.0,
+      "hi": 2035.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0149,
+      "lo": 0.0096,
+      "hi": 0.0202,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collision_yield_rate": null,
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 0,
+     "nondirected": 0
+    },
+    "score_B": {
+     "est": 0.2087,
+     "lo": 0.1994,
+     "hi": 0.2191,
+     "n": 400
+    },
+    "validity_B": {
+     "turns": 1684,
+     "invalid": 0.1823040380047506,
+     "timing": 0.0,
+     "content": 0.05285035629453682,
+     "invalid_llm": 0.1823040380047506
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.067,
+     "lo": 0.0293,
+     "hi": 0.1048,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.1291,
+     "lo": 0.099,
+     "hi": 0.1606,
+     "n": 400
+    }
+   },
+   "minicpmo-confirm": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 4.1752,
+     "lo": 4.1152,
+     "hi": 4.2335,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.4341,
+     "lo": 4.3764,
+     "hi": 4.4828,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.261,
+     "lo": 0.1896,
+     "hi": 0.3294,
+     "n": 397
+    },
+    "if_A": {
+     "est": 3.9166,
+     "lo": 3.8311,
+     "hi": 4.0016,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.2789,
+     "lo": 4.204,
+     "hi": 4.3499,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.3629,
+     "lo": 0.2595,
+     "hi": 0.4607,
+     "n": 397
+    },
+    "task_A": {
+     "est": 3.82,
+     "lo": 3.6361,
+     "hi": 3.9841,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.2767,
+     "lo": 4.1208,
+     "hi": 4.4167,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 0.4567,
+     "lo": 0.27,
+     "hi": 0.6467,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 4.1937,
+     "lo": 4.1338,
+     "hi": 4.2509,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.4531,
+     "lo": 4.3964,
+     "hi": 4.5013,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.262,
+     "lo": 0.1915,
+     "hi": 0.3298,
+     "n": 396
+    },
+    "if_r_A": {
+     "est": 3.9473,
+     "lo": 3.8614,
+     "hi": 4.0328,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.3116,
+     "lo": 4.2373,
+     "hi": 4.3818,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.3652,
+     "lo": 0.262,
+     "hi": 0.4609,
+     "n": 396
+    },
+    "task_r_A": {
+     "est": 3.8567,
+     "lo": 3.6755,
+     "hi": 4.0199,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.3233,
+     "lo": 4.1732,
+     "hi": 4.4626,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 0.4667,
+     "lo": 0.2833,
+     "hi": 0.6567,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.8448,
+     "lo": 0.8156,
+     "hi": 0.875,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 3.2775,
+     "lo": 3.16,
+     "hi": 3.3975,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.8725,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.8691,
+      "lo": 0.8486,
+      "hi": 0.8875,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9073,
+      "lo": 0.8809,
+      "hi": 0.9313,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1040.0,
+      "lo": 1013.0,
+      "hi": 1078.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1803.0,
+      "lo": 1752.0,
+      "hi": 1884.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.053,
+      "lo": 0.0419,
+      "hi": 0.0652,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.3659,
+      "lo": 0.34,
+      "hi": 0.391,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 2.07,
+      "lo": 1.9175,
+      "hi": 2.22,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.6981,
+      "lo": 0.6634,
+      "hi": 0.7335,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 828,
+     "nondirected": 0
+    },
+    "score_A": {
+     "est": 0.2374,
+     "lo": 0.2265,
+     "hi": 0.2489,
+     "n": 400
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.7520128824476651,
+     "timing": 0.4444444444444444,
+     "content": 0.202361782071927,
+     "invalid_llm": 0.42028985507246375
+    },
+    "stage_score_B": {
+     "est": 0.9129,
+     "lo": 0.8918,
+     "hi": 0.9331,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 3.455,
+     "lo": 3.3525,
+     "hi": 3.5475,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.905,
+     "lo": 0.87,
+     "hi": 0.935,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2477,
+     "turn_take_rate": {
+      "est": 0.9043,
+      "lo": 0.8859,
+      "hi": 0.9213,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9047,
+      "lo": 0.8865,
+      "hi": 0.9216,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1282.0,
+      "lo": 1241.0,
+      "hi": 1336.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 2089.0,
+      "lo": 2006.0,
+      "hi": 2175.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0646,
+      "lo": 0.0549,
+      "hi": 0.0758,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0004,
+      "lo": 0.0,
+      "hi": 0.0012,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0025,
+      "lo": 0.0,
+      "hi": 0.0075,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 1,
+     "nondirected": 0
+    },
+    "score_B": {
+     "est": 0.2081,
+     "lo": 0.1978,
+     "hi": 0.2186,
+     "n": 400
+    },
+    "validity_B": {
+     "turns": 2077,
+     "invalid": 0.1983630235917188,
+     "timing": 0.00048146364949446316,
+     "content": 0.038998555609051515,
+     "invalid_llm": 0.19788155994222437
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.0682,
+     "lo": 0.035,
+     "hi": 0.1016,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.2193,
+     "lo": 0.1867,
+     "hi": 0.2524,
+     "n": 400
+    }
+   },
+   "between_agents": {
+    "minicpmo - cascaded (A)": {
+     "tt": {
+      "est": 0.5091,
+      "lo": 0.4031,
+      "hi": 0.6135,
+      "n": 397
+     },
+     "if_r": {
+      "est": 0.6702,
+      "lo": 0.5263,
+      "hi": 0.8102,
+      "n": 397
+     },
+     "task_r": {
+      "est": 0.5533,
+      "lo": 0.33,
+      "hi": 0.78,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.1557,
+      "lo": 0.1062,
+      "hi": 0.203,
+      "n": 396
+     }
+    },
+    "minicpmo - cascaded (B)": {
+     "tt": {
+      "est": -0.0666,
+      "lo": -0.1511,
+      "hi": 0.0186,
+      "n": 398
+     },
+     "if_r": {
+      "est": 0.2162,
+      "lo": 0.1036,
+      "hi": 0.3297,
+      "n": 398
+     },
+     "task_r": {
+      "est": 0.0633,
+      "lo": -0.12,
+      "hi": 0.2433,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.0399,
+      "lo": 0.0013,
+      "hi": 0.0775,
+      "n": 398
+     }
+    },
+    "minicpmo-confirm - minicpmo (A)": {
+     "tt": {
+      "est": 0.0731,
+      "lo": -0.0075,
+      "hi": 0.1519,
+      "n": 398
+     },
+     "if_r": {
+      "est": -0.0125,
+      "lo": -0.1061,
+      "hi": 0.0781,
+      "n": 397
+     },
+     "task_r": {
+      "est": -0.0133,
+      "lo": -0.1667,
+      "hi": 0.1467,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.009,
+      "lo": -0.0322,
+      "hi": 0.0494,
+      "n": 396
+     }
+    },
+    "minicpmo-confirm - minicpmo (B)": {
+     "tt": {
+      "est": 0.0418,
+      "lo": -0.0275,
+      "hi": 0.1101,
+      "n": 399
+     },
+     "if_r": {
+      "est": -0.0751,
+      "lo": -0.1551,
+      "hi": 0.0096,
+      "n": 399
+     },
+     "task_r": {
+      "est": -0.1133,
+      "lo": -0.2867,
+      "hi": 0.06,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.0117,
+      "lo": -0.0175,
+      "hi": 0.0427,
+      "n": 398
+     }
+    },
+    "minicpmo-confirm - cascaded (A)": {
+     "tt": {
+      "est": 0.576,
+      "lo": 0.4724,
+      "hi": 0.6846,
+      "n": 396
+     },
+     "if_r": {
+      "est": 0.6524,
+      "lo": 0.4969,
+      "hi": 0.8095,
+      "n": 395
+     },
+     "task_r": {
+      "est": 0.54,
+      "lo": 0.28,
+      "hi": 0.7933,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.166,
+      "lo": 0.1166,
+      "hi": 0.2131,
+      "n": 396
+     }
+    },
+    "minicpmo-confirm - cascaded (B)": {
+     "tt": {
+      "est": -0.0271,
+      "lo": -0.1009,
+      "hi": 0.0491,
+      "n": 397
+     },
+     "if_r": {
+      "est": 0.1404,
+      "lo": 0.0344,
+      "hi": 0.2527,
+      "n": 397
+     },
+     "task_r": {
+      "est": -0.05,
+      "lo": -0.2333,
+      "hi": 0.1467,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.0516,
+      "lo": 0.0173,
+      "hi": 0.0889,
+      "n": 398
+     }
+    }
+   }
+  },
+  "window_120s": {
+   "cascaded": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 3.5912,
+     "lo": 3.4976,
+     "hi": 3.6827,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.4413,
+     "lo": 4.3738,
+     "hi": 4.5048,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.8518,
+     "lo": 0.7642,
+     "hi": 0.9345,
+     "n": 395
+    },
+    "if_A": {
+     "est": 3.2505,
+     "lo": 3.1163,
+     "hi": 3.3897,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.0153,
+     "lo": 3.9129,
+     "hi": 4.1189,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.7672,
+     "lo": 0.6567,
+     "hi": 0.88,
+     "n": 395
+    },
+    "task_A": {
+     "est": 3.2933,
+     "lo": 3.0559,
+     "hi": 3.5214,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.1833,
+     "lo": 4.0247,
+     "hi": 4.3409,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 0.89,
+     "lo": 0.7,
+     "hi": 1.09,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 3.5972,
+     "lo": 3.5031,
+     "hi": 3.6889,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.473,
+     "lo": 4.4065,
+     "hi": 4.5352,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.8766,
+     "lo": 0.7839,
+     "hi": 0.9628,
+     "n": 394
+    },
+    "if_r_A": {
+     "est": 3.2861,
+     "lo": 3.152,
+     "hi": 3.4245,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.1581,
+     "lo": 4.0639,
+     "hi": 4.2535,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.8716,
+     "lo": 0.7526,
+     "hi": 0.9816,
+     "n": 394
+    },
+    "task_r_A": {
+     "est": 3.3167,
+     "lo": 3.0822,
+     "hi": 3.5461,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.39,
+     "lo": 4.2483,
+     "hi": 4.5248,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 1.0733,
+     "lo": 0.8767,
+     "hi": 1.29,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.6762,
+     "lo": 0.6282,
+     "hi": 0.7222,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 2.73,
+     "lo": 2.535,
+     "hi": 2.9175,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.87,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.783,
+      "lo": 0.7499,
+      "hi": 0.8129,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.7579,
+      "lo": 0.7202,
+      "hi": 0.7945,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1622.0,
+      "lo": 1610.0,
+      "hi": 1636.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1854.0,
+      "lo": 1840.0,
+      "hi": 1868.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0179,
+      "lo": 0.0108,
+      "hi": 0.0252,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.3588,
+      "lo": 0.3303,
+      "hi": 0.3868,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 2.03,
+      "lo": 1.89,
+      "hi": 2.175,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.9963,
+      "lo": 0.9915,
+      "hi": 1.0,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 812,
+     "nondirected": 0
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.6731078904991948,
+     "timing": 0.43585614600107353,
+     "content": 0.20987654320987653,
+     "invalid_llm": 0.3188405797101449
+    },
+    "stage_score_B": {
+     "est": 0.8259,
+     "lo": 0.7896,
+     "hi": 0.8611,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 2.86,
+     "lo": 2.705,
+     "hi": 3.01,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.52,
+     "lo": 0.46,
+     "hi": 0.5775,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2222,
+     "turn_take_rate": {
+      "est": 0.9739,
+      "lo": 0.9604,
+      "hi": 0.9855,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9739,
+      "lo": 0.9604,
+      "hi": 0.9855,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1634.0,
+      "lo": 1621.0,
+      "hi": 1649.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1864.0,
+      "lo": 1850.0,
+      "hi": 1878.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0122,
+      "lo": 0.0071,
+      "hi": 0.0176,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collision_yield_rate": null,
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 0,
+     "nondirected": 0
+    },
+    "validity_B": {
+     "turns": 1562,
+     "invalid": 0.23879641485275288,
+     "timing": 0.0,
+     "content": 0.07170294494238157,
+     "invalid_llm": 0.23879641485275288
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.1471,
+     "lo": 0.1058,
+     "hi": 0.1884,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.0763,
+     "lo": 0.0435,
+     "hi": 0.1096,
+     "n": 400
+    }
+   },
+   "minicpmo": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 4.1039,
+     "lo": 4.0353,
+     "hi": 4.1701,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.3685,
+     "lo": 4.3114,
+     "hi": 4.4281,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.2641,
+     "lo": 0.1846,
+     "hi": 0.3459,
+     "n": 399
+    },
+    "if_A": {
+     "est": 3.9339,
+     "lo": 3.8512,
+     "hi": 4.0143,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.1484,
+     "lo": 4.0746,
+     "hi": 4.2209,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.2139,
+     "lo": 0.1174,
+     "hi": 0.3149,
+     "n": 399
+    },
+    "task_A": {
+     "est": 3.8067,
+     "lo": 3.629,
+     "hi": 3.9784,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.2233,
+     "lo": 4.0788,
+     "hi": 4.3611,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 0.4167,
+     "lo": 0.2333,
+     "hi": 0.61,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 4.1195,
+     "lo": 4.0496,
+     "hi": 4.1843,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.4583,
+     "lo": 4.4039,
+     "hi": 4.5088,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.3407,
+     "lo": 0.2583,
+     "hi": 0.4225,
+     "n": 398
+    },
+    "if_r_A": {
+     "est": 3.9604,
+     "lo": 3.8799,
+     "hi": 4.0393,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.3902,
+     "lo": 4.3233,
+     "hi": 4.4534,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.4324,
+     "lo": 0.334,
+     "hi": 0.5279,
+     "n": 398
+    },
+    "task_r_A": {
+     "est": 3.87,
+     "lo": 3.6926,
+     "hi": 4.0401,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.4633,
+     "lo": 4.3367,
+     "hi": 4.5764,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 0.5933,
+     "lo": 0.42,
+     "hi": 0.7733,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.8336,
+     "lo": 0.8022,
+     "hi": 0.8642,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 3.37,
+     "lo": 3.255,
+     "hi": 3.48,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.8725,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.8057,
+      "lo": 0.7864,
+      "hi": 0.8247,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9577,
+      "lo": 0.9404,
+      "hi": 0.9741,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1080.0,
+      "lo": 1040.0,
+      "hi": 1120.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 2093.0,
+      "lo": 1972.0,
+      "hi": 2291.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0204,
+      "lo": 0.0105,
+      "hi": 0.0312,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.5886,
+      "lo": 0.5601,
+      "hi": 0.6169,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 3.33,
+      "lo": 3.17,
+      "hi": 3.4825,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.5668,
+      "lo": 0.5344,
+      "hi": 0.5991,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 1332,
+     "nondirected": 0
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.8480944712828771,
+     "timing": 0.714975845410628,
+     "content": 0.2227589908749329,
+     "invalid_llm": 0.31615673644659154
+    },
+    "stage_score_B": {
+     "est": 0.9039,
+     "lo": 0.8782,
+     "hi": 0.9265,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 3.015,
+     "lo": 2.8875,
+     "hi": 3.135,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.4675,
+     "lo": 0.41,
+     "hi": 0.525,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2084,
+     "turn_take_rate": {
+      "est": 0.9577,
+      "lo": 0.9422,
+      "hi": 0.9722,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9577,
+      "lo": 0.9422,
+      "hi": 0.9722,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1302.0,
+      "lo": 1266.0,
+      "hi": 1340.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1994.0,
+      "lo": 1934.0,
+      "hi": 2035.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0149,
+      "lo": 0.0096,
+      "hi": 0.0202,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "collision_yield_rate": null,
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 0,
+     "nondirected": 0
+    },
+    "validity_B": {
+     "turns": 1450,
+     "invalid": 0.18068965517241378,
+     "timing": 0.0,
+     "content": 0.05448275862068966,
+     "invalid_llm": 0.18068965517241378
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.0695,
+     "lo": 0.0311,
+     "hi": 0.1075,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.1291,
+     "lo": 0.0971,
+     "hi": 0.1601,
+     "n": 400
+    }
+   },
+   "minicpmo-confirm": {
+    "pairs": 400,
+    "seeds": [
+     0,
+     1
+    ],
+    "tt_A": {
+     "est": 4.1752,
+     "lo": 4.1152,
+     "hi": 4.2335,
+     "n": 400
+    },
+    "tt_B": {
+     "est": 4.3888,
+     "lo": 4.3334,
+     "hi": 4.441,
+     "n": 400
+    },
+    "tt_B_minus_A": {
+     "est": 0.2154,
+     "lo": 0.1469,
+     "hi": 0.2848,
+     "n": 397
+    },
+    "if_A": {
+     "est": 3.9166,
+     "lo": 3.8311,
+     "hi": 4.0016,
+     "n": 400
+    },
+    "if_B": {
+     "est": 4.1995,
+     "lo": 4.1198,
+     "hi": 4.2713,
+     "n": 400
+    },
+    "if_B_minus_A": {
+     "est": 0.2831,
+     "lo": 0.1818,
+     "hi": 0.3783,
+     "n": 397
+    },
+    "task_A": {
+     "est": 3.82,
+     "lo": 3.6361,
+     "hi": 3.9841,
+     "n": 400
+    },
+    "task_B": {
+     "est": 4.2233,
+     "lo": 4.0692,
+     "hi": 4.365,
+     "n": 400
+    },
+    "task_B_minus_A": {
+     "est": 0.4033,
+     "lo": 0.22,
+     "hi": 0.5933,
+     "n": 300
+    },
+    "tt_r_A": {
+     "est": 4.1937,
+     "lo": 4.1338,
+     "hi": 4.2509,
+     "n": 400
+    },
+    "tt_r_B": {
+     "est": 4.4301,
+     "lo": 4.3782,
+     "hi": 4.4791,
+     "n": 400
+    },
+    "tt_r_B_minus_A": {
+     "est": 0.2389,
+     "lo": 0.1695,
+     "hi": 0.3064,
+     "n": 396
+    },
+    "if_r_A": {
+     "est": 3.9473,
+     "lo": 3.8614,
+     "hi": 4.0328,
+     "n": 400
+    },
+    "if_r_B": {
+     "est": 4.2943,
+     "lo": 4.2207,
+     "hi": 4.3641,
+     "n": 400
+    },
+    "if_r_B_minus_A": {
+     "est": 0.3477,
+     "lo": 0.244,
+     "hi": 0.4415,
+     "n": 396
+    },
+    "task_r_A": {
+     "est": 3.8567,
+     "lo": 3.6755,
+     "hi": 4.0199,
+     "n": 400
+    },
+    "task_r_B": {
+     "est": 4.3233,
+     "lo": 4.1783,
+     "hi": 4.4626,
+     "n": 400
+    },
+    "task_r_B_minus_A": {
+     "est": 0.4667,
+     "lo": 0.2833,
+     "hi": 0.6467,
+     "n": 300
+    },
+    "stage_score_A": {
+     "est": 0.8448,
+     "lo": 0.8156,
+     "hi": 0.875,
+     "n": 400
+    },
+    "stages_completed_A": {
+     "est": 3.2775,
+     "lo": 3.16,
+     "hi": 3.3975,
+     "n": 400
+    },
+    "reached_end_A": {
+     "est": 0.9025,
+     "lo": 0.8725,
+     "hi": 0.93,
+     "n": 400
+    },
+    "timing_A": {
+     "episodes": 400,
+     "user_turns": 2263,
+     "turn_take_rate": {
+      "est": 0.8691,
+      "lo": 0.8486,
+      "hi": 0.8875,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9073,
+      "lo": 0.8809,
+      "hi": 0.9313,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1040.0,
+      "lo": 1013.0,
+      "hi": 1078.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 1803.0,
+      "lo": 1752.0,
+      "hi": 1884.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.053,
+      "lo": 0.0419,
+      "hi": 0.0652,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.3659,
+      "lo": 0.34,
+      "hi": 0.391,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 2.07,
+      "lo": 1.9175,
+      "hi": 2.22,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.6981,
+      "lo": 0.6634,
+      "hi": 0.7335,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 828,
+     "nondirected": 0
+    },
+    "validity_A": {
+     "turns": 1863,
+     "invalid": 0.7520128824476651,
+     "timing": 0.4444444444444444,
+     "content": 0.202361782071927,
+     "invalid_llm": 0.42028985507246375
+    },
+    "stage_score_B": {
+     "est": 0.9056,
+     "lo": 0.8835,
+     "hi": 0.9262,
+     "n": 400
+    },
+    "stages_completed_B": {
+     "est": 3.3225,
+     "lo": 3.21,
+     "hi": 3.4275,
+     "n": 400
+    },
+    "reached_end_B": {
+     "est": 0.7175,
+     "lo": 0.6675,
+     "hi": 0.765,
+     "n": 400
+    },
+    "timing_B": {
+     "episodes": 400,
+     "user_turns": 2477,
+     "turn_take_rate": {
+      "est": 0.9043,
+      "lo": 0.8859,
+      "hi": 0.9213,
+      "n": 400
+     },
+     "turn_take_rate_clean": {
+      "est": 0.9047,
+      "lo": 0.8865,
+      "hi": 0.9216,
+      "n": 400
+     },
+     "latency_median_ms": {
+      "est": 1282.0,
+      "lo": 1241.0,
+      "hi": 1336.0,
+      "n": 400
+     },
+     "latency_p90_ms": {
+      "est": 2089.0,
+      "lo": 2006.0,
+      "hi": 2175.0,
+      "n": 400
+     },
+     "yield_rate": null,
+     "yield_latency_median_ms": null,
+     "cut_in_rate": {
+      "est": 0.0646,
+      "lo": 0.0549,
+      "hi": 0.0758,
+      "n": 400
+     },
+     "collision_share": {
+      "est": 0.0004,
+      "lo": 0.0,
+      "hi": 0.0012,
+      "n": 400
+     },
+     "collisions_per_episode": {
+      "est": 0.0025,
+      "lo": 0.0,
+      "hi": 0.0075,
+      "n": 400
+     },
+     "collision_yield_rate": {
+      "est": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 400
+     },
+     "nondirected_ok_rate": null,
+     "barge_ins": 0,
+     "collisions": 1,
+     "nondirected": 0
+    },
+    "validity_B": {
+     "turns": 1953,
+     "invalid": 0.19610855094726062,
+     "timing": 0.0005120327700972862,
+     "content": 0.039938556067588324,
+     "invalid_llm": 0.19559651817716334
+    },
+    "stage_score_B_minus_A": {
+     "est": 0.0605,
+     "lo": 0.0288,
+     "hi": 0.0947,
+     "n": 400
+    },
+    "llm_invalid_excess": {
+     "est": 0.2248,
+     "lo": 0.1911,
+     "hi": 0.2593,
+     "n": 400
+    }
+   },
+   "between_agents": {
+    "minicpmo - cascaded (A)": {
+     "tt": {
+      "est": 0.5091,
+      "lo": 0.4031,
+      "hi": 0.6135,
+      "n": 397
+     },
+     "if_r": {
+      "est": 0.6702,
+      "lo": 0.5263,
+      "hi": 0.8102,
+      "n": 397
+     },
+     "task_r": {
+      "est": 0.5533,
+      "lo": 0.33,
+      "hi": 0.78,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.1557,
+      "lo": 0.1062,
+      "hi": 0.203,
+      "n": 396
+     }
+    },
+    "minicpmo - cascaded (B)": {
+     "tt": {
+      "est": -0.076,
+      "lo": -0.1609,
+      "hi": 0.0063,
+      "n": 397
+     },
+     "if_r": {
+      "est": 0.2296,
+      "lo": 0.1182,
+      "hi": 0.3447,
+      "n": 395
+     },
+     "task_r": {
+      "est": 0.0733,
+      "lo": -0.1067,
+      "hi": 0.2533,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.079,
+      "lo": 0.0379,
+      "hi": 0.1214,
+      "n": 396
+     }
+    },
+    "minicpmo-confirm - minicpmo (A)": {
+     "tt": {
+      "est": 0.0731,
+      "lo": -0.0075,
+      "hi": 0.1519,
+      "n": 398
+     },
+     "if_r": {
+      "est": -0.0125,
+      "lo": -0.1061,
+      "hi": 0.0781,
+      "n": 397
+     },
+     "task_r": {
+      "est": -0.0133,
+      "lo": -0.1667,
+      "hi": 0.1467,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.009,
+      "lo": -0.0322,
+      "hi": 0.0494,
+      "n": 396
+     }
+    },
+    "minicpmo-confirm - minicpmo (B)": {
+     "tt": {
+      "est": 0.0193,
+      "lo": -0.0474,
+      "hi": 0.0868,
+      "n": 399
+     },
+     "if_r": {
+      "est": -0.0974,
+      "lo": -0.1806,
+      "hi": -0.0072,
+      "n": 398
+     },
+     "task_r": {
+      "est": -0.14,
+      "lo": -0.3,
+      "hi": 0.0267,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.0015,
+      "lo": -0.0292,
+      "hi": 0.0333,
+      "n": 395
+     }
+    },
+    "minicpmo-confirm - cascaded (A)": {
+     "tt": {
+      "est": 0.576,
+      "lo": 0.4724,
+      "hi": 0.6846,
+      "n": 396
+     },
+     "if_r": {
+      "est": 0.6524,
+      "lo": 0.4969,
+      "hi": 0.8095,
+      "n": 395
+     },
+     "task_r": {
+      "est": 0.54,
+      "lo": 0.28,
+      "hi": 0.7933,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.166,
+      "lo": 0.1166,
+      "hi": 0.2131,
+      "n": 396
+     }
+    },
+    "minicpmo-confirm - cascaded (B)": {
+     "tt": {
+      "est": -0.0581,
+      "lo": -0.1287,
+      "hi": 0.019,
+      "n": 396
+     },
+     "if_r": {
+      "est": 0.1314,
+      "lo": 0.0211,
+      "hi": 0.2399,
+      "n": 395
+     },
+     "task_r": {
+      "est": -0.0667,
+      "lo": -0.2367,
+      "hi": 0.1133,
+      "n": 300
+     },
+     "stage_score": {
+      "est": 0.0803,
+      "lo": 0.0418,
+      "hi": 0.1196,
+      "n": 397
+     }
+    }
+   }
+  }
+ },
+ "audiomc": {
+  "minicpmo": {
+   "pairs": 100,
+   "all": {
+    "n": 100,
+    "rubric_rate_A": {
+     "est": 0.2641,
+     "lo": 0.1938,
+     "hi": 0.3324,
+     "n": 100
+    },
+    "rubric_rate_B": {
+     "est": 0.3108,
+     "lo": 0.2379,
+     "hi": 0.3856,
+     "n": 100
+    },
+    "rubric_rate_B_minus_A": {
+     "est": 0.0467,
+     "lo": -0.0253,
+     "hi": 0.1212,
+     "n": 100
+    },
+    "all_pass_A": {
+     "est": 0.09,
+     "lo": 0.04,
+     "hi": 0.15,
+     "n": 100
+    },
+    "all_pass_B": {
+     "est": 0.11,
+     "lo": 0.05,
+     "hi": 0.17,
+     "n": 100
+    },
+    "all_pass_B_minus_A": {
+     "est": 0.02,
+     "lo": -0.05,
+     "hi": 0.09,
+     "n": 100
+    }
+   },
+   "INFERENCE_MEMORY": {
+    "n": 25,
+    "rubric_rate_A": {
+     "est": 0.2333,
+     "lo": 0.0933,
+     "hi": 0.3933,
+     "n": 25
+    },
+    "rubric_rate_B": {
+     "est": 0.1633,
+     "lo": 0.05,
+     "hi": 0.2933,
+     "n": 25
+    },
+    "rubric_rate_B_minus_A": {
+     "est": -0.07,
+     "lo": -0.26,
+     "hi": 0.12,
+     "n": 25
+    },
+    "all_pass_A": {
+     "est": 0.16,
+     "lo": 0.04,
+     "hi": 0.32,
+     "n": 25
+    },
+    "all_pass_B": {
+     "est": 0.08,
+     "lo": 0.0,
+     "hi": 0.2,
+     "n": 25
+    },
+    "all_pass_B_minus_A": {
+     "est": -0.08,
+     "lo": -0.28,
+     "hi": 0.12,
+     "n": 25
+    }
+   },
+   "INSTRUCTION_RETENTION": {
+    "n": 25,
+    "rubric_rate_A": {
+     "est": 0.2167,
+     "lo": 0.1,
+     "hi": 0.3367,
+     "n": 25
+    },
+    "rubric_rate_B": {
+     "est": 0.3333,
+     "lo": 0.1933,
+     "hi": 0.4867,
+     "n": 25
+    },
+    "rubric_rate_B_minus_A": {
+     "est": 0.1167,
+     "lo": 0.0033,
+     "hi": 0.2633,
+     "n": 25
+    },
+    "all_pass_A": {
+     "est": 0.08,
+     "lo": 0.0,
+     "hi": 0.2,
+     "n": 25
+    },
+    "all_pass_B": {
+     "est": 0.16,
+     "lo": 0.04,
+     "hi": 0.32,
+     "n": 25
+    },
+    "all_pass_B_minus_A": {
+     "est": 0.08,
+     "lo": -0.08,
+     "hi": 0.24,
+     "n": 25
+    }
+   },
+   "SELF_COHERENCE": {
+    "n": 25,
+    "rubric_rate_A": {
+     "est": 0.1832,
+     "lo": 0.0815,
+     "hi": 0.3119,
+     "n": 25
+    },
+    "rubric_rate_B": {
+     "est": 0.2715,
+     "lo": 0.1264,
+     "hi": 0.4315,
+     "n": 25
+    },
+    "rubric_rate_B_minus_A": {
+     "est": 0.0883,
+     "lo": -0.0506,
+     "hi": 0.247,
+     "n": 25
+    },
+    "all_pass_A": {
+     "est": 0.08,
+     "lo": 0.0,
+     "hi": 0.2,
+     "n": 25
+    },
+    "all_pass_B": {
+     "est": 0.2,
+     "lo": 0.04,
+     "hi": 0.36,
+     "n": 25
+    },
+    "all_pass_B_minus_A": {
+     "est": 0.12,
+     "lo": 0.0,
+     "hi": 0.28,
+     "n": 25
+    }
+   },
+   "VOICE_EDITING": {
+    "n": 25,
+    "rubric_rate_A": {
+     "est": 0.4232,
+     "lo": 0.2847,
+     "hi": 0.5622,
+     "n": 25
+    },
+    "rubric_rate_B": {
+     "est": 0.4749,
+     "lo": 0.3479,
+     "hi": 0.5986,
+     "n": 25
+    },
+    "rubric_rate_B_minus_A": {
+     "est": 0.0518,
+     "lo": -0.0431,
+     "hi": 0.1513,
+     "n": 25
+    },
+    "all_pass_A": {
+     "est": 0.04,
+     "lo": 0.0,
+     "hi": 0.12,
+     "n": 25
+    },
+    "all_pass_B": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 25
+    },
+    "all_pass_B_minus_A": {
+     "est": -0.04,
+     "lo": -0.12,
+     "hi": 0.0,
+     "n": 25
+    }
+   },
+   "timing_A": {
+    "episodes": 100,
+    "user_turns": 493,
+    "turn_take_rate": {
+     "est": 0.8398,
+     "lo": 0.789,
+     "hi": 0.8868,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 0.8398,
+     "lo": 0.789,
+     "hi": 0.8868,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 1030.0,
+     "lo": 938.0,
+     "hi": 1123.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 1802.0,
+     "lo": 1638.0,
+     "hi": 1966.0,
+     "n": 100
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.1075,
+     "lo": 0.0787,
+     "hi": 0.1393,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "score_A": {
+    "est": 0.2837,
+    "lo": 0.2561,
+    "hi": 0.3117,
+    "n": 100
+   },
+   "validity_A": {
+    "turns": 393,
+    "invalid": 0.24681933842239187,
+    "invalid_llm": 0.24681933842239187,
+    "content": 0.12468193384223919
+   },
+   "timing_B": {
+    "episodes": 100,
+    "user_turns": 491,
+    "turn_take_rate": {
+     "est": 0.9122,
+     "lo": 0.8776,
+     "hi": 0.9414,
+     "n": 100
+    },
+    "turn_take_rate_clean": {
+     "est": 0.9122,
+     "lo": 0.8776,
+     "hi": 0.9414,
+     "n": 100
+    },
+    "latency_median_ms": {
+     "est": 1302.0,
+     "lo": 1221.0,
+     "hi": 1382.0,
+     "n": 100
+    },
+    "latency_p90_ms": {
+     "est": 2226.0,
+     "lo": 2062.0,
+     "hi": 2366.0,
+     "n": 100
+    },
+    "yield_rate": null,
+    "yield_latency_median_ms": null,
+    "cut_in_rate": {
+     "est": 0.0468,
+     "lo": 0.0284,
+     "hi": 0.0675,
+     "n": 100
+    },
+    "collision_share": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collisions_per_episode": {
+     "est": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "n": 100
+    },
+    "collision_yield_rate": null,
+    "nondirected_ok_rate": null,
+    "barge_ins": 0,
+    "collisions": 0,
+    "nondirected": 0
+   },
+   "score_B": {
+    "est": 0.2161,
+    "lo": 0.193,
+    "hi": 0.2395,
+    "n": 100
+   },
+   "validity_B": {
+    "turns": 391,
+    "invalid": 0.17902813299232737,
+    "invalid_llm": 0.17902813299232737,
+    "content": 0.06905370843989769
+   },
+   "llm_invalid_excess": {
+    "est": 0.0787,
+    "lo": 0.0226,
+    "hi": 0.1334,
+    "n": 100
+   },
+   "first_onset_equal": 0.96
+  }
+ }
+}

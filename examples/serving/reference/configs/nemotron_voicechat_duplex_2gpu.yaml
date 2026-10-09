@@ -1,0 +1,12 @@
+# NemotronLabs-VoiceChat-11B duplex on two 32 GB cards: thinker alone on card 0, talker + code2wav on card 1.
+base_config: @VLLM_OMNI_DIR@/deploy/nemotron_labs_voicechat_duplex.yaml
+stages:
+  - stage_id: 0
+    devices: "0"
+    gpu_memory_utilization: 0.88
+  - stage_id: 1
+    devices: "1"
+    gpu_memory_utilization: 0.55
+  - stage_id: 2
+    devices: "1"
+    gpu_memory_utilization: 0.25

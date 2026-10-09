@@ -1,0 +1,1125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InteractionGym Trajectories</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0; --soft: #f0f0ed;
+  --user: #2f6fd6; --user-soft: #dbe7fb; --agent: #d9731a; --agent-soft: #fbe6d3;
+  --other: #6f6f78; --other-soft: #e9e9ee; --good: #1f8a4c; --bad: #c43d3d; --overlap: rgba(196, 61, 61, .10);
+  --cursor: #8a3ffc; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; --listen: #c9c9cf; --mid: #b07d10;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151517; --panel: #1e1e21; --ink: #ececef; --muted: #9a9aa2; --line: #333338; --soft: #26262a;
+    --user: #6ea0ff; --user-soft: #1f3252; --agent: #ffa35c; --agent-soft: #4a2e16;
+    --other: #a8a8b3; --other-soft: #2c2c33; --good: #4cc47f; --bad: #ff6b6b; --overlap: rgba(255, 107, 107, .12);
+    --cursor: #b58cff; --listen: #45454d; --mid: #e0b04a; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+.app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+aside header { padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+a.back { display: inline-block; font-size: 12px; color: var(--muted); text-decoration: none; margin-bottom: 6px; }
+a.back:hover { color: var(--ink); }
+button.playing { background: var(--cursor); border-color: var(--cursor); color: #fff; }
+aside h1 { font-size: 14px; margin: 0 0 8px; }
+input[type=search] { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.cases { overflow: auto; flex: 1; }
+.case { padding: 9px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.case:hover { background: var(--soft); }
+.case.sel { background: var(--soft); box-shadow: inset 3px 0 0 var(--cursor); }
+.case .id { font-weight: 600; word-break: break-all; }
+.case .sub { color: var(--muted); font-size: 12px; margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+main { overflow: auto; padding: 16px 20px 40px; min-width: 0; }
+.title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.title h2 { margin: 0; font-size: 18px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+.chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.chip b { font-variant-numeric: tabular-nums; }
+.ok { color: var(--good); } .no { color: var(--bad); } .mid { color: var(--mid); }
+section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+section.card > h3 { margin: 0; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+section.card > h3 .sp { flex: 1; }
+.body { padding: 12px 14px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+button:hover { background: var(--soft); }
+.tl { display: grid; grid-template-columns: 150px 1fr; }
+.labels { border-right: 1px solid var(--line); position: relative; }
+.labels div { position: absolute; left: 0; right: 0; padding: 0 10px; display: flex; flex-direction: column; justify-content: center; font-size: 12px; }
+.labels small { color: var(--muted); font-family: var(--mono); font-size: 10.5px; word-break: break-all; }
+.scroll { overflow-x: auto; overflow-y: hidden; position: relative; }
+svg { display: block; }
+svg text { font-size: 11px; fill: var(--ink); }
+.axis text { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
+.axis line { stroke: var(--line); }
+.hit { cursor: pointer; }
+.tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 420px; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-size: 12px; z-index: 10; display: none; white-space: pre-wrap; }
+.tip b { font-family: var(--mono); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } .app { grid-template-columns: 200px 1fr; } }
+.state .row { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.state .row:last-child { border-bottom: 0; }
+.who { display: inline-block; font-weight: 600; font-size: 11px; padding: 1px 7px; border-radius: 4px; margin-right: 6px; }
+.who.user { background: var(--user-soft); color: var(--user); } .who.agent { background: var(--agent-soft); color: var(--agent); } .who.other { background: var(--other-soft); color: var(--other); }
+.heard { } .unheard { color: var(--muted); opacity: .75; } .unsaid { color: var(--muted); text-decoration: line-through; }
+.tag { font-size: 11px; color: var(--muted); margin-left: 6px; }
+.tag.cut { color: var(--bad); } .tag.barge { color: var(--cursor); }
+.tr { display: grid; grid-template-columns: 118px 1fr; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.tr:hover { background: var(--soft); }
+.tr .time { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.tr.now { background: var(--soft); box-shadow: inset 3px 0 0 var(--cursor); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
+td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+td.mono { font-family: var(--mono); white-space: nowrap; }
+tbody tr { cursor: pointer; } tbody tr:hover { background: var(--soft); }
+tr.future td { opacity: .45; }
+table.kv tr { cursor: default; } table.kv tr:hover { background: none; } table.kv td { font-size: 12.5px; }
+pre { margin: 6px 0 0; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: auto; font: 11.5px/1.45 var(--mono); max-height: 320px; }
+.tablewrap { max-height: 420px; overflow: auto; }
+.empty { color: var(--muted); padding: 40px; text-align: center; }
+kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+.hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+details.tool { padding: 2px 0; } details.tool:not([open]) summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } details.tool summary { cursor: pointer; } details.tool b { font-family: var(--mono); font-weight: 500; }
+.upd { margin: 6px 0; padding-left: 8px; border-left: 2px solid var(--line); }
+.play { margin-left: 6px; padding: 0 6px; font-size: 10px; line-height: 16px; }
+
+/* ---------- live playback ---------- */
+.ctrl { display: inline-flex; align-items: center; gap: 6px; }
+.ctrl select { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 1px 4px; }
+.clock { font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nowbar { display: grid; grid-template-columns: 1fr 1fr minmax(180px, .8fr); gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.party { min-width: 0; }
+.party .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 20px; }
+.st { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.st.on { color: #fff; } .party.user .st.on { background: var(--user); } .party.agent .st.on { background: var(--agent); }
+.st.warn { background: var(--cursor); color: #fff; } .st.bad { background: var(--bad); color: #fff; }
+.st.on::before, .st.warn::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.unitchip { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.unitchip b { font-weight: 600; } .unitchip .speak { color: var(--agent); }
+.bubble { position: relative; margin-top: 6px; padding: 5px 9px; border-radius: 10px; font-size: 12.5px; min-height: 28px; background: var(--soft); color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.party.user .bubble.on { background: var(--user-soft); color: var(--ink); } .party.agent .bubble.on { background: var(--agent-soft); color: var(--ink); }
+.bubble.on::after { content: "▍"; color: var(--cursor); animation: pulse .8s step-end infinite; }
+.counters { font-size: 12px; display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-content: start; }
+.counters span { color: var(--muted); } .counters b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.headline { padding: 6px 14px; border-bottom: 1px solid var(--line); font-size: 12.5px; display: flex; gap: 8px; align-items: baseline; min-height: 31px; cursor: pointer; }
+.headline .lbl { font: 600 10px var(--mono); letter-spacing: .06em; color: var(--cursor); white-space: nowrap; }
+.headline.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: color-mix(in srgb, var(--cursor) 22%, transparent); } to { background: transparent; } }
+.ticker { max-height: 440px; overflow: auto; }
+.hl { display: grid; grid-template-columns: 54px 16px 1fr auto; gap: 6px; align-items: baseline; padding: 5px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.hl:hover { background: var(--soft); }
+.hl .tm { font: 11px var(--mono); color: var(--muted); }
+.hl .ic { font-weight: 700; text-align: center; } .hl .tx { min-width: 0; }
+.hl .meta { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+.hl.future { opacity: .45; }
+.hl.cur { background: var(--soft); box-shadow: inset 3px 0 0 var(--cursor); opacity: 1; }
+.hl.live { opacity: 1; } .hl.live .ic::before { content: "●"; color: var(--cursor); animation: pulse 1s ease-in-out infinite; }
+.hl.live .ic span { display: none; }
+.hl pre { grid-column: 1 / -1; margin: 4px 0 2px; max-height: 260px; cursor: text; }
+.hl .src { font: 10px var(--mono); color: var(--muted); }
+.sc { font: 11px var(--mono); padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; }
+.sc.ok { color: var(--good); } .sc.no { color: var(--bad); } .sc.mid { color: var(--mid); } .sc.na { color: var(--muted); border-style: dashed; }
+.xp { border: 0; background: none; padding: 0 3px; color: var(--muted); font-size: 11px; }
+.tally { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 12px; }
+.tally .big { font: 600 16px var(--mono); font-variant-numeric: tabular-nums; }
+.tally .bar { flex: 1 1 120px; height: 6px; border-radius: 3px; background: var(--soft); overflow: hidden; min-width: 80px; }
+.tally .bar i { display: block; height: 100%; background: var(--good); transition: width .25s; }
+.tr .txt { margin-top: 1px; }
+.tr.future .txt { opacity: .55; }
+.tr.now .w { opacity: .4; transition: opacity .12s; } .tr.now .w.said { opacity: 1; }
+.tr.now .w.cur { opacity: 1; border-radius: 3px; box-shadow: 0 0 0 2px var(--cursor-soft, transparent); background: color-mix(in srgb, var(--cursor) 18%, transparent); }
+svg rect.u { opacity: .3; } svg rect.u.past { opacity: .85; } svg rect.u.cur { opacity: 1; stroke: var(--cursor); stroke-width: 2; }
+svg text.ut { font: 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
+@media (max-width: 900px) { .nowbar { grid-template-columns: 1fr 1fr; } .counters { grid-column: 1 / -1; grid-template-columns: repeat(4, auto 1fr); } }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; height: auto; }
+  aside { max-height: 32vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { overflow: visible; padding: 12px 10px 30px; }
+  .tl { grid-template-columns: 78px 1fr; } .labels small { display: none; }
+  .nowbar { grid-template-columns: 1fr; } .counters { grid-template-columns: auto 1fr auto 1fr; }
+  .tr { grid-template-columns: 1fr; gap: 2px; } .hl { grid-template-columns: 46px 14px 1fr; } .hl .meta { grid-column: 3; }
+  section.card > h3 { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <header>
+      __BACK_LINK__
+      <h1>InteractionGym · trajectories</h1>
+      <input type="search" id="q" placeholder="Filter cases…">
+    </header>
+    <div class="cases" id="cases"></div>
+  </aside>
+  <main id="main"><div class="empty">No cases loaded.</div></main>
+</div>
+<div class="tip" id="tip"></div>
+<script id="data" type="application/json">__DATA__</script>
+<script id="view" type="application/json">__VIEW__</script>
+<script id="media-base" type="text/plain">__MEDIA_BASE__</script>
+<script>
+const MEDIA_BASE = document.getElementById('media-base').textContent.trim();
+const STD_META = new Set(['episode_id', 'run_id', 'seed', 'media_root', 'task', 'env', 'user', 'agent', 'duration_ms', 'end_reason']);
+
+// Schema-v1 episode (docs/FORMAT.md) -> the viewer's internal model (a frame log + latency spans).
+function fromEpisode(ep) {
+  if (!ep.schema) return ep;
+  const m = ep.meta, streamOf = r => r === 'agent' ? 'policy.speech' : r + '.speech', srcOf = r => r === 'agent' ? 'policy' : r;
+  const frames = [];
+  ep.turns.forEach(t => {
+    const dur = t.end_time - t.start_time, st = streamOf(t.role);
+    const seg = (d, text) => ({__segment__: true, id: t.id, t0: t.start_time, dur: d, text, kind: t.kind || null, label: t.label || null, intent: t.intent || null, media: t.media || null,
+      data: t.media && t.media.kind === 'audio' ? {__audio__: true, dur_ms: d} : text});
+    if (dur > 0 || t.text) {
+      if (t.unsaid && t.text) {
+        const full = t.text + t.unsaid;
+        frames.push({stream: st, t: t.start_time, src: srcOf(t.role), dur: 0, data: seg(Math.round(dur * full.length / t.text.length), full)});
+        frames.push({stream: st, t: t.end_time, src: srcOf(t.role), dur: 0, data: seg(dur, t.text)});
+      } else frames.push({stream: st, t: t.start_time, src: srcOf(t.role), dur: 0, data: seg(dur, t.text)});
+    }
+    (t.tool_calls || []).forEach(c => {
+      const user = t.role === 'user';
+      frames.push({stream: user ? 'user.tool_call' : 'policy.tool_call', t: c.call_time, src: srcOf(t.role), dur: 0, data: {id: c.id, name: c.name, arguments: c.arguments}});
+      if (c.result_time != null) frames.push({stream: user ? 'tool.user_result' : 'tool.result', t: c.result_time, src: 'tools', dur: 0, data: {id: c.id, name: c.name, content: c.content ?? '', error: !!c.error}});
+    });
+  });
+  frames.push({stream: 'end', t: m.duration_ms, src: '', dur: 0, data: m.end_reason});
+  const envc = m.env || {};   // tools the environment offers the agent: at t=0, then each later addition
+  const envTools = (envc.tools || []).map(tool => ({t: 0, tool})).concat(
+    (envc.tool_updates || []).flatMap(u => (u.tools || []).map(tool => ({t: u.time, tool}))));
+  frames.sort((a, b) => a.t - b.t);
+  const speech = ep.turns.filter(t => t.end_time > t.start_time), byId = Object.fromEntries(ep.turns.map(t => [t.id, t]));
+  const causes = {};   // agent turn id -> the duplex record that stopped it
+  Object.entries((ep.eval || {}).duplex || {}).forEach(([id, d]) => {
+    if (d.target && (d.reaction === 'stopped' || d.reaction === 'yielded')) causes[d.target] = {on: id, ...d};
+  });
+  frames.forEach(f => { if (f.data && f.data.__segment__ && causes[f.data.id]) f.data.cause = causes[f.data.id]; });
+  const spans = [];
+  const normal = speech.filter(t => t.role !== 'agent' && !t.kind);
+  const censored = new Set((((ep.eval || {}).scores || {}).events || []).filter(e => e.outcome === 'censored').map(e => e.turn));
+  normal.forEach((u, i) => {   // response latency is not stored; derived here for display only
+    const reply = speech.find(a => a.role === 'agent' && a.start_time >= u.end_time), next = normal[i + 1];
+    const ok = reply && (!next || reply.start_time < next.start_time);
+    if (!ok && u.expects === 'wait') return;   // a mid-thought pause: silence is what was wanted, not a missing reply
+    spans.push({kind: 'response', t0: u.end_time, t1: ok ? reply.start_time : null, ms: ok ? reply.start_time - u.end_time : null, censored: !ok && censored.has(u.id)});
+  });
+  Object.entries((ep.eval || {}).duplex || {}).forEach(([id, d]) => {
+    const t = byId[id];
+    if (d.behavior === 'barge_in') spans.push({kind: 'yield', t0: t.start_time, t1: d.reaction === 'yielded' ? t.start_time + d.latency_ms : null, ms: d.latency_ms ?? null});
+    else spans.push({kind: d.behavior, t0: t.start_time, t1: null, ms: null, reaction: d.reaction, on: id, target: d.target});
+  });
+  const r = (ep.eval || {}).reward || {}, meta = envc.tool_schema_mode ? {tool_schema_mode: envc.tool_schema_mode} : {};
+  Object.entries(r.parts || {}).forEach(([k, v]) => meta['reward.' + k] = v);
+  Object.entries(m).forEach(([k, v]) => { if (!STD_META.has(k)) meta[k] = v; });
+  return {case_id: m.episode_id, task: m.task || {}, meta, speakers: {user: 'user.speech', agent: 'policy.speech'},
+          t_end: m.duration_ms, agent: m.agent || null, reward: r.total, endReason: m.end_reason, frames, spans, envTools, episode: ep};
+}
+const CASES = JSON.parse(document.getElementById('data').textContent).map(fromEpisode);
+// playback extras computed by the exporter (viewer/commentary.py): headlines + condensed agent trace, by episode_id
+const VIEW = (() => { try { return JSON.parse(document.getElementById('view').textContent) || {}; } catch (e) { return {}; } })();
+const player = new Audio();
+function playSlice(ref) {
+  player.src = MEDIA_BASE + ref.uri;
+  player.currentTime = ref.start_ms / 1000;
+  player.ontimeupdate = () => { if (player.currentTime >= ref.end_ms / 1000) player.pause(); };
+  player.play();
+}
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const fmt = ms => ms == null ? '—' : (Math.abs(ms) >= 10000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms');
+const isSeg = d => d && typeof d === 'object' && d.__segment__;
+
+// ---------- model ----------
+function prep(c) {
+  if (c._prep) return c;
+  const segStreams = new Map(), events = new Map();
+  c.frames.forEach((f, i) => {
+    f.i = i;
+    if (isSeg(f.data)) {
+      const m = segStreams.get(f.stream) || new Map();
+      const turn = m.get(f.data.id) || {id: f.data.id, stream: f.stream, src: f.src, versions: []};
+      turn.versions.push({t: f.t, seg: f.data, i});
+      m.set(f.data.id, turn); segStreams.set(f.stream, m);
+    } else {
+      (events.get(f.stream) || events.set(f.stream, []).get(f.stream)).push(f);
+    }
+  });
+  const role = s => s === c.speakers.user ? 'user' : s === c.speakers.agent ? 'agent' : 'other';
+  const order = s => ({user: 0, agent: 1, other: 2}[role(s)]);
+  const turns = [];
+  const lanes = [];
+  [...segStreams.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b)).forEach(s => {
+    const ts = [...segStreams.get(s).values()].map(t => {
+      t.planned = t.versions[0].seg; t.actual = t.versions[t.versions.length - 1].seg;
+      t.grown = end(t.actual) > end(t.planned); if (t.grown) t.planned = t.actual; // streamed: no plan
+      t.kind = t.actual.kind || null; t.label = t.actual.label || null; t.intent = t.actual.intent || null; t.media = t.actual.media || null; t.cause = t.actual.cause || null;
+      if (t.cause) { const ok = t.cause.reaction === 'yielded'; t.causeLabel = `${ok ? 'yielded to' : 'stopped by'} ${t.cause.on} (${t.cause.behavior === 'barge_in' ? 'barge-in' : t.cause.behavior}) ${ok ? '✓' : '✗ should continue'}`; t.causeOk = ok; }
+      t.cut = end(t.actual) < end(t.planned); t.cutAt = t.cut ? t.versions[t.versions.length - 1].t : null;
+      t.role = role(s); return t;
+    }).sort((a, b) => a.planned.t0 - b.planned.t0);
+    turns.push(...ts);
+    lanes.push({kind: 'seg', stream: s, role: role(s), turns: ts, h: 58});
+  });
+  // tool calls: pair each call with its result into one lane per caller
+  const isCall = d => d && typeof d === 'object' && d.name && d.arguments && d.id != null && !('content' in d);
+  const isResult = d => d && typeof d === 'object' && d.name && 'content' in d && d.id != null;
+  const results = new Map();
+  c.frames.forEach(f => { if (isResult(f.data)) results.set(f.stream.includes('user') + '|' + f.data.id, f); });
+  const toolLanes = new Map();
+  for (const [st, fs] of [...events.entries()]) {
+    if (!fs.every(f => isCall(f.data) || isResult(f.data))) continue;
+    events.delete(st);
+    fs.filter(f => isCall(f.data)).forEach(f => {
+      const byUser = st.startsWith('user');
+      const res = results.get(byUser + '|' + f.data.id);
+      const lane = toolLanes.get(byUser) || toolLanes.set(byUser, {kind: 'tool', stream: st, role: byUser ? 'user' : 'agent', calls: [], h: 40}).get(byUser);
+      lane.calls.push({call: f, res, t0: f.t, t1: res ? res.t : null});
+    });
+  }
+  [false, true].forEach(k => { if (toolLanes.has(k)) lanes.push(toolLanes.get(k)); });
+  c.tools = [...toolLanes.values()].flatMap(l => l.calls);
+  [...events.keys()].sort().forEach(s => lanes.push({kind: 'ev', stream: s, role: 'other', frames: events.get(s), h: 30}));
+  turns.sort((a, b) => a.planned.t0 - b.planned.t0);
+  turns.forEach(t => {
+    t.barge = turns.some(o => o !== t && o.role !== t.role && o.planned.t0 < t.planned.t0 && t.planned.t0 < end(o.actual));
+  });
+  const u = turns.filter(t => t.role === 'user'), a = turns.filter(t => t.role === 'agent');
+  const overlaps = [];
+  u.forEach(x => a.forEach(y => {
+    const s = Math.max(x.actual.t0, y.actual.t0), e = Math.min(end(x.actual), end(y.actual));
+    if (e > s) overlaps.push([s, e]);
+  }));
+  const tMax = Math.max(c.t_end || 0, ...c.frames.map(f => f.t + (f.dur || 0)), ...turns.map(t => end(t.planned)), 1);
+  if ((c.envTools || []).length) lanes.unshift({kind: 'envtool', stream: 'meta.env.tools', role: 'other', items: c.envTools, h: 30});
+  const bgs = bgSpecs(c.episode);
+  if (bgs.length) lanes.push({kind: 'bg', stream: 'meta.env.background', role: 'other', items: bgs, h: 26});
+  const view = VIEW[c.case_id] || {}, U = view.units;
+  if (U && U.units.length) {   // the agent server's per-unit decisions, right under the agent lane
+    const k = lanes.findIndex(l => l.kind === 'seg' && l.role === 'agent');
+    lanes.splice(k < 0 ? lanes.length : k + 1, 0, {kind: 'units', stream: 'agent trace · ' + U.unit_ms + ' ms units', role: 'agent', units: U.units, h: 26});
+  }
+  const epTurns = Object.fromEntries(((c.episode || {}).turns || []).map(t => [t.id, t]));
+  turns.forEach(t => { t.rec = epTurns[t.id] || null; t.words = wordTimes(t); });
+  Object.assign(c, {_prep: true, lanes, turns, overlaps, tMax, view, headlines: view.headlines || []});
+  return c;
+}
+const end = s => s.t0 + s.dur;
+// a turn's producer labels, shown before its text: [backchannel] [noise: door slam] [away] [barge-in: correction] ...
+function tagOf(t) {
+  const k = t.kind ? '[' + t.kind + (t.label && t.kind === 'noise' ? ': ' + t.label.replace(/_/g, ' ') : '') + '] ' : '';
+  const x = t.label === 'called_away' && !t.kind ? '[called away] ' : '';
+  return k + x + (t.intent ? '[' + t.intent + '] ' : '');
+}
+// the episode's always-on background (context, not a turn): from the background tracks, else meta.env.background
+function bgSpecs(ep) {
+  if (!ep) return [];
+  const tracks = (ep.background || []).filter(b => b.spec).map(b => ({spec: b.spec, a: b.start_time || 0, b: b.end_time ?? null}));
+  if (tracks.length) return tracks;
+  return (((ep.meta || {}).env || {}).background || []).map(spec => ({spec, a: 0, b: null}));
+}
+function bgLabel(sp) {
+  if (sp.type === 'silence') return 'silence';
+  const src = (sp.source || '').startsWith('file:') ? 'recording' : (sp.source || '').replace('synthetic:', '') + ' noise';
+  return `${sp.type.replace('ambience:', '')} ambience`.replace(/^(white|pink|brown) ambience$/, '$1 noise') + (sp.type.startsWith('ambience:') ? ` (${src})` : '')
+    + (sp.level_dbfs != null ? ` · ${sp.level_dbfs} dBFS (SNR ${sp.snr_db} dB)` : '') + (sp.from === 'surroundings' ? ` · from surroundings: ${sp.surroundings}` : '');
+}
+// word timing for karaoke: the turn's own `words` ([word, start, end] relative to start_time) when recorded,
+// else the planned text spread linearly over the planned duration (docs/FORMAT.md §4.3), split where it was cut
+function wordTimes(t) {
+  const P = segText(t.planned), A = segText(t.actual), out = [];
+  if (t.rec && Array.isArray(t.rec.words) && t.rec.words.length) {
+    t.rec.words.forEach(([w, a, b]) => out.push({w: w + ' ', s: t.actual.t0 + a, e: t.actual.t0 + b, said: true}));
+    const rest = P.slice(A.length).trim();
+    if (rest) out.push({w: ' ' + rest, s: Infinity, e: Infinity, said: false});
+    return out;
+  }
+  if (!P) return out;
+  const p = t.planned, re = /\S+\s*/g;
+  let m;
+  while ((m = re.exec(P))) {
+    const a = m.index, b = a + m[0].length, at = i => p.t0 + p.dur * i / P.length;
+    if (a < A.length && b > A.length) {   // the cut falls inside this word
+      out.push({w: P.slice(a, A.length), s: at(a), e: at(A.length), said: true});
+      out.push({w: P.slice(A.length, b), s: Infinity, e: Infinity, said: false});
+    } else out.push({w: m[0], s: a < A.length ? at(a) : Infinity, e: at(b), said: a < A.length});
+  }
+  if (P.length && !/^\s/.test(P) && out.length === 0) out.push({w: P, s: p.t0, e: end(p), said: true});
+  return out;
+}
+function idx(seg, t, n = seg.data.length) {
+  if (seg.dur <= 0) return t >= seg.t0 ? n : 0;
+  return Math.round(n * Math.min(Math.max((t - seg.t0) / seg.dur, 0), 1));
+}
+const isAudio = d => d && typeof d === 'object' && d.__audio__;
+const txt = d => typeof d === 'string' ? d : Array.isArray(d) ? `[${d.length} items]` : isAudio(d) ? `[audio ${fmt(d.dur_ms)}]` : JSON.stringify(d);
+const segText = s => s.text != null ? s.text : typeof s.data === 'string' ? s.data : txt(s.data);
+const modality = s => isAudio(s.data) ? '🔊 ' : '';
+function sliceTxt(d, a, b) { return typeof d === 'string' ? d.slice(a, b) : Array.isArray(d) ? `[${Math.max(0, Math.min(b, d.length) - a)} items]` : ''; }
+function summary(d) {
+  if (d == null) return '';
+  if (isSeg(d)) return `seg ${d.id} [${d.t0}–${d.t0 + d.dur}] ${isAudio(d.data) ? txt(d.data) + ' ' : ''}${segText(d)}`;
+  if (typeof d === 'object' && d.name && d.arguments) return `${d.name}(${Object.entries(d.arguments).map(([k, v]) => k + '=' + JSON.stringify(v)).join(', ')})  #${d.id}`;
+  if (typeof d === 'object' && d.name && 'content' in d) return `${d.error ? '✗ ' : ''}${d.name} → ${d.content}  #${d.id}`;
+  const s = typeof d === 'string' ? d : JSON.stringify(d);
+  return s.length > 140 ? s.slice(0, 140) + '…' : s;
+}
+
+// ---------- state ----------
+let cur = null, zoom = null, cursor = 0, openFrame = null, frameFilter = '', rate = 1, lastHl = null;
+
+function selectCase(i) {
+  stopTimeline();
+  cur = prep(CASES[i]); zoom = null; cursor = 0; openFrame = null; lastHl = undefined;
+  linkHash();
+  renderSidebar(); renderMain();
+}
+
+function linkHash() { history.replaceState(null, '', '#' + encodeURIComponent(cur.case_id) + (cursor ? '@' + cursor : '')); }
+
+function renderSidebar() {
+  const q = $('#q').value.toLowerCase();
+  $('#cases').innerHTML = CASES.map((c, i) => {
+    prep(c);
+    const hay = (c.case_id + ' ' + JSON.stringify(c.meta) + ' ' + JSON.stringify(c.task)).toLowerCase();
+    if (q && !hay.includes(q)) return '';
+    const cuts = c.turns.filter(t => t.cut).length;
+    return `<div class="case ${c === cur ? 'sel' : ''}" data-i="${i}">
+      <div class="id">${esc(c.case_id)}</div>
+      <div class="sub">${c.reward == null ? '' : `<span class="${c.reward > 0 ? 'ok' : 'no'}">R ${c.reward}</span>`}<span>${fmt(c.t_end)}</span>
+      <span>${c.turns.length} turns</span>${cuts ? `<span class="no">${cuts} cut</span>` : ''}${c.endReason === 'max_duration' ? '<span class="no">truncated</span>' : ''}${duplexScore(c)}</div></div>`;
+  }).join('');
+}
+
+// meta.agent in the episode header: which agent this is (name, kind, model, server)
+function agentHtml(a) {
+  if (!a) return '';
+  const extra = Object.entries(a).filter(([k]) => !['name', 'kind', 'model', 'server'].includes(k) && typeof a[k] !== 'object' && String(a[k]).length < 60)
+    .map(([k, v]) => `${k}=${v}`).join(' · ');
+  const tip = [a.model && `model ${a.model}`, a.server && `server ${a.server}`, extra].filter(Boolean).join('\n');
+  return `<span class="chip" title="${esc(tip)}">agent <b>${esc(a.name || '?')}</b>${a.kind ? ` · ${esc(a.kind)}` : ''}${a.model && a.model !== a.name ? ` · <span class="hint">${esc(a.model)}</span>` : ''}</span>`;
+}
+
+function renderMain() {
+  const c = cur;
+  const resp = c.spans.filter(s => s.kind === 'response'), yld = c.spans.filter(s => s.kind === 'yield');
+  const metaChips = Object.entries(c.meta || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</b></span>`).join('');
+  $('#main').innerHTML = `
+    <div class="title"><h2>${esc(c.case_id)}</h2><span class="hint">task ${esc(c.task.id || '—')}</span>${agentHtml(c.agent)}</div>
+    <div class="chips">
+      <span class="chip">end <b class="${c.endReason === 'max_duration' ? 'no' : 'ok'}">${c.endReason}</b></span>
+      <span class="chip">duration <b>${fmt(c.t_end)}</b></span>
+      <span class="chip">frames <b>${c.frames.length}</b></span>
+      <span class="chip">response <b>${resp.map(s => fmt(s.ms)).join(', ') || '—'}</b></span>
+      <span class="chip">yield <b>${yld.map(s => s.ms == null ? '<span class="no">never</span>' : fmt(s.ms)).join(', ') || '—'}</b></span>
+      ${metaChips}
+    </div>
+    <section class="card"><h3>Timeline <span class="hint">click or drag to scrub · <kbd>space</kbd> play/pause · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+scroll to zoom · <kbd>←</kbd><kbd>→</kbd> step</span><span class="sp"></span>
+      <span class="ctrl"><span class="clock" id="clock"></span>
+      <button id="play" title="play every voice and the background along the timeline, from the cursor (space); text-only episodes play on a virtual clock">▶ play</button>
+      <select id="rate" title="playback speed">${[0.5, 1, 1.5, 2, 4].map(r => `<option value="${r}" ${r === rate ? 'selected' : ''}>${r}×</option>`).join('')}</select>
+      <button id="zo">−</button><button id="zf">fit</button><button id="zi">+</button></span></h3>
+      <div class="nowbar" id="nowbar">
+        <div class="party user"><div class="top"><span class="who user">user</span><span class="st" id="nu-st"></span></div><div class="bubble" id="nu-b"></div></div>
+        <div class="party agent"><div class="top"><span class="who agent">agent</span><span class="st" id="na-st"></span><span class="unitchip" id="na-u"></span></div><div class="bubble" id="na-b"></div></div>
+        <div class="counters" id="ncount"></div>
+      </div>
+      <div class="headline" id="nhead" title="latest event — click to jump there"></div>
+      <div class="tl"><div class="labels" id="labels"></div><div class="scroll" id="scroll"></div></div></section>
+    <div class="grid2">
+      <section class="card" id="tickwrap"><h3>Commentary <span class="hint">derived only from recorded eval fields — click to jump · ▸ raw record</span></h3>
+        <div class="tally" id="tally"></div><div class="ticker" id="ticker"></div></section>
+      <section class="card"><h3>Transcript <span class="hint">spoken · <span class="unsaid">planned but cut</span> · follows playback</span></h3><div class="body" id="transcript" style="max-height:480px;overflow:auto"></div></section>
+    </div>
+    <section class="card"><h3>State at cursor <span class="hint" id="curT"></span></h3><div class="body state" id="state"></div></section>
+    <section class="card" id="evalwrap"><h3>Evaluation <span class="hint">reward, and every special duplex behaviour: what the agent should have done vs. what it did</span></h3><div class="body" id="evalcard"></div></section>
+    <section class="card"><h3>Environment context <span class="hint">meta.env — components, and what the environment gave the agent (tool schemas, instructions, context); never world state</span></h3><div class="body">${envHtml(c)}</div></section>
+    <section class="card"><h3>User simulation <span class="hint">meta.user — who the simulated user is (persona, goal, voice) and how it was produced (models, barge-in, turn-taking)</span></h3><div class="body">${userHtml(c)}</div></section>
+    <section class="card"><h3>Frames <span class="sp"></span><input type="search" id="ff" placeholder="filter stream / src / data" style="width:240px"></h3>
+      <div class="tablewrap"><table><thead><tr><th style="text-align:right">t</th><th>stream</th><th>src</th><th style="text-align:right">dur</th><th>data</th></tr></thead><tbody id="frames"></tbody></table></div></section>
+    <section class="card"><h3>Task <span class="hint">scenario, initial state, criteria — privileged, never shown to the agent</span></h3><div class="body"><pre>${esc(JSON.stringify(c.task, null, 2))}</pre></div></section>
+    ${c.episode ? `<section class="card"><h3>Output trajectory <span class="hint">the episode exactly as written to disk (schema v1, docs/FORMAT.md)</span><span class="sp"></span>
+      <button id="trajfmt">pretty</button><button id="trajcopy">copy</button></h3><div class="body"><pre id="trajjson" style="max-height:640px">${esc(trajText(c.episode, true))}</pre></div></section>` : ''}`;
+  $('#play').onclick = () => playing ? stopTimeline() : playTimeline();
+  $('#rate').onchange = e => { rate = +e.target.value; if (playing) playTimeline(); };
+  $('#nhead').onclick = () => { const h = lastHl; if (h) { setCursor(h.t); scrollTo(h.t); } };
+  $('#zo').onclick = () => setZoom(zoom / 1.5);
+  $('#zi').onclick = () => setZoom(zoom * 1.5);
+  $('#zf').onclick = () => { zoom = null; renderTimeline(); };
+  $('#ff').value = frameFilter;
+  $('#ff').oninput = e => { frameFilter = e.target.value.toLowerCase(); renderFrames(); };
+  renderEval(); renderTimeline(); renderTranscript(); renderTicker(); renderFrames(); renderCursor();
+  if (c.episode) {
+    let compact = true;
+    $('#trajfmt').onclick = () => { compact = !compact; $('#trajfmt').textContent = compact ? 'pretty' : 'compact'; $('#trajjson').textContent = trajText(c.episode, compact); };
+    $('#trajcopy').onclick = () => {
+      const text = $('#trajjson').textContent, done = () => { $('#trajcopy').textContent = 'copied'; setTimeout(() => $('#trajcopy').textContent = 'copy', 1200); };
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(done, () => {
+        const r = document.createRange(); r.selectNodeContents($('#trajjson')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); done();
+      });
+    };
+  }
+}
+
+const EXPECTED = {barge_in: 'yield', backchannel: 'continue', aside: 'ignore', noise: 'ignore', away: 'wait (or briefly check in)', agent_interrupt: 'not cut in'};
+function verdict(ep, id, d) {
+  if (d.behavior === 'barge_in') return d.reaction === 'yielded';
+  if (d.behavior === 'agent_interrupt') { const u = ep.turns.find(t => t.id === d.target); return !!(u && u.expects === 'interrupt'); }
+  return d.reaction === 'continued' || d.reaction === 'stayed_silent' || d.reaction === 'waited' || d.reaction === 'checked_in';
+}
+function duplexScore(c) {
+  const d = Object.entries(((c.episode || {}).eval || {}).duplex || {});
+  if (!d.length) return '';
+  const ok = d.filter(([id, x]) => verdict(c.episode, id, x)).length;
+  return `<span class="${ok === d.length ? 'ok' : 'no'}">duplex ${ok}/${d.length}</span>`;
+}
+// pretty: indented JSON; compact: one line per turn / list item (the way docs/format_example.json is laid out)
+function trajText(ep, compact) {
+  if (!compact) return JSON.stringify(ep, null, 2);
+  const dump = (o, ind) => {
+    const sp = ' '.repeat(ind);
+    if (Array.isArray(o) && o.length && typeof o[0] === 'object' && ind <= 2) return '[\n' + o.map(x => sp + '  ' + JSON.stringify(x)).join(',\n') + '\n' + sp + ']';
+    if (o && typeof o === 'object' && !Array.isArray(o) && ind <= 2 && Object.values(o).some(v => v && typeof v === 'object'))
+      return '{\n' + Object.entries(o).map(([k, v]) => sp + ' ' + JSON.stringify(k) + ': ' + dump(v, ind + 1)).join(',\n') + '\n' + sp + '}';
+    return JSON.stringify(o);
+  };
+  return dump(ep, 0);
+}
+
+function toolHtml(t) {
+  return `<details class="tool"><summary><b>${esc(t.name)}</b>${t.service ? ` <span class="tag">${esc(t.service)}</span>` : ''} <span class="hint">${esc(t.description || '')}</span></summary><pre>${esc(JSON.stringify(t.parameters || {}, null, 2))}</pre></details>`;
+}
+function modelTxt(x) {
+  if (!x) return '—';
+  return esc(x.model) + (x.params ? ` <span class="hint">${esc(JSON.stringify(x.params))}</span>` : '') + (x.sr ? ` <span class="hint">${x.sr} Hz</span>` : '');
+}
+function userHtml(c) {
+  const u = ((c.episode || {}).meta || {}).user;
+  if (!u) return '<span class="hint">not recorded (no simulated user component)</span>';
+  const v = u.voice || {}, b = u.barge_in || {};
+  const voice = v.tts === null ? `text only <span class="hint">(durations at ${v.words_per_sec} words/s)</span>`
+    : `<b>${esc(v.speaker || 'default')}</b>${v.chosen_by ? ` <span class="tag">chosen by ${esc(v.chosen_by)}</span>` : ''} · ${modelTxt(v.tts)}`
+      + (v.instructions ? `<div class="hint">TTS instructions: ${esc(v.instructions)}</div>` : '');
+  const prof = u.profile ? Object.entries(u.profile).map(([k, x]) => `<span class="chip">${esc(k)} <b>${esc(x)}</b></span>`).join(' ') : '';
+  const barge = b.type === 'never' ? 'never' : b.type === 'keyword' ? `keyword <span class="hint">${esc((b.words || []).join(', '))}</span>`
+    : b.type === 'llm' ? `LLM judge · ${modelTxt(b.llm)} <span class="hint">min ${b.min_words} words</span>` : esc(b.type || '—');
+  const row = (k, val) => `<tr><td class="hint" style="width:120px">${k}</td><td>${val}</td></tr>`;
+  const rows = [
+    row('component', `${esc(u.component)} <span class="tag">${esc(u.mode)}</span>`),
+    u.persona ? row('persona', esc(u.persona)) : '',
+    prof ? row('profile', prof) : '',
+    u.goal ? row('goal', esc(u.goal)) : '',
+    row('voice', voice + (v.recorded_turns ? ` <span class="hint">· ${v.recorded_turns} recorded turns</span>` : '')),
+    u.llm ? row('user LLM', modelTxt(u.llm)) : '',
+    u.mode !== 'offline' ? row('barge-in', barge) : '',
+    u.listening ? row('listening', `${u.listening.model ? `LLM listener · ${modelTxt(u.listening.model.llm)} <span class="hint">${esc((u.listening.options || []).join(' / '))} at ${esc(u.listening.decision_points)} (≤ ${u.listening.max_decision_gap_ms} ms apart), min ${u.listening.model.min_words} words</span>` : 'no listener model'}`) : '',
+    u.decisions ? row('decisions', Object.entries(u.decisions).filter(([, x]) => x).map(([k, x]) => `<span class="chip">${esc(k)} <b>${x}</b></span>`).join(' ') || '<span class="hint">none</span>') : '',
+    u.random_events ? row('random events', Object.entries(u.random_events).filter(([, x]) => x).map(([k, x]) => `<span class="chip">${esc(k)} <b>${x}</b></span>`).join(' ') || '<span class="hint">none</span>') : '',
+    u.behaviors ? row('habits', Object.entries(u.behaviors).map(([k, x]) => `<span class="chip">${esc(k)} <b>${esc(typeof x === 'object' && x ? JSON.stringify(x) : x === null ? 'none' : x)}</b></span>`).join(' ')) : '',
+    u.turn_taking ? row('turn-taking', Object.entries(u.turn_taking).map(([k, x]) => `<span class="chip">${esc(k)} <b>${x === null ? 'never' : esc(x)}</b></span>`).join(' ')) : '',
+    u.system_prompt ? row('system prompt', `<details><summary class="hint">custom (${u.system_prompt.length} chars)</summary><pre>${esc(u.system_prompt)}</pre></details>`) : '',
+  ].join('');
+  return `<table class="kv">${rows}</table>`;
+}
+function envHtml(c) {
+  const e = ((c.episode || {}).meta || {}).env;
+  if (!e) return '<span class="hint">not recorded</span>';
+  const comps = Object.entries(e.components || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b>${esc(v)}</b></span>`).join('');
+  const svcs = (e.tool_services || []).map(x => `<div><b style="font-family:var(--mono);font-weight:500">${esc(x.service)}</b> <span class="hint">${esc(x.description || '')} · ${x.tools} tools</span></div>`).join('');
+  const ups = (e.tool_updates || []).map(u => `<div class="upd"><div><span class="tag" style="margin:0">at ${u.time}ms</span> <span class="hint">+${(u.tools || []).length} tools${u.instructions ? ' · new instructions' : ''}</span></div>
+      ${(u.tools || []).map(toolHtml).join('')}${u.instructions ? `<details><summary class="hint">instructions</summary><pre>${esc(u.instructions)}</pre></details>` : ''}${u.context ? `<div class="hint">context revealed</div><pre>${esc(JSON.stringify(u.context, null, 2))}</pre>` : ''}</div>`).join('');
+  return `<div class="chips" style="margin:0 0 8px"><span class="hint" style="align-self:center">components</span>${comps}${e.tool_schema_mode ? `<span class="chip">tool_schema_mode <b>${esc(e.tool_schema_mode)}</b></span>` : ''}${(e.background || []).map(b => `<span class="chip">background <b>${esc(bgLabel(b))}</b></span>`).join('')}</div>
+    <div class="grid2" style="gap:18px">
+      <div>
+        <div class="hint">tools offered at t=0 <span>(click for the parameter schema)</span></div>${(e.tools || []).map(toolHtml).join('') || '<div class="hint">none</div>'}
+        ${e.instructions ? `<details style="margin-top:6px"><summary class="hint">instructions (${e.instructions.length} chars)</summary><pre>${esc(e.instructions)}</pre></details>` : ''}
+        ${e.agent_context ? `<div class="hint" style="margin-top:6px">agent_context</div><pre>${esc(JSON.stringify(e.agent_context, null, 2))}</pre>` : ''}
+      </div>
+      <div>
+        ${svcs ? `<div class="hint">tool_services (catalog, discover mode)</div>${svcs}` : ''}
+        ${ups ? `<div class="hint" style="margin-top:8px">tool_updates</div>${ups}` : (svcs ? '' : '<div class="hint">no tool updates during the episode</div>')}
+      </div>
+    </div>`;
+}
+
+function renderEval() {
+  const ep = cur.episode, wrap = $('#evalwrap');
+  if (!ep || !ep.eval) { wrap.hidden = true; return; }
+  const r = ep.eval.reward || {}, dup = Object.entries(ep.eval.duplex || {}), byId = Object.fromEntries(ep.turns.map(t => [t.id, t]));
+  const parts = Object.entries(r.parts || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b>${v}</b></span>`).join('');
+  const group = (keys) => { const xs = dup.filter(([, d]) => keys.includes(d.behavior)); return [xs.filter(([id, d]) => verdict(ep, id, d)).length, xs.length]; };
+  const [by, bn] = group(['barge_in']), [ry, rn] = group(['backchannel', 'aside', 'noise', 'away']), ai = dup.filter(([, d]) => d.behavior === 'agent_interrupt').length;
+  const stat = (label, y, n) => n ? `<span class="chip">${label} <b class="${y === n ? 'ok' : 'no'}">${y}/${n}</b></span>` : '';
+  const rows = dup.map(([id, d]) => {
+    const ok = verdict(ep, id, d), t = byId[id] || {}, tg = byId[d.target] || {};
+    const snip = s => esc((s || '').slice(0, 42)) + ((s || '').length > 42 ? '…' : '');
+    return `<tr data-t="${t.start_time}"><td class="mono">${esc(id)}</td><td>${esc(d.behavior)}</td><td class="mono">${t.start_time}ms</td>
+      <td>${snip(t.text) || '<span class="hint">(no words)</span>'}</td><td>${esc(EXPECTED[d.behavior] || '')}</td>
+      <td>${d.target ? `<span class="mono">${esc(d.target)}</span> <span class="hint">${snip(tg.text)}</span>` : '<span class="hint">agent silent</span>'}</td>
+      <td>${esc(d.reaction || '—')}</td><td class="num">${d.latency_ms != null ? d.latency_ms + 'ms' : ''}</td>
+      <td style="font-weight:600" class="${ok ? 'ok' : 'no'}">${ok ? '✓' : '✗'}</td></tr>`;
+  }).join('');
+  const sc = ep.eval.scores || null, byT = Object.fromEntries(ep.turns.map(t => [t.id, t]));
+  const scoreCls = v => v == null ? '' : v >= 0.8 ? 'ok' : v < 0.5 ? 'no' : '';
+  const scoreChips = sc ? `<span class="chip">score <b class="${sc.total == null ? '' : scoreCls(sc.total)}">${sc.total ?? '—'}</b></span>` +
+    Object.entries(sc.by_expectation || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b class="${scoreCls(v)}">${v}</b></span>`).join('') : '';
+  const scoreRows = sc ? sc.events.map(e => { const t = byT[e.turn] || {};
+    return `<tr data-t="${t.start_time}"><td class="mono">${esc(e.turn)}</td><td>${esc(e.expects)}</td><td class="mono">${t.start_time}ms</td>
+      <td>${esc((t.text || '').slice(0, 42))}</td><td>${esc(e.outcome)}</td><td class="mono">${esc(e.target || '')}${e.reply ? ` → ${esc(e.reply)}` : ''}</td><td class="num">${e.latency_ms != null ? e.latency_ms + 'ms' : ''}</td>
+      <td class="num ${scoreCls(e.score)}" style="font-weight:600">${e.score != null ? e.score.toFixed(2) : '<span class="sc na" title="left out of the means">not scored</span>'}</td></tr>`; }).join('') : '';
+  $('#evalcard').innerHTML = `
+    ${sc ? `<div class="hint" style="margin-bottom:4px">scores — one per user turn: did the agent do what the user expected, and how fast when it took over (rule-based, 0–1; eval.scores; total = mean over the turns)</div>
+    <div class="chips" style="margin:0 0 8px">${scoreChips}</div>
+    ${sc.events.length ? `<div class="tablewrap" style="max-height:260px;margin-bottom:12px"><table><thead><tr><th>user turn</th><th>user expects</th><th>at</th><th>what the user said</th><th>outcome</th><th>agent turn</th><th style="text-align:right">latency</th><th style="text-align:right">score</th></tr></thead><tbody>${scoreRows}</tbody></table></div>` : ''}
+    <div class="hint" style="margin-bottom:4px">special duplex behaviours (eval.duplex)</div>` : ''}
+    <div class="chips" style="margin:0 0 10px">
+      <span class="chip">reward <b class="${r.total == null ? '' : r.total > 0 ? 'ok' : 'no'}">${r.total ?? '— (no reward defined)'}</b></span>${parts}
+      ${stat('barge-in handled', by, bn)}${stat('rejection correct', ry, rn)}${ai ? `<span class="chip">agent interruptions <b class="no">${ai}</b></span>` : ''}
+    </div>
+    ${dup.length ? `<div class="tablewrap" style="max-height:260px"><table><thead><tr><th>turn</th><th>behaviour</th><th>at</th><th>what the user did</th><th>expected</th><th>agent turn affected</th><th>reaction</th><th style="text-align:right">latency</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<div class="hint">No special duplex behaviour in this episode (only normal turn-taking).</div>'}`;
+  document.querySelectorAll('#evalcard tbody tr').forEach(el => el.onclick = () => { const t = +el.dataset.t; setCursor(t); scrollTo(t); });
+  wrap.hidden = false;
+}
+
+function setZoom(z, anchorT) {
+  const sc = $('#scroll');
+  const t = anchorT ?? (sc.scrollLeft + sc.clientWidth / 2) / zoom;
+  const offset = anchorT != null ? anchorT * zoom - sc.scrollLeft : sc.clientWidth / 2;
+  zoom = Math.min(Math.max(z, 0.005), 5);
+  renderTimeline();
+  sc.scrollLeft = t * zoom - offset;
+}
+
+// ---------- timeline ----------
+const PAD = 16, AXIS = 26, SPANS = 50;
+function laneY(c) {
+  let y = AXIS; const ys = [];
+  c.lanes.forEach(l => { ys.push(y); y += l.h; });
+  return {ys, spansY: y, H: y + SPANS};
+}
+function renderTimeline() {
+  const c = cur, sc = $('#scroll');
+  if (zoom == null) zoom = Math.max((sc.clientWidth - 2 * PAD - 140) / c.tMax, 0.005);
+  const X = t => PAD + t * zoom, W = X(c.tMax) + PAD + 140; // room for trailing labels
+  c.lanes.filter(l => l.kind === 'envtool').forEach(l => {   // tools offered at the same moment stack up
+    const byT = {};
+    l.items.forEach((it, i) => { it.idx = i; it.row = (byT[it.t] = (byT[it.t] ?? -1) + 1); });
+    l.h = 12 + Math.max(...Object.values(byT).map(n => n + 1)) * 20;
+  });
+  c.lanes.filter(l => l.kind === 'tool').forEach(l => {   // stack calls so that labels never collide
+    const rowEnd = [];
+    l.calls.forEach(k => {
+      const a = k.call.data, args = Object.entries(a.arguments).map(([n, v]) => n + '=' + JSON.stringify(v)).join(', ');
+      const err = k.res && k.res.data.error;
+      let lab = `${err ? '✗ ' : ''}${a.name}(${args})`;
+      if (lab.length > 64) lab = lab.slice(0, 64) + '…)';
+      k.label = lab + (k.t1 == null ? '  (no result)' : `  ${fmt(k.t1 - k.t0)}`);
+      const x0 = X(k.t0), x1 = Math.max(k.t1 == null ? X(c.tMax) : X(k.t1), x0 + 6), lw = k.label.length * 6.2 + 12;
+      k.inside = x1 - x0 >= Math.min(lw, 90); // the bar's width is the tool latency; short calls cannot hold their label
+      const right = k.inside ? x1 : x1 + lw;
+      let r = rowEnd.findIndex(e => e < x0 - 8);
+      if (r < 0) r = rowEnd.length;
+      rowEnd[r] = right; k.row = r;
+    });
+    l.h = 12 + Math.max(rowEnd.length, 1) * 22;
+  });
+  const {ys, spansY, H} = laneY(c);
+  const col = r => `var(--${r})`, soft = r => `var(--${r}-soft)`;
+  let s = `<svg width="${W}" height="${H}" id="svg">`;
+  // axis
+  const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000, 120000, 300000];
+  const step = steps.find(v => v * zoom >= 70) || steps[steps.length - 1];
+  s += '<g class="axis">';
+  for (let t = 0; t <= c.tMax; t += step) s += `<line x1="${X(t)}" x2="${X(t)}" y1="${AXIS - 6}" y2="${H}" /><text x="${X(t) + 3}" y="${AXIS - 10}">${fmt(t)}</text>`;
+  s += '</g>';
+  // lane backgrounds
+  c.lanes.forEach((l, k) => { if (k % 2) s += `<rect x="0" y="${ys[k]}" width="${W}" height="${l.h}" fill="var(--soft)" opacity=".5"/>`; });
+  // overlaps
+  const segYs = c.lanes.map((l, k) => l.kind === 'seg' ? ys[k] : null).filter(v => v != null);
+  if (segYs.length) {
+    const y0 = Math.min(...segYs), y1 = Math.max(...c.lanes.map((l, k) => l.kind === 'seg' ? ys[k] + l.h : 0));
+    c.overlaps.forEach(([a, b]) => { s += `<rect x="${X(a)}" y="${y0}" width="${Math.max((b - a) * zoom, 1)}" height="${y1 - y0}" fill="var(--overlap)"><title>overlap ${fmt(b - a)}</title></rect>`; });
+  }
+  let clip = 0;
+  c.lanes.forEach((l, k) => {
+    const y = ys[k];
+    if (l.kind === 'seg') {
+      l.turns.forEach(t => {
+        const p = t.planned, a = t.actual, py = y + 9, ph = l.h - 18;
+        const ax = X(a.t0), aw = Math.max(a.dur * zoom, 2), pw = Math.max(p.dur * zoom, 2);
+        s += `<rect x="${X(p.t0)}" y="${py}" width="${pw}" height="${ph}" rx="5" fill="none" stroke="${col(t.role)}" stroke-dasharray="4 3" opacity=".55"/>`;
+        s += `<rect class="hit" data-turn="${t.stream}|${t.id}" x="${ax}" y="${py}" width="${aw}" height="${ph}" rx="5" fill="${soft(t.role)}" stroke="${col(t.role)}"/>`;
+        const id = 'c' + (clip++);
+        s += `<clipPath id="${id}"><rect x="${X(p.t0) + 4}" y="${py}" width="${Math.max(pw - 8, 0)}" height="${ph}"/></clipPath>`;
+        const spoken = segText(a), rest = segText(p).slice(spoken.length);
+        s += `<text clip-path="url(#${id})" x="${ax + 6}" y="${py + ph / 2 + 4}" pointer-events="none"><tspan>${esc(modality(a) + tagOf(t) + spoken)}</tspan>${rest ? `<tspan fill="var(--muted)" text-decoration="line-through">${esc(rest)}</tspan>` : ''}</text>`;
+        if (t.cut) {
+          const lab = t.causeLabel || 'cut', c2 = t.cause && t.causeOk ? 'var(--cursor)' : 'var(--bad)';
+          s += `<line x1="${X(end(a))}" x2="${X(end(a))}" y1="${py - 5}" y2="${py + ph + 5}" stroke="${c2}" stroke-width="2"/><text x="${X(end(a)) + 3}" y="${py - 1}" style="fill:${c2};font-size:10px">${esc(lab)}</text>`;
+        }
+      });
+    } else if (l.kind === 'units') {
+      const w = Math.max(l.units[0] ? (l.units[0].t1 - l.units[0].t0) * zoom - 1.5 : 2, 1.5), cy = y + 4, ch = l.h - 8;
+      l.units.forEach((u, j) => {
+        const x = X(u.t0) + .75, fill = u.decision === 'speak' ? 'var(--agent)' : u.decision === 'listen' ? 'var(--listen)' : 'var(--user)';
+        s += `<rect class="hit u" data-unit="${j}" x="${x}" y="${cy}" width="${w}" height="${ch}" rx="2" fill="${fill}"/>`;
+        if (u.marks.includes('<|turn_eos|>')) s += `<path d="M${x + w - 6} ${cy} h6 v6 Z" fill="var(--bad)" pointer-events="none"><title>turn_eos</title></path>`;
+        if (u.decision === 'speak' && u.marks.includes('<|listen|>')) s += `<circle cx="${x + w - 3}" cy="${cy + ch - 3}" r="2.2" fill="var(--ink)" pointer-events="none"/>`;
+        if (w > 28 && u.text.trim()) s += `<clipPath id="uc${j}"><rect x="${x + 2}" y="${cy}" width="${w - 4}" height="${ch}"/></clipPath><text class="ut" clip-path="url(#uc${j})" x="${x + 3}" y="${cy + ch / 2 + 3.5}">${esc(u.text.trim())}</text>`;
+      });
+    } else if (l.kind === 'bg') {
+      l.items.forEach(it => {
+        const x0 = X(it.a), x1 = X(it.b == null ? c.tMax : it.b), lab = bgLabel(it.spec), silent = it.spec.type === 'silence';
+        s += `<rect x="${x0}" y="${y + 5}" width="${Math.max(x1 - x0, 2)}" height="${l.h - 10}" rx="4" fill="${silent ? 'none' : 'var(--other-soft)'}" stroke="var(--other)" ${silent ? 'stroke-dasharray="3 3"' : ''}><title>${esc(JSON.stringify(it.spec))}</title></rect>`
+          + `<text x="${x0 + 6}" y="${y + l.h / 2 + 4}" pointer-events="none" style="fill:var(--muted);font-size:10.5px">${esc(lab)}</text>`;
+      });
+    } else if (l.kind === 'envtool') {
+      l.items.forEach(it => {
+        const ps = Object.keys((it.tool.parameters || {}).properties || {}), lab = `${it.tool.name}(${ps.join(', ')})`;
+        const x = X(it.t), by = y + 6 + it.row * 20, w = lab.length * 6.2 + 14;
+        s += `<g class="hit" data-envtool="${it.idx}"><rect x="${x}" y="${by}" width="${w}" height="16" rx="8" fill="var(--soft)" stroke="var(--other)"/>`
+          + `<text x="${x + 7}" y="${by + 12}" style="font-family:var(--mono);font-size:10.5px">${esc(lab)}</text></g>`;
+      });
+    } else if (l.kind === 'tool') {
+      l.calls.forEach(k => {
+        const x0 = X(k.t0), x1 = k.t1 == null ? X(c.tMax) : X(k.t1), err = k.res && k.res.data.error;
+        const color = err ? 'var(--bad)' : col(l.role), by = y + 8 + k.row * 22, bh = 16;
+        s += `<rect class="hit" data-tool="${c.tools.indexOf(k)}" x="${x0}" y="${by}" width="${Math.max(x1 - x0, 6)}" height="${bh}" rx="4" fill="${err ? 'var(--overlap)' : soft(l.role)}" stroke="${color}" ${k.t1 == null ? 'stroke-dasharray="4 3"' : ''}/>`;
+        const cid = 'tc' + c.tools.indexOf(k);
+        if (k.inside) s += `<clipPath id="${cid}"><rect x="${x0 + 3}" y="${by}" width="${Math.max(x1 - x0 - 6, 0)}" height="${bh}"/></clipPath>`;
+        s += `<text ${k.inside ? `clip-path="url(#${cid})"` : ''} x="${k.inside ? x0 + 6 : Math.max(x1, x0 + 6) + 6}" y="${by + bh / 2 + 4}" pointer-events="none" style="fill:${k.inside ? 'var(--ink)' : color};font-size:10.5px">${esc(k.label)}</text>`;
+      });
+    } else {
+      l.frames.forEach(f => {
+        const x = X(f.t), cy = y + l.h / 2, color = f.stream === 'reward' ? 'var(--good)' : f.stream === 'done' ? 'var(--ink)' : 'var(--other)';
+        if (f.dur > 0) s += `<rect x="${x}" y="${cy - 5}" width="${Math.max(f.dur * zoom, 2)}" height="10" rx="3" fill="var(--other-soft)" stroke="${color}"/>`;
+        s += `<path class="hit" data-frame="${f.i}" d="M${x} ${cy - 6} L${x + 6} ${cy} L${x} ${cy + 6} L${x - 6} ${cy} Z" fill="${color}"/>`;
+        const lab = f.stream === 'done' ? 'done' : summary(f.data);
+        if (lab) s += `<text x="${x + 9}" y="${cy + 4}" pointer-events="none" style="fill:var(--muted);font-size:10.5px">${esc(lab.length > 40 ? lab.slice(0, 40) + '…' : lab)}</text>`;
+      });
+    }
+  });
+  // latency spans
+  c.spans.forEach((sp, j) => {
+    if (sp.kind !== 'response' && sp.kind !== 'yield') {   // backchannel / aside / noise / agent_interrupt
+      const good = ['continued', 'stayed_silent', 'waited', 'checked_in'].includes(sp.reaction), y = spansY + 38;
+      const color = sp.kind === 'agent_interrupt' ? 'var(--bad)' : good ? 'var(--good)' : 'var(--bad)';
+      s += `<circle class="hit" data-span="${j}" cx="${X(sp.t0)}" cy="${y}" r="4" fill="${color}"/><text x="${X(sp.t0) + 7}" y="${y + 4}" style="fill:${color};font-size:10.5px">${sp.kind}${sp.reaction ? ' → ' + sp.reaction : ''}</text>`;
+      return;
+    }
+    const y = spansY + (sp.kind === 'response' ? 10 : 24), color = sp.kind === 'response' ? 'var(--good)' : 'var(--cursor)';
+    if (sp.t1 == null && sp.censored) {   // eval.scores: the episode ended before the answer window closed
+      s += `<circle class="hit" data-span="${j}" cx="${X(sp.t0)}" cy="${y}" r="4" fill="var(--muted)"/><text x="${X(sp.t0) + 7}" y="${y + 4}" style="fill:var(--muted);font-size:10.5px">cut off · not scored</text>`;
+    } else if (sp.t1 == null) {
+      s += `<circle class="hit" data-span="${j}" cx="${X(sp.t0)}" cy="${y}" r="4" fill="var(--bad)"/><text x="${X(sp.t0) + 7}" y="${y + 4}" style="fill:var(--bad);font-size:10.5px">${sp.kind === 'yield' ? 'never yields' : 'no reply'}</text>`;
+    } else {
+      const x0 = X(sp.t0), x1 = X(sp.t1);
+      s += `<g class="hit" data-span="${j}"><line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="2"/><line x1="${x0}" x2="${x0}" y1="${y - 4}" y2="${y + 4}" stroke="${color}" stroke-width="2"/><line x1="${x1}" x2="${x1}" y1="${y - 4}" y2="${y + 4}" stroke="${color}" stroke-width="2"/></g>`;
+      s += `<text x="${x1 + 4}" y="${y + 4}" style="fill:${color};font-size:10.5px">${sp.kind} ${fmt(sp.ms)}</text>`;
+    }
+  });
+  s += `<line id="cur" x1="${X(cursor)}" x2="${X(cursor)}" y1="${AXIS - 6}" y2="${H}" stroke="var(--cursor)" stroke-width="1.5"/>`;
+  s += '</svg>';
+  const keep = sc.scrollLeft;
+  sc.innerHTML = s; sc.scrollLeft = keep;
+  $('#labels').style.height = H + 'px';
+  $('#labels').innerHTML = c.lanes.map((l, k) => `<div style="top:${ys[k]}px;height:${l.h}px"><span><span class="who ${l.role}">${l.kind === 'envtool' ? 'env tools' : l.kind === 'bg' ? 'background' : l.kind === 'tool' ? l.role + ' tools' : l.kind === 'units' ? 'units' : l.role === 'other' ? (l.kind === 'ev' ? 'event' : 'stream') : l.role}</span>${l.kind === 'units' && c.view.agent_page ? ` <a href="${esc(c.view.agent_page)}" title="the agent server's tokens per unit" style="font-size:11px;color:var(--muted)">tokens↗</a>` : ''}</span><small>${esc(l.stream)}</small></div>`).join('')
+    + `<div style="top:${spansY}px;height:${SPANS}px"><small>latency · duplex</small></div>`;
+  const svg = $('#svg');
+  // click or drag anywhere on the timeline to scrub; playback pauses while dragging and resumes after
+  let drag = null;
+  const tAt = e => { const r = svg.getBoundingClientRect(); return Math.round(Math.min(Math.max((e.clientX - r.left - PAD) / zoom, 0), c.tMax)); };
+  svg.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    const hit = e.target.closest('.hit');
+    if (hit && hit.dataset.frame) { openFrame = +hit.dataset.frame; renderFrames(); }
+    drag = {resume: !!playing}; stopTimeline();
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+    svg.style.cursor = 'ew-resize'; setCursor(tAt(e));
+  });
+  svg.addEventListener('pointermove', e => { if (drag) { $('#tip').style.display = 'none'; setCursor(tAt(e), false, true); } else showTip(e); });
+  const up = () => { if (!drag) return; const r = drag.resume; drag = null; svg.style.cursor = ''; renderCursor(); if (r) playTimeline(); };
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+  cur._uk = null; syncUnits(cursor);
+  svg.addEventListener('mouseleave', () => { $('#tip').style.display = 'none'; });
+  sc.onwheel = e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const r = svg.getBoundingClientRect();
+    setZoom(zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2), (e.clientX - r.left - PAD) / zoom);
+  };
+}
+
+function turnByKey(key) { const [st, id] = key.split('|'); return cur.turns.find(t => t.stream === st && t.id === id); }
+function showTip(e) {
+  const tip = $('#tip'), hit = e.target.closest('.hit');
+  if (!hit) { tip.style.display = 'none'; return; }
+  let h = '';
+  if (hit.dataset.turn) {
+    const t = turnByKey(hit.dataset.turn), p = t.planned, a = t.actual;
+    h = `<span class="who ${t.role}">${t.role}</span><b>${esc(t.stream)}</b> · ${esc(t.id)}\n`
+      + `planned  ${p.t0}–${end(p)}ms (${fmt(p.dur)})\nactual   ${a.t0}–${end(a)}ms (${fmt(a.dur)})${t.cut ? `  <span class="no">cut at ${t.cutAt}ms</span>` : ''}${t.causeLabel ? '\n' + esc(t.causeLabel) : ''}${t.barge ? '  <span class="tag barge">barge-in</span>' : ''}\n\n`
+      + `${isAudio(a.data) ? esc(txt(a.data)) + '\n' : ''}${esc(segText(a))}${t.cut ? `<span class="unsaid">${esc(segText(p).slice(segText(a).length))}</span>` : ''}`;
+  } else if (hit.dataset.frame) {
+    const f = cur.frames[+hit.dataset.frame];
+    h = `<b>${esc(f.stream)}</b>  t=${f.t}ms${f.dur ? ` dur=${f.dur}` : ''}  src=${esc(f.src)}\n${esc(JSON.stringify(f.data, null, 2))}`;
+  } else if (hit.dataset.unit) {
+    const u = cur.lanes.find(l => l.kind === 'units').units[+hit.dataset.unit];
+    h = `<b>unit ${u.i}</b>  ${u.t0}–${u.t1}ms (input window)\ndecision: <b>${esc(u.decision)}</b>${u.marks.length ? '\nspecial out: ' + esc(u.marks.join(' ')) : ''}${u.text ? '\n\ntext out: ' + esc(u.text) : ''}${cur.view.agent_page ? '\n\n<span class="hint">all tokens: the agent trace page (tokens↗ on the lane label)</span>' : ''}`;
+  } else if (hit.dataset.envtool) {
+    const it = cur.envTools[+hit.dataset.envtool], t = it.tool;
+    h = `<b>${esc(t.name)}</b>${t.service ? '  [' + esc(t.service) + ']' : ''}\noffered to the agent at ${it.t}ms\n${esc(t.description || '')}\n\nparameters\n${esc(JSON.stringify(t.parameters || {}, null, 2))}`;
+  } else if (hit.dataset.tool) {
+    const k = cur.tools[+hit.dataset.tool], a = k.call.data;
+    h = `<b>${esc(a.name)}</b>  #${esc(a.id)}\ncalled   ${k.t0}ms\nresult   ${k.t1 == null ? 'never arrived' : k.t1 + 'ms  (latency ' + fmt(k.t1 - k.t0) + ')'}\n\narguments\n${esc(JSON.stringify(a.arguments, null, 2))}`
+      + (k.res ? `\n\n${k.res.data.error ? '<span class="no">error</span>' : 'result'}\n${esc(k.res.data.content)}` : '');
+  } else if (hit.dataset.span) {
+    const sp = cur.spans[+hit.dataset.span];
+    h = sp.kind !== 'response' && sp.kind !== 'yield'
+      ? `<b>${sp.kind}</b>  on ${esc(sp.on)}${sp.target ? ' (agent turn ' + esc(sp.target) + ')' : ''}\nreaction: ${sp.reaction || '—'}\n${sp.kind === 'agent_interrupt' ? 'the agent started talking over a user turn' : 'expected: the agent is not affected (continued / stayed_silent)'}`
+      : `<b>${sp.kind} latency</b>\n${sp.t0}ms → ${sp.t1 ?? 'never'}${sp.ms != null ? `  (${fmt(sp.ms)})` : ''}\n${sp.kind === 'response' ? 'end of user turn → agent starts replying' : 'user barge-in starts → agent stops'}${sp.censored ? '\nthe episode ended before the answer window closed: censored, not scored (eval.scores)' : ''}`;
+  }
+  tip.innerHTML = h; tip.style.display = 'block';
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+
+// ---------- cursor-linked panels ----------
+// ---------- play the whole timeline (every turn's audio + background, as they overlapped) ----------
+let playing = null;
+// one virtual clock drives the page; audio elements (when the episode has media) are started against it.
+// Text-only episodes simply have no audio items, so the same clock plays them silently.
+function playTimeline() {
+  stopTimeline();
+  if (!cur) return;
+  const ep = cur.episode || {turns: []};
+  const start = cursor >= cur.tMax ? 0 : cursor, items = [], r = rate;
+  ep.turns.forEach(t => { if (t.media && t.media.kind === 'audio' && t.end_time > start) items.push({ref: t.media, a: t.start_time, b: t.end_time, gain: 1}); });
+  (ep.background || []).forEach(bg => {
+    const a = bg.start_time || 0, b = bg.end_time ?? cur.t_end;
+    if (bg.media && b > start) items.push({ref: bg.media, a, b, gain: Math.min(1, Math.pow(10, (bg.gain_db || 0) / 20)), loop: !!bg.loop});
+  });
+  const p = {start, wall: performance.now(), audios: [], timers: []};
+  const now = () => p.start + (performance.now() - p.wall) * r;  // timeline ms
+  items.forEach(it => {
+    // created now, inside the click (a user gesture), and unlocked with a muted play, so that starting
+    // them later from a timer isn't blocked by the browser's autoplay policy
+    const el = new Audio(MEDIA_BASE + it.ref.uri);
+    el.preload = 'auto'; el.volume = it.gain; el.loop = it.loop; el.muted = true; el.playbackRate = r;
+    let started = false;  // the unlock must not pause a turn that has already started (e.g. one at the cursor)
+    el.play().then(() => { if (!started) el.pause(); el.muted = false; }).catch(() => { el.muted = false; });
+    if (!it.loop) el.ontimeupdate = () => { if (el.currentTime * 1000 >= it.ref.end_ms) el.pause(); };
+    p.audios.push(el);
+    const go = () => {
+      if (playing !== p) return;
+      const seekAndPlay = () => { started = true; el.muted = false; el.playbackRate = r; el.currentTime = (it.ref.start_ms + Math.max(0, now() - it.a)) / 1000; el.play().catch(() => {}); };
+      if (el.readyState >= 1) seekAndPlay(); else el.addEventListener('loadedmetadata', seekAndPlay, {once: true});
+      p.timers.push(setTimeout(() => el.pause(), Math.max(0, (it.b - now()) / r)));
+    };
+    p.timers.push(setTimeout(go, Math.max(0, (it.a - start) / r)));
+  });
+  const frame = () => {
+    if (playing !== p) return;
+    const t = Math.round(now()), endT = cur.t_end || cur.tMax;
+    if (t >= endT) { setCursor(endT, true); stopTimeline(); renderCursor(); return; }
+    setCursor(t, true, true);
+    const sc = $('#scroll'), x = PAD + t * zoom;
+    if (sc && (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 40)) scrollTo(t);
+  };
+  playing = p; updatePlay();
+  p.tick = setInterval(frame, 40);   // a timer, not rAF: keeps the clock (and audio cut-offs) honest in background tabs
+}
+function stopTimeline() {
+  if (!playing) return;
+  playing.timers.forEach(clearTimeout); clearInterval(playing.tick); playing.audios.forEach(a => a.pause());
+  playing = null; updatePlay(); linkHash();
+}
+function updatePlay() {
+  const b = $('#play'); if (!b) return;
+  b.textContent = playing ? '❚❚ pause' : '▶ play'; b.classList.toggle('playing', !!playing);
+}
+
+// light: a playback frame or a drag — only the cheap live parts follow every frame; the heavier panels
+// (state at cursor, frames table, URL hash) catch up at most every 200 ms
+let lastHeavy = 0;
+function setCursor(t, fromPlayer, light) {
+  if (playing && !fromPlayer) { cursor = t; playTimeline(); }  // jumping while playing: carry on from there
+  cursor = t;
+  const line = $('#cur'); if (line) { const x = PAD + t * zoom; line.setAttribute('x1', x); line.setAttribute('x2', x); }
+  renderCursor(light);
+}
+function renderCursor(light) {
+  syncLive(cursor);
+  const nowMs = performance.now();
+  if (light && nowMs - lastHeavy < 200) return;
+  lastHeavy = nowMs;
+  if (!light) linkHash();
+  renderState(); syncFrames();
+}
+function renderState() {
+  const c = cur, t = cursor;
+  $('#curT').textContent = `t = ${t}ms`;
+  // what each segment stream has said by t
+  let h = '';
+  c.lanes.filter(l => l.kind === 'seg').forEach(l => {
+    const started = l.turns.filter(x => x.planned.t0 <= t);
+    const turn = started[started.length - 1];
+    let body;
+    if (!turn) body = '<span class="unheard">(nothing yet)</span>';
+    else {
+      const p = turn.planned, known = turn.versions.filter(v => v.t <= t);
+      const view = known.length ? known[known.length - 1].seg : p; // what was known at t
+      const T = segText(view), n = idx(view, t, T.length), status = t < view.t0 ? 'scheduled' : t < end(view) ? 'speaking' : (turn.cut && turn.cutAt <= t ? `cut at ${turn.cutAt}ms` : 'finished');
+      const said = T.slice(0, n), pending = T.slice(n);
+      body = `<span class="tag ${status.startsWith('cut') ? 'cut' : ''}" style="margin:0">${turn.id} · ${status}</span><br><span class="heard">${esc(said)}</span>${pending ? `<span class="unheard">${esc(pending)}</span>` : ''}`;
+    }
+    h += `<div class="row"><span class="who ${l.role}">${l.role}</span><small style="color:var(--muted);font-family:var(--mono)">${esc(l.stream)}</small><div style="margin-top:4px">${body}</div></div>`;
+  });
+  const started = (c.tools || []).filter(k => k.t0 <= t);
+  if (started.length) {
+    const rows = started.map(k => {
+      const done = k.t1 != null && k.t1 <= t, a = k.call.data;
+      return `<div><span class="tag" style="margin:0">${done ? (k.res.data.error ? '<span class="no">error</span>' : 'returned') : 'waiting ' + fmt(t - k.t0)}</span> <b style="font-family:var(--mono);font-weight:500">${esc(a.name)}</b>${done ? ' → ' + esc(String(k.res.data.content).slice(0, 160)) : ''}</div>`;
+    }).join('');
+    h += `<div class="row"><span class="who other">tools</span><div style="margin-top:4px">${rows}</div></div>`;
+  }
+  const past = c.frames.filter(f => f.t <= t), rewardSoFar = past.filter(f => f.stream === 'reward').reduce((s, f) => s + (+f.data || 0), 0);
+  const next = c.frames.find(f => f.t > t);
+  h += `<div class="row"><span class="who other">log</span>${past.length}/${c.frames.length} frames delivered · reward so far ${rewardSoFar}${next ? ` · next: <b>${esc(next.stream)}</b> at ${next.t}ms` : ''}</div>`;
+  $('#state').innerHTML = h;
+}
+
+// transcript: rendered once per episode; playback only toggles classes (row now / past / future, word said / cur)
+function renderTranscript() {
+  $('#transcript').innerHTML = cur.turns.map((x, j) => {
+    const a = x.actual, p = x.planned;
+    const words = x.words.map((w, k) => w.said ? `<span class="w" data-k="${k}">${esc(w.w)}</span>` : `<span class="unsaid">${esc(w.w)}</span>`).join('');
+    return `<div class="tr future" data-j="${j}" data-t="${p.t0}"><div class="time">${a.t0}–${end(a)}ms${x.cut ? `<br><span class="tag cut" style="margin:0">planned –${end(p)}</span>` : ''}</div>
+      <div><span class="who ${x.role}">${x.role}</span>${x.kind ? `<span class="tag">${x.kind}</span>` : ''}${x.barge && !x.kind ? '<span class="tag barge">barge-in</span>' : ''}${x.cut ? `<span class="tag ${x.cause && x.causeOk ? 'barge' : 'cut'}">cut at ${x.cutAt}ms${x.causeLabel ? ' — ' + esc(x.causeLabel) : ''}</span>` : ''}${x.rec && x.rec.words ? '<span class="tag" title="word timestamps recorded in the turn">words</span>' : ''}${x.media ? `<button class="play" data-turn="${j}" title="play this turn's audio">▶</button>` : ''}<div class="txt">${modality(a)}${words}</div></div></div>`;
+  }).join('') || '<div class="hint">No segments.</div>';
+  const rows = [...document.querySelectorAll('#transcript .tr')];
+  cur._tr = rows.map(el => ({el, turn: cur.turns[+el.dataset.j], ws: [...el.querySelectorAll('.w')], state: 'future', k: -1}));
+  rows.forEach(el => el.onclick = () => { const t0 = +el.dataset.t; setCursor(t0); scrollTo(t0); });
+  document.querySelectorAll('#transcript .play').forEach(el => el.onclick = e => { e.stopPropagation(); playSlice(cur.turns[+el.dataset.turn].media); });
+}
+function syncTranscript(t) {
+  let focus = null;
+  (cur._tr || []).forEach(r => {
+    const x = r.turn, st = t < x.actual.t0 ? 'future' : t < end(x.actual) ? 'now' : 'past';
+    if (st !== r.state) { r.el.classList.remove(r.state); r.el.classList.add(st); r.state = st; }
+    if (st === 'now') {
+      if (!focus) focus = r.el;
+      let k = -1;   // index (among said words) of the word being spoken
+      x.words.forEach((w, i) => { if (w.said && w.s <= t) k++; });
+      if (k !== r.k) { r.ws.forEach((el, i) => { el.classList.toggle('said', i <= k); el.classList.toggle('cur', i === k); }); r.k = k; }
+    } else if (r.k !== -1) { r.ws.forEach(el => el.classList.remove('said', 'cur')); r.k = -1; }
+  });
+  if (focus && playing) {   // keep the current utterance in view inside the transcript box (not the page)
+    const box = $('#transcript'), top = focus.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top + focus.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top - box.clientHeight / 3;
+  }
+}
+function scrollTo(t) { const sc = $('#scroll'); sc.scrollLeft = PAD + t * zoom - sc.clientWidth / 3; }
+
+function renderFrames() {
+  const q = frameFilter;
+  const rows = cur.frames.filter(f => !q || (f.stream + ' ' + f.src + ' ' + JSON.stringify(f.data)).toLowerCase().includes(q));
+  $('#frames').innerHTML = rows.map(f => `<tr data-i="${f.i}" class="${f.t > cursor ? 'future' : ''}"><td class="num">${f.t}</td><td class="mono">${esc(f.stream)}</td><td class="mono">${esc(f.src)}</td><td class="num">${f.dur || ''}</td>
+    <td>${esc(summary(f.data))}${openFrame === f.i ? `<pre>${esc(JSON.stringify(f.data, null, 2))}</pre>` : ''}</td></tr>`).join('');
+  document.querySelectorAll('#frames tr').forEach(el => el.onclick = () => {
+    const i = +el.dataset.i; openFrame = openFrame === i ? null : i; renderFrames(); setCursor(cur.frames[i].t); scrollTo(cur.frames[i].t);
+  });
+}
+function syncFrames() {
+  document.querySelectorAll('#frames tr').forEach(el => el.classList.toggle('future', cur.frames[+el.dataset.i].t > cursor));
+}
+
+// ---------- live: what each party is doing at the playhead ----------
+const on = (x, t) => x.actual.t0 <= t && t < end(x.actual);
+const isNormal = x => !x.kind;
+function saidSoFar(x, t, n = 90) {   // the turn's words up to t (from the karaoke timing), tail-trimmed
+  const s = x.words.filter(w => w.said && w.s <= t).map(w => w.w).join('').trim();
+  return s.length > n ? '…' + s.slice(-n) : s;
+}
+function partyNow(t) {
+  const c = cur, us = c.turns.filter(x => x.role === 'user'), as = c.turns.filter(x => x.role === 'agent');
+  const uNow = us.filter(x => on(x, t)).pop(), aNow = as.filter(x => on(x, t)).pop();
+  const U = {st: 'silent', cls: '', bubble: '', live: false}, A = {st: 'silent', cls: '', bubble: '', live: false};
+  // user
+  if (uNow) {
+    const barge = isNormal(uNow) && as.some(a => a.actual.t0 < uNow.actual.t0 && uNow.actual.t0 < end(a.actual));
+    U.st = uNow.kind ? uNow.kind : barge ? 'barging in' : 'speaking';
+    U.cls = barge ? 'warn' : 'on'; U.bubble = saidSoFar(uNow, t) || (uNow.kind ? `[${uNow.kind}]` : ''); U.live = true;
+  } else {
+    const next = us.find(x => x.actual.t0 > t), prev = us.filter(x => end(x.actual) <= t && isNormal(x)).pop();
+    const replied = prev && as.some(a => a.actual.t0 >= end(prev.actual) && a.actual.t0 <= t);
+    if (aNow && next && isNormal(next) && next.actual.t0 - t <= 800 && next.actual.t0 < end(aNow.actual)) {
+      U.st = `about to barge in · ${fmt(next.actual.t0 - t)}`; U.cls = 'warn';
+    } else if (prev && prev.rec && prev.rec.expects === 'wait' && !replied && (!next || next.actual.t0 > t)) {
+      U.st = `pause mid-thought · ${fmt(t - end(prev.actual))}`;
+    } else if (prev && !replied && !aNow) {
+      U.st = `waiting for a reply · ${fmt(t - end(prev.actual))}`;
+    } else if (aNow) U.st = 'listening';
+    const last = us.filter(x => end(x.actual) <= t).pop();
+    U.bubble = last ? segText(last.actual) : '';
+  }
+  // agent
+  if (aNow) {
+    const over = us.find(u => isNormal(u) && u.actual.t0 >= aNow.actual.t0 && u.actual.t0 <= t && end(aNow.actual) <= end(u.actual) + 1);
+    const talkingOver = uNow && isNormal(uNow);
+    if (over && (aNow.cut || end(aNow.actual) < end(over.actual))) { A.st = `yielding · barged in ${fmt(t - over.actual.t0)} ago`; A.cls = 'warn'; }
+    else if (talkingOver) { A.st = 'talking over the user'; A.cls = 'bad'; }
+    else { A.st = 'speaking'; A.cls = 'on'; }
+    A.bubble = saidSoFar(aNow, t); A.live = true;
+  } else {
+    A.st = uNow ? 'listening' : 'silent';
+    const last = as.filter(x => end(x.actual) <= t).pop();
+    A.bubble = last ? segText(last.actual) : '';
+  }
+  return {U, A};
+}
+function unitAt(t) {
+  const l = cur.lanes.find(x => x.kind === 'units');
+  if (!l) return null;
+  let k = -1;
+  for (let i = 0; i < l.units.length && l.units[i].t0 <= t; i++) k = i;
+  return {l, k, u: k >= 0 && t < l.units[k].t1 ? l.units[k] : null};
+}
+function talkSoFar(role, t) {
+  return cur.turns.filter(x => x.role === role).reduce((s, x) => s + Math.max(0, Math.min(end(x.actual), t) - x.actual.t0), 0);
+}
+const scoreCls = v => v >= 0.8 ? 'ok' : v < 0.5 ? 'no' : 'mid';
+// a headline's score chip: the score, or a grey "not scored" for an eval.scores event without one (censored)
+const scChip = h => h.score != null ? `<span class="sc ${scoreCls(h.score)}" title="eval.scores: ${esc(h.expects)} → ${esc(h.outcome)}">${h.score.toFixed(2)}</span>`
+  : h.source === 'eval.scores' ? `<span class="sc na" title="eval.scores: ${esc(h.expects)} → ${esc(h.outcome)} (left out of the score)">not scored</span>` : '';
+function setSt(id, st, cls) { const el = $(id); if (el.textContent !== st) el.textContent = st; el.className = 'st' + (cls ? ' ' + cls : ''); }
+function setBubble(id, text, live) { const el = $(id); if (el.textContent !== text) el.textContent = text; el.classList.toggle('on', live); el.title = live ? '' : 'last thing said'; }
+// headlines: rendered once per episode; playback toggles past / cur / live / future
+function renderTicker() {
+  const hs = cur.headlines, wrap = $('#tickwrap');
+  if (!hs.length) { $('#ticker').innerHTML = '<div class="hint" style="padding:10px 12px">No evaluated events in this episode (no eval.scores / eval.duplex records).</div>'; $('#tally').hidden = true; return; }
+  $('#tally').hidden = false;
+  $('#ticker').innerHTML = hs.map((h, k) =>
+    `<div class="hl future" data-k="${k}"><span class="tm">${(h.t / 1000).toFixed(1)}s</span>
+      <span class="ic ${h.ok === false ? 'no' : h.ok === true ? (h.score != null && h.score < 0.5 ? 'mid' : 'ok') : ''}" title="${h.ok === true && h.score != null && h.score < 0.5 ? 'expected outcome, but a low score (slow)' : ''}"><span>${h.ok === true ? '✓' : h.ok === false ? '✗' : '·'}</span></span>
+      <span class="tx">${esc(h.text.replace(/ [✓✗]$/, ''))}</span>
+      <span class="meta">${scChip(h) || `<span class="src">${esc(h.behavior || '')}</span>`}<button class="xp" title="raw record">▸</button></span></div>`).join('');
+  cur._hl = [...document.querySelectorAll('#ticker .hl')].map(el => ({el, h: hs[+el.dataset.k], st: 'future'}));
+  cur._hl.forEach(({el, h}) => {
+    el.onclick = e => {
+      if (e.target.closest('pre')) return;
+      if (e.target.classList.contains('xp')) {
+        const pre = el.querySelector('pre');
+        if (pre) { pre.remove(); e.target.textContent = '▸'; }
+        else { el.insertAdjacentHTML('beforeend', `<pre>${esc(h.source)} · resolved at ${h.t_resolved}ms\n${esc(JSON.stringify(h.raw, null, 2))}</pre>`); e.target.textContent = '▾'; }
+        return;
+      }
+      setCursor(h.t); scrollTo(h.t);
+    };
+  });
+  cur._tallyKey = null;
+}
+function syncTicker(t, force) {
+  const hs = cur.headlines;
+  if (!hs.length) { $('#nhead').innerHTML = '<span class="lbl">EVENTS</span><span class="hint">none recorded</span>'; return; }
+  // the current headline: the last one whose outcome is visible by t
+  let last = null;
+  hs.forEach(h => { if (h.t_resolved <= t) last = h; });
+  let focus = null;
+  (cur._hl || []).forEach(r => {
+    const h = r.h, st = h === last ? 'cur' : h.t_resolved <= t ? 'past' : h.t <= t ? 'live' : 'future';
+    if (st !== r.st) { r.el.classList.remove(r.st); r.el.classList.add(st); r.st = st; }
+    if (st === 'cur') focus = r.el;
+  });
+  if (focus && playing) {
+    const box = $('#ticker'), top = focus.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top + focus.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top - box.clientHeight / 2;
+  }
+  // the headline line in the timeline card
+  const liveH = hs.filter(h => h.t <= t && t < h.t_resolved).pop();
+  const show = liveH && (!last || liveH.t > last.t_resolved) ? liveH : last;
+  if (show !== lastHl || force) {
+    const flash = playing && show && show !== lastHl;
+    lastHl = show;
+    const el = $('#nhead');
+    el.innerHTML = show ? `<span class="lbl">${show === liveH ? 'NOW' : 'LATEST'} · ${(show.t / 1000).toFixed(1)}s</span><span class="${show === liveH ? '' : show.ok === true ? 'ok' : show.ok === false ? 'no' : ''}">${esc(show === liveH ? show.pending : show.text)}</span>${show !== liveH ? scChip(show) : ''}`
+      : '<span class="lbl">EVENTS</span><span class="hint">nothing evaluated yet — press ▶ or scrub</span>';
+    if (flash) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  }
+  // running tally: eval.scores.total over the events resolved so far (precomputed per headline)
+  const done = hs.filter(h => h.t_resolved <= t), key = done.length;
+  if (key === cur._tallyKey && !force) return;
+  cur._tallyKey = key;
+  const scored = hs.filter(h => h.score != null), sd = done.filter(h => h.score != null);
+  const ok = done.filter(h => h.ok === true).length, bad = done.filter(h => h.ok === false).length;
+  const unscored = done.filter(h => h.source === 'eval.scores' && h.score == null).length;
+  const tally = sd.length ? sd[sd.length - 1].tally : null, total = cur.view.total;
+  const by = {};
+  sd.forEach(h => (by[h.expects] = by[h.expects] || []).push(h.score));
+  $('#tally').innerHTML = hs.some(h => h.source === 'eval.scores')
+    ? `<span class="hint">score so far</span><span class="big ${tally == null ? '' : scoreCls(tally)}">${tally == null ? '—' : tally.toFixed(2)}</span>
+       <span class="bar" title="events resolved"><i style="width:${scored.length ? 100 * sd.length / scored.length : 0}%"></i></span>
+       <span class="hint">${sd.length}/${scored.length} user turns · <span class="ok">${ok} ✓</span> <span class="no">${bad} ✗</span>${unscored ? ` · <span title="cut off by the episode end; left out of the score, as in eval.scores">${unscored} not scored</span>` : ''} · final <b>${total == null ? '—' : total}</b></span>
+       <span style="flex-basis:100%;display:flex;gap:4px;flex-wrap:wrap">${Object.entries(by).map(([k, v]) => { const m = v.reduce((a, b) => a + b, 0) / v.length; return `<span class="chip" style="padding:0 8px">${esc(k)} <b class="${scoreCls(m)}">${m.toFixed(2)}</b> <span class="hint">×${v.length}</span></span>`; }).join('')}</span>`
+    : `<span class="hint">duplex events</span><span class="big">${ok}✓ ${bad}✗</span><span class="hint">${done.length}/${hs.length} passed · no eval.scores in this episode, so no score</span>`;
+}
+function syncUnits(t) {
+  const ua = unitAt(t);
+  if (!ua) return null;
+  if (!cur._uel || !cur._uel[0] || !cur._uel[0].isConnected) { cur._uel = [...document.querySelectorAll('#svg rect.u')]; cur._uk = null; }
+  const key = ua.k + ':' + !!ua.u;
+  if (key !== cur._uk) {
+    cur._uk = key;
+    cur._uel.forEach((el, i) => { el.classList.toggle('past', i < ua.k || (i === ua.k && !ua.u)); el.classList.toggle('cur', i === ua.k && !!ua.u); });
+  }
+  return ua.u;
+}
+function syncLive(t, force) {
+  if (!cur || !$('#nowbar')) return;
+  const endT = cur.t_end || cur.tMax;
+  $('#clock').textContent = `${(t / 1000).toFixed(1)} / ${(endT / 1000).toFixed(1)} s`;
+  const {U, A} = partyNow(t);
+  setSt('#nu-st', U.st, U.cls); setBubble('#nu-b', U.bubble, U.live);
+  setSt('#na-st', A.st, A.cls); setBubble('#na-b', A.bubble, A.live);
+  const u = syncUnits(t), uc = $('#na-u');
+  const uh = u ? `unit ${u.i} · <b class="${u.decision}">${esc(u.decision)}</b>${u.marks.filter(m => m !== '<|speak|>' && m !== '<|listen|>' || u.decision === 'speak' && m === '<|listen|>').map(m => ' ' + esc(m)).join('')}${u.text.trim() ? ' · “' + esc(u.text.trim()) + '”' : ''}` : '';
+  if (uc.innerHTML !== uh) uc.innerHTML = uh;
+  const ov = cur.overlaps.reduce((s, [a, b]) => s + Math.max(0, Math.min(b, t) - a), 0);
+  $('#ncount').innerHTML = `<span>user talk</span><b>${(talkSoFar('user', t) / 1000).toFixed(1)}s</b><span>agent talk</span><b>${(talkSoFar('agent', t) / 1000).toFixed(1)}s</b>`
+    + `<span>overlap</span><b>${(ov / 1000).toFixed(1)}s</b><span>turns</span><b>${cur.turns.filter(x => x.actual.t0 <= t).length}/${cur.turns.length}</b>`;
+  syncTranscript(t); syncTicker(t, force);
+}
+
+// ---------- boot ----------
+$('#q').oninput = renderSidebar;
+$('#cases').onclick = e => { const el = e.target.closest('.case'); if (el) selectCase(+el.dataset.i); };
+document.addEventListener('keydown', e => {
+  if (!cur || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') { e.preventDefault(); playing ? stopTimeline() : playTimeline(); return; }
+  const times = [...new Set(cur.frames.flatMap(f => isSeg(f.data) ? [f.t, f.data.t0, f.data.t0 + f.data.dur] : [f.t]))].sort((a, b) => a - b);
+  if (e.key === 'ArrowRight') { const t = times.find(v => v > cursor); if (t != null) { setCursor(t); scrollTo(t); } }
+  if (e.key === 'ArrowLeft') { const t = [...times].reverse().find(v => v < cursor); if (t != null) { setCursor(t); scrollTo(t); } }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const i = CASES.indexOf(cur) + (e.key === 'ArrowDown' ? 1 : -1);
+    if (i >= 0 && i < CASES.length) { e.preventDefault(); selectCase(i); }
+  }
+});
+addEventListener('resize', () => { if (cur) renderTimeline(); });
+if (CASES.length) {
+  const [want, at] = decodeURIComponent(location.hash.slice(1)).split('@');
+  selectCase(Math.max(0, CASES.findIndex(c => c.case_id === want)));
+  if (at) { setCursor(+at); scrollTo(+at); }
+} else renderSidebar();
+</script>
+</body>
+</html>

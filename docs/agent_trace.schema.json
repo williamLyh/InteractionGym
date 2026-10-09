@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "interaction_gym/agent_trace.schema.json",
+  "title": "InteractionGym agent trace record (optional companion of a trajectory)",
+  "description": "One line of agent_traces.jsonl: what an agent server's model consumed and produced per model unit. Not part of the trajectory format; see docs/AGENT_TRACE.md.",
+  "type": "object",
+  "required": [
+    "episode_id",
+    "units"
+  ],
+  "properties": {
+    "episode_id": {
+      "type": "string",
+      "description": "the trajectory this trace belongs to (meta.episode_id)"
+    },
+    "server": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "unit_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "clock": {
+      "type": "string"
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "unit_index",
+          "decision",
+          "stages"
+        ],
+        "properties": {
+          "unit_index": {
+            "type": "integer",
+            "description": "0-based in submission order; -1 = the initial prompt"
+          },
+          "end_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "input (= episode) time at the end of the unit"
+          },
+          "decision": {
+            "type": "string",
+            "description": "listen | speak | prompt | ..."
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "stage"
+              ],
+              "properties": {
+                "stage": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "description": "[token id, raw token piece] in order; special tokens appear as themselves"
+                },
+                "output": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "description": "[token id, raw token piece] in order; special tokens appear as themselves"
+                }
+              }
+            }
+          },
+          "special_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

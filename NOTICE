@@ -1,0 +1,24 @@
+InteractionGym
+Copyright 2026 Yinhong Liu
+
+Licensed under the Apache License, Version 2.0 (see LICENSE), EXCEPT the files listed below.
+
+This product includes material from third parties under their own licenses (details: THIRD_PARTY.md):
+
+- extras/fdbench/ (the separate distribution interaction-gym-fdbench; NOT part of the
+  interaction-gym package)
+  Ported from Full-Duplex-Bench (https://github.com/DanielLin94144/Full-Duplex-Bench),
+  (c) the Full-Duplex-Bench authors, Creative Commons Attribution-NonCommercial 4.0 International
+  (CC BY-NC 4.0). NON-COMMERCIAL USE ONLY. These files are not covered by the Apache License;
+  see extras/fdbench/LICENSE and extras/fdbench/NOTICE.
+
+- src/interaction_gym/benchmarks/third_party/audiomc/
+  Audio MultiChallenge judge prompt, Copyright (c) 2025 Scale AI, MIT License.
+
+- src/interaction_gym/user.py (INTERRUPT_PROMPT)
+  Adapted from tau2-bench / tau-Voice (https://github.com/sierra-research/tau2-bench),
+  Copyright (c) 2025 Sierra Research, MIT License.
+
+- examples/serving/reference/configs/
+  Derived from vLLM-Omni deploy configurations (https://github.com/vllm-project/vllm-omni),
+  Copyright the vLLM-Omni contributors, Apache License 2.0.

@@ -1,0 +1,955 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interaction_gym/trajectory.schema.json",
+  "title": "InteractionGym episode trajectory (schema v1)",
+  "description": "One episode. See docs/FORMAT.md for semantics and derivation rules. Times are integer milliseconds from episode start.",
+  "type": "object",
+  "required": [
+    "schema",
+    "meta",
+    "turns"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "meta": {
+      "$ref": "#/$defs/meta"
+    },
+    "background": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/background"
+      }
+    },
+    "turns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/turn"
+      }
+    },
+    "eval": {
+      "$ref": "#/$defs/eval"
+    }
+  },
+  "$defs": {
+    "ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "meta": {
+      "type": "object",
+      "required": [
+        "episode_id",
+        "task",
+        "env",
+        "duration_ms",
+        "end_reason"
+      ],
+      "properties": {
+        "episode_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "media_root": {
+          "type": "string"
+        },
+        "task": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "scenario": {
+              "type": "object"
+            },
+            "initial_state": {
+              "type": "object"
+            },
+            "criteria": {
+              "type": "object"
+            }
+          }
+        },
+        "agent": {
+          "type": "object",
+          "description": "The agent the episode ran, as the runner records it (agents describe themselves: describe()): name, model, kind, server, and agent-specific settings.",
+          "properties": {
+            "name": {"type": "string"},
+            "model": {"type": "string"},
+            "kind": {"enum": ["full-duplex", "cascaded", "text"]},
+            "server": {"type": "string"}
+          }
+        },
+        "user": {
+          "type": "object",
+          "description": "The simulated user: who it is (persona, goal, voice) and how it was produced (models, barge-in, turn-taking).",
+          "required": [
+            "component",
+            "mode",
+            "voice"
+          ],
+          "properties": {
+            "component": {
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "offline",
+                "semi_online",
+                "online"
+              ]
+            },
+            "persona": {
+              "type": "string"
+            },
+            "goal": {
+              "type": "string"
+            },
+            "voice": {
+              "type": "object",
+              "properties": {
+                "speaker": {
+                  "type": "string"
+                },
+                "tts": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/model"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "words_per_sec": {
+                  "type": "number"
+                },
+                "recorded_turns": {
+                  "type": "integer"
+                },
+                "chosen_by": {
+                  "enum": [
+                    "task",
+                    "profile",
+                    "default"
+                  ]
+                },
+                "instructions": {
+                  "type": "string",
+                  "description": "how the TTS was asked to say it (style, pace, emotion)"
+                },
+                "clone": {
+                  "type": "object",
+                  "description": "voice cloning: every turn after the reference (the first turn with words) is cloned from it",
+                  "properties": {
+                    "tts": {
+                      "$ref": "#/$defs/model"
+                    },
+                    "reference": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "llm": {
+              "$ref": "#/$defs/model"
+            },
+            "system_prompt": {
+              "type": "string"
+            },
+            "barge_in": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "never | keyword | llm | <custom>"
+                },
+                "words": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "llm": {
+                  "$ref": "#/$defs/model"
+                },
+                "min_words": {
+                  "type": "integer"
+                },
+                "params": {
+                  "type": "object"
+                }
+              }
+            },
+            "turn_taking": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null",
+                  "object"
+                ]
+              },
+              "description": "effective turn-taking parameters; response_delay (object) when the reply gap is random and content-aware"
+            },
+            "profile": {
+              "type": "object",
+              "description": "structured user profile (task.scenario.profile): name, gender, age, language, accent, occupation, speaking_style, traits; attentiveness, backchanneling, surroundings, hesitancy (behaviour levels) ...",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "gender": {
+                  "type": "string"
+                },
+                "age": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ]
+                },
+                "language": {
+                  "type": "string"
+                },
+                "native_language": {
+                  "type": "string",
+                  "description": "the speaker's native language when it differs from the conversation's (heard as an accent; used for voice choice)"
+                },
+                "accent": {
+                  "type": "string"
+                },
+                "occupation": {
+                  "type": "string"
+                },
+                "speaking_style": {
+                  "type": "string"
+                },
+                "traits": {
+                  "type": "string"
+                },
+                "attentiveness": {
+                  "enum": [
+                    "low",
+                    "normal",
+                    "high"
+                  ]
+                },
+                "backchanneling": {
+                  "enum": [
+                    "none",
+                    "rare",
+                    "normal",
+                    "frequent"
+                  ]
+                },
+                "surroundings": {
+                  "enum": [
+                    "quiet",
+                    "home",
+                    "office",
+                    "car",
+                    "cafe",
+                    "street"
+                  ]
+                },
+                "hesitancy": {
+                  "enum": [
+                    "low",
+                    "normal",
+                    "high"
+                  ]
+                }
+              }
+            },
+            "behaviors": {
+              "type": "object",
+              "description": "effective habits: random event rates per minute of the call (aside_per_min, noise_per_min), away_p, the deprecated pause_p if set, the safety caps, the persona levels in effect, the noise event process (noise_process) and how aside lines are written (aside_lines)",
+              "properties": {
+                "noise_process": {
+                  "type": "object",
+                  "description": "the noise event process: model, onsets_per_min, jitter_db, labels: {label: {rate_per_min, source, level_db, burst_p, burst_max, gap_ms, mean_burst}}",
+                  "required": ["onsets_per_min", "labels"]
+                },
+                "aside_lines": {
+                  "type": "object",
+                  "description": "who writes aside / called-away lines: {type: llm, llm, params} or {type: fixed}",
+                  "properties": {"type": {"enum": ["llm", "fixed"]}}
+                },
+                "persona": {
+                  "type": "object",
+                  "description": "persona levels the derived values came from; inferred lists those not given in the profile",
+                  "properties": {
+                    "backchanneling": {
+                      "enum": [
+                        "none",
+                        "rare",
+                        "normal",
+                        "frequent"
+                      ]
+                    },
+                    "surroundings": {
+                      "enum": [
+                        "quiet",
+                        "home",
+                        "office",
+                        "car",
+                        "cafe",
+                        "street"
+                      ]
+                    },
+                    "hesitancy": {
+                      "enum": [
+                        "low",
+                        "normal",
+                        "high"
+                      ]
+                    },
+                    "attentiveness": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "inferred": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "max_backchannels_per_turn": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_asides_per_turn": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_pauses_per_turn": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "listening": {
+              "type": "object",
+              "description": "how the user's subjective sounds are decided while the agent talks",
+              "properties": {
+                "decision_points": {
+                  "type": "string"
+                },
+                "max_decision_gap_ms": {
+                  "type": "integer"
+                },
+                "model": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "LISTEN",
+                      "BACKCHANNEL",
+                      "INTERRUPT"
+                    ]
+                  }
+                }
+              }
+            },
+            "decisions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "description": "decision points (boundary / fallback), skipped ones (too_few_words), safety caps that held (capped), listener model calls and their choices, rule interrupts"
+            },
+            "random_events": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "description": "random (non-subjective) event counts: noise (events), noise_occurrences (sounds in their bursts), noise_over_user (noise events starting during the user's own speech), aside, called_away, capped (asides dropped by the per-turn cap), lines_llm / lines_fixed (aside / called-away lines written by the model / taken from the fixed lists)"
+            },
+            "noise_events": {
+              "type": "array",
+              "description": "each noise event of the episode (its turn is a kind: noise turn starting at t)",
+              "items": {
+                "type": "object",
+                "required": ["t", "label", "n"],
+                "properties": {
+                  "t": {"$ref": "#/$defs/ms"},
+                  "label": {"type": "string"},
+                  "n": {"type": "integer", "minimum": 1, "description": "occurrences in the burst"},
+                  "level_db": {"type": "number", "description": "level relative to nominal speech (jitter included)"},
+                  "dur_ms": {"$ref": "#/$defs/ms"},
+                  "source": {"enum": ["user", "surroundings"]},
+                  "clip": {"type": "string", "description": "file:<path> or synthetic"},
+                  "over_user_speech": {"type": "boolean"}
+                }
+              }
+            }
+          }
+        },
+        "duration_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "end_reason": {
+          "enum": [
+            "idle",
+            "max_duration"
+          ]
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment context: its components, and what it told the agent (never world state).",
+          "properties": {
+            "components": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "what the environment is made of: component name -> type (e.g. user simulator, tool world)"
+            },
+            "tool_schema_mode": {
+              "enum": [
+                "all",
+                "discover"
+              ]
+            },
+            "instructions": {
+              "type": "string",
+              "description": "instructions given to the agent at t=0"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/tool_spec"
+              },
+              "description": "tool schemas available to the agent at t=0"
+            },
+            "tool_services": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "service"
+                ],
+                "properties": {
+                  "service": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "tools": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "agent_context": {
+              "type": "object",
+              "description": "context given to the agent at t=0: what the task grants plus what each tool environment chooses to reveal"
+            },
+            "tool_updates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "time"
+                ],
+                "properties": {
+                  "time": {
+                    "$ref": "#/$defs/ms"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/tool_spec"
+                    }
+                  },
+                  "instructions": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": "object",
+                    "description": "context newly revealed by the loaded service"
+                  }
+                }
+              }
+            },
+            "background": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/background_spec"
+              },
+              "description": "the episode's always-on background, also when it is silence"
+            }
+          }
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "required": [
+        "kind",
+        "uri",
+        "start_ms",
+        "end_ms"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "audio",
+            "video",
+            "image"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "sr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "end_ms": {
+          "$ref": "#/$defs/ms"
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "audio"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sr"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "background": {
+      "type": "object",
+      "required": [
+        "media"
+      ],
+      "properties": {
+        "media": {
+          "$ref": "#/$defs/media"
+        },
+        "gain_db": {
+          "type": "number"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "start_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "end_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "spec": {
+          "$ref": "#/$defs/background_spec"
+        }
+      }
+    },
+    "tool_call": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "arguments",
+        "call_time"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "call_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "result_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "content": {
+          "type": "string"
+        },
+        "error": {
+          "type": "boolean"
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "required": [
+        "id",
+        "role",
+        "start_time",
+        "end_time",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "start_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "end_time": {
+          "$ref": "#/$defs/ms"
+        },
+        "text": {
+          "type": "string"
+        },
+        "media": {
+          "$ref": "#/$defs/media"
+        },
+        "kind": {
+          "enum": [
+            "backchannel",
+            "aside",
+            "noise",
+            "away"
+          ]
+        },
+        "unsaid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "words": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/ms"
+              },
+              {
+                "$ref": "#/$defs/ms"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tool_call"
+          }
+        },
+        "expects": {
+          "enum": [
+            "respond",
+            "yield",
+            "continue",
+            "ignore",
+            "interrupt",
+            "wait"
+          ]
+        },
+        "to": {
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "correction",
+            "question",
+            "stop",
+            "other"
+          ],
+          "description": "why a barge-in cuts in, labelled by its producer (the listener model's decision)"
+        },
+        "label": {
+          "type": "string",
+          "description": "what a sound is, labelled by its producer: a noise's event (cough, door_slam, phone_ring, ...), or called_away for the turns of being called away"
+        }
+      }
+    },
+    "eval": {
+      "type": "object",
+      "properties": {
+        "reward": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "mean score over the scored user turns; null when none was scored"
+            },
+            "parts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "duplex": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "behavior"
+            ],
+            "properties": {
+              "behavior": {
+                "enum": [
+                  "barge_in",
+                  "backchannel",
+                  "aside",
+                  "noise",
+                  "agent_interrupt",
+                  "away"
+                ]
+              },
+              "target": {
+                "type": "string"
+              },
+              "reaction": {
+                "enum": [
+                  "yielded",
+                  "kept_talking",
+                  "continued",
+                  "stopped",
+                  "stayed_silent",
+                  "responded",
+                  "waited",
+                  "checked_in",
+                  "talked"
+                ]
+              },
+              "latency_ms": {
+                "$ref": "#/$defs/ms"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "scores": {
+          "type": "object",
+          "required": [
+            "events",
+            "by_expectation",
+            "total"
+          ],
+          "description": "rule-based scores in [0,1]: one event per user turn, did the agent do what the user expected (docs/FORMAT.md §6.3)",
+          "properties": {
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "turn",
+                  "expects",
+                  "outcome"
+                ],
+                "properties": {
+                  "turn": {
+                    "type": "string"
+                  },
+                  "expects": {
+                    "enum": [
+                      "respond",
+                      "yield",
+                      "ignore",
+                      "wait",
+                      "interrupt",
+                      "no_interrupt"
+                    ],
+                    "description": "the turn's one expectation; no_interrupt only in pre-release files written before 2026-10-08 (several events per turn)"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "description": "respond: responded | talked_over | no_response | censored; yield: yielded | kept_talking | talked_over | no_response | took_floor; ignore: ignored | stopped | replied; wait: waited | checked_in | kept_talking | took_floor; interrupt: cut_in | listened"
+                  },
+                  "score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "latency_ms": {
+                    "type": "integer"
+                  },
+                  "target": {
+                    "type": "string",
+                    "description": "the agent turn that decided the outcome"
+                  },
+                  "reply": {
+                    "type": "string",
+                    "description": "yield: the agent turn that took the floor again after the user's turn"
+                  },
+                  "response_ms": {
+                    "type": "integer",
+                    "description": "yield: from the end of the user's turn to that reply (ms)"
+                  },
+                  "user_start_ms": {
+                    "type": "integer",
+                    "description": "start of the user turn that triggered the event (ms)"
+                  },
+                  "user_end_ms": {
+                    "type": "integer",
+                    "description": "end of that user turn (ms)"
+                  },
+                  "resolved_ms": {
+                    "type": "integer",
+                    "description": "when the outcome was settled (ms); absent for censored events"
+                  }
+                }
+              }
+            },
+            "by_expectation": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "mean score over the scored user turns; null when none was scored"
+            }
+          }
+        }
+      }
+    },
+    "tool_spec": {
+      "type": "object",
+      "required": [
+        "name",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "JSON Schema of the arguments"
+        },
+        "service": {
+          "type": "string"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        },
+        "sr": {
+          "type": "integer"
+        }
+      }
+    },
+    "background_spec": {
+      "type": "object",
+      "required": [
+        "type",
+        "source"
+      ],
+      "description": "what a background track is (soundscape.background_spec): context, never a turn",
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^(silence|white|pink|brown|ambience:(home|office|car|cafe|street))$"
+        },
+        "level_dbfs": {
+          "type": "number",
+          "description": "RMS level of the track in dBFS"
+        },
+        "snr_db": {
+          "type": "number",
+          "description": "nominal speech (-20 dBFS) to background ratio"
+        },
+        "source": {
+          "type": "string",
+          "description": "none | synthetic:<color> | bank | file:<path>"
+        },
+        "from": {
+          "enum": [
+            "surroundings",
+            "scenario"
+          ]
+        },
+        "surroundings": {
+          "enum": [
+            "quiet",
+            "home",
+            "office",
+            "car",
+            "cafe",
+            "street"
+          ]
+        }
+      }
+    }
+  }
+}

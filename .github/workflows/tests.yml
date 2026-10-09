@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        # the dev group includes the CC BY-NC Full-Duplex-Bench component (extras/fdbench) so its loaders are tested
+        run: uv sync --locked
+      - name: Test
+        # no GPU, no network: tests that need optional extras or third_party/ checkouts (tau2-bench,
+        # AutomationBench, websockets) skip themselves
+        run: uv run pytest -q
+      - name: The Apache-2.0 package does not contain the CC BY-NC component
+        run: |
+          uv build -o dist
+          uv build -o dist extras/fdbench
+          if unzip -l dist/interaction_gym-*.whl | grep -E "interaction_gym_fdbench|full_duplex_bench/"; then exit 1; fi
+          if tar tzf dist/interaction_gym-*.tar.gz | grep -E "extras/|full_duplex_bench/"; then exit 1; fi
+          if unzip -p dist/interaction_gym-*.whl | grep -a "CC-BY-NC-4.0"; then exit 1; fi
+          unzip -p dist/interaction_gym_fdbench-*.whl '*/METADATA' | grep -q "License-Expression: CC-BY-NC-4.0"

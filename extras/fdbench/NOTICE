@@ -1,0 +1,10 @@
+interaction-gym-fdbench
+Optional component of InteractionGym (https://github.com/williamLyh/InteractionGym).
+
+All files of this package are ported from Full-Duplex-Bench
+(https://github.com/DanielLin94144/Full-Duplex-Bench, upstream commit 3e799c4),
+(c) the Full-Duplex-Bench authors, and are licensed under the Creative Commons
+Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0, see LICENSE).
+NON-COMMERCIAL USE ONLY. They are NOT covered by InteractionGym's Apache License 2.0.
+
+Each file states the upstream source it was ported from and describes our changes in its header.

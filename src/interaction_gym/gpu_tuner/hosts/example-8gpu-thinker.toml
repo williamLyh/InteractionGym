@@ -1,0 +1,82 @@
+# Example serving-layout search space for one host with 8 GPUs of 32 GB (RTX 5090), matching the reference deployment
+# in examples/serving/reference/ with its default agent layout: MiniCPM-o Thinker-only servers (text-only output, one
+# GPU each). Same as example-8gpu.toml (the audio-output layout) except [services.agent]. Copy and edit for your host:
+# `python -m interaction_gym.gpu_tuner solve --host my.toml ...`.
+#
+# Per service: gpus = whole GPUs per replica (0 = a fractional replica packed by mem_gb onto shared GPUs),
+# max_sessions = session cap (duplex agent), pool = how replicas are exposed ("dp": one vLLM server
+# data-parallel over them; "proxy": one port per replica behind scripts/run_tts_proxy.sh; unset: one endpoint
+# per replica). Launch templates: {gpus} = comma list, {gpu} = first GPU, {port}, {dp} = replicas in a dp
+# pool, {backends} = proxy backend URLs, {cap} = the per-replica concurrency limit (agent: max_sessions; others:
+# cap). cap_steps = the values the tuner may raise a cap through, one step per round, when the service is
+# concurrency-bound with low GPU util (docs/GPU_TUNER.md "Concurrency caps"). Commands run from `workdir` after the `env` lines.
+
+[hardware]
+name = "example-8gpu-thinker"
+gpus = [0, 1, 2, 3, 4, 5, 6, 7]
+mem_gb = 32
+# two fractional replicas on one GPU each run 1/(1+0.5) as fast (measure and adjust)
+colocation_penalty = 0.5
+workdir = "/opt/dig_services"  # placeholder: the directory holding the reference deployment (scripts/, configs/, envs/, models/)
+session_prefix = "dig_"  # tmux sessions dig_<server>
+env = """
+# paths, caches and environments come from the deployment's serving.env (scripts source common.sh)
+"""
+
+[services.agent]  # MiniCPM-o 4.5 full duplex, Thinker only (text-only sessions): one GPU per server
+# scripts/run_minicpmo.sh with AGENT_LAYOUT=thinker: the patched vLLM-Omni env with patches/minicpmo_thinker_only.patch
+# and configs/minicpmo_4_5_thinker_1gpu.yaml; GPUS / PORT move it. One server per replica (duplex sessions cannot be DP).
+# Clients must ask for text only (VllmOmniDuplexAgent(audio_out=False)): audio sessions get no output from it.
+model = "openbmb/MiniCPM-o-4_5"
+gpus = 1
+max_sessions = 16
+# MAX_SESSIONS sets duplex_session.max_sessions and Stage 0's max_num_seqs. 16 is the cap our RL
+# multi-step rollouts run on one RTX 5090; higher caps are untested.
+cap_steps = [8, 12, 16]
+max_replicas = 6
+port = 8010
+url = "ws://127.0.0.1:{port}/v1/realtime?duplex=1"
+launch = "AGENT_LAYOUT=thinker GPUS={gpus} PORT={port} MAX_SESSIONS={cap} exec scripts/run_minicpmo.sh"
+
+[services.llm]  # user simulator: Qwen3.8-27B FP8, TP2 per replica, data-parallel replicas behind :8000 (scripts/run_llm.sh)
+model = "Qwen3.8-27B"
+gpus = 2
+max_replicas = 4
+pool = "dp"
+port = 8000
+url = "http://127.0.0.1:{port}/v1"
+cap = 128  # --max-num-seqs per replica
+cap_steps = [128, 256]
+launch = "GPUS={gpus} DP={dp} PORT={port} MAX_NUM_SEQS={cap} exec scripts/run_llm.sh"
+
+[services.tts]  # Qwen3-TTS 1.7B CustomVoice, ~12 GB per replica (scripts/run_tts.sh, as start.sh runs it)
+model = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+gpus = 0
+mem_gb = 12
+max_replicas = 6
+pool = "proxy"
+port = 8001
+backend_port = 8002
+url = "http://127.0.0.1:{port}/v1"
+launch = "exec scripts/run_tts.sh {gpu} {port}"
+proxy_launch = "TTS_BACKENDS={backends} PORT={port} exec scripts/run_tts_proxy.sh"
+
+[services.clone]  # Qwen3-TTS 1.7B Base (voice clone): every user turn after the first
+model = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+gpus = 0
+mem_gb = 12
+max_replicas = 6
+pool = "proxy"
+port = 8005
+backend_port = 8030
+url = "http://127.0.0.1:{port}/v1"
+cap = 64  # max_num_seqs of both stages (configs/qwen3_tts_shared.yaml); run_tts.sh (tts) has no such knob
+cap_steps = [64, 128]
+launch = "MAX_NUM_SEQS={cap} exec scripts/run_tts_model.sh models/Qwen3-TTS-12Hz-1.7B-Base Qwen/Qwen3-TTS-12Hz-1.7B-Base {gpu} {port} configs/qwen3_tts_shared.yaml"
+proxy_launch = "TTS_BACKENDS={backends} PORT={port} exec scripts/run_tts_proxy.sh"
+
+[services.trainer]  # GPUs kept out of serving (enable with --reserve trainer=2, or set min_replicas)
+reserve = true
+gpus = 1
+min_replicas = 0
+launch = "echo 'trainer GPUs {gpus}: start your trainer here'"

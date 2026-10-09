@@ -1,0 +1,47 @@
+# MiniCPM-o 4.5 Thinker-only layout: one GPU, text-only duplex sessions (the default agent layout of this deployment).
+# Needs patches/minicpmo_thinker_only.patch: `pipeline: minicpmo_4_5_thinker` is the stock pipeline cut to Stage 0,
+# so no Talker / Code2Wav process is started and no memory is reserved for them. Every session ends at Stage 0: text
+# deltas, token trace and input-clock acknowledgements as with the full pipeline. Clients must ask for text only
+# (`modalities: ["text"]`, VllmOmniDuplexAgent(audio_out=False)); audio sessions get no output here.
+# Adapted from the authors' RL thinker config (16 sessions on one 32 GB RTX 5090);
+# Stage-0 sampling as in minicpmo_4_5_2gpu.yaml. Not bit-identical to the two-GPU layout (see the patch header).
+pipeline: minicpmo_4_5_thinker
+async_chunk: false
+session_mode: duplex
+duplex_session:
+  # Matches Stage 0 max_num_seqs below (run_minicpmo.sh sets both from MAX_SESSIONS).
+  max_sessions: 16
+  # Needed for the per-unit token trace (session extra_body.trace_tokens). run_minicpmo.sh drops this line when
+  # AGENT_TOKEN_TRACE=0.
+  enable_debug_events: true
+
+trust_remote_code: true
+enable_prefix_caching: false
+
+stages:
+  - stage_id: 0
+    max_num_seqs: 16
+    gpu_memory_utilization: 0.9
+    enforce_eager: false
+    tensor_parallel_size: 1
+    max_num_batched_tokens: 4096
+    # A session's context grows ~16 tokens per second of conversation (10 audio embeddings + markers per 1 s unit,
+    # plus what the model says): 8192 (the RL value, 30 s episodes) is ~8 min of listening and too short for long
+    # evaluation episodes — 30% of Audio MultiChallenge episodes (cap 900 s) reached 8.2k-14.6k tokens in the
+    # 2026-10 full-audio run. 16384 covers the longest runner cap. The KV cache is shared by all sessions (~60k tokens
+    # on a 32 GB card): 16 sessions fit FD-Bench v1-v3 / Easy Turn / HumDial episodes (<= 180 s, <= 3.4k tokens);
+    # for Audio MultiChallenge (median ~5k tokens) run about 8 sessions per server.
+    max_model_len: 16384
+    devices: "0"
+    # Audio-only duplex: the shipped "video: 1" profiles 4 max-size videos and OOMs a 32 GB card. Images kept small.
+    limit_mm_per_prompt:
+      video: 0
+      image: 1
+    default_sampling_params:
+      temperature: 0.0
+      top_p: 1.0
+      top_k: -1
+      max_tokens: 2048
+      seed: 42
+      detokenize: true
+      repetition_penalty: 1.1
