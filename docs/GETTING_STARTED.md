@@ -14,6 +14,17 @@ uv sync
 uv run pytest -q          # all tests are deterministic; a few skip without optional extras
 ```
 
+Optional extras:
+
+| extra | for | install |
+|---|---|---|
+| `vllm-omni` | the vLLM-Omni duplex agent adapter (WebSocket client) | `uv sync --extra vllm-omni` |
+| `tau` | τ²-bench tasks (Sierra's tau2-bench, pinned git commit) | see [τ²-bench and AutomationBench](#τ²-bench-and-automationbench) |
+| `automationbench` | AutomationBench tasks | see [τ²-bench and AutomationBench](#τ²-bench-and-automationbench) |
+| `fdbench` | Full-Duplex-Bench v1 / v1.5 / v2 / v3 loaders: the separate component `interaction-gym-fdbench` in `extras/fdbench`, **CC BY-NC 4.0 (non-commercial only)** | `uv sync --extra fdbench` (the dev group includes it) |
+
+With pip: `pip install -e ".[vllm-omni]"`; `pip install ./extras/fdbench` for the Full-Duplex-Bench component.
+
 ## 2. A first offline episode
 
 ```bash
@@ -107,6 +118,32 @@ example in the repository does. `--audio-out` asks for the agent's real speech a
 run it twice or warm the server up first. Text-only runs are not bit-identical to audio runs (the deployments
 differ at bf16 level from the first speak unit), their agent timing is an estimate, and their results are not
 directly comparable with full-audio runs ([BENCHMARKS.md](BENCHMARKS.md), "Agent output").
+
+Served model names default to the reference deployment's; override them with `IG_LLM_MODEL`, `IG_TTS_MODEL`,
+`IG_CLONE_MODEL`, `IG_AGENT_MODEL` (see each example's docstring). `IG_MODEL_DIR` locates MiniCPM-o's reference
+voice (`MiniCPM-o-4_5/assets/system_ref_audio.wav`; or set `IG_AGENT_REF_AUDIO`). An example deployment for one
+8-GPU host is in [examples/serving/](../examples/serving/).
+
+## τ²-bench and AutomationBench
+
+τ²-bench (Sierra's tau2-bench, MIT; not the unrelated `tau2` package on PyPI) is installed from git at a pinned
+commit (`5bfa7e3`); its domain data is read from a checkout:
+
+```bash
+git clone --depth 1 https://github.com/sierra-research/tau2-bench third_party/tau2-bench   # data (or set TAU2_DATA_DIR)
+uv sync --extra tau
+uv run python examples/tau_mock.py --html runs/tau_mock.html
+```
+
+AutomationBench ([Zapier, MIT](https://github.com/zapier/AutomationBench)): business workflows across 47 simulated
+SaaS apps, scored on the end state of the world; the simulator is local Python. Loaded from a checkout (tested at
+v1.0.6; it declares Python ≥ 3.13, the parts used run on 3.12):
+
+```bash
+git clone --depth 1 https://github.com/zapier/AutomationBench third_party/automationbench   # or set AUTOMATIONBENCH_PATH
+uv sync --extra automationbench
+uv run python examples/automationbench_demo.py --html runs/automationbench_demo.html
+```
 
 ## Next
 

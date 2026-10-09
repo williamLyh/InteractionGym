@@ -3,9 +3,9 @@
 The GPU tuner decides how many GPUs each serving service gets (and where), and how many concurrent
 sessions / sequences each server admits (its concurrency cap).
 
-An env run needs several inference services at once: the duplex agent (MiniCPM-o on vLLM-Omni,
-2 GPUs per server, ≤4 sessions), the user-simulator LLM, TTS, voice-clone TTS, and later a
-trainer. A bad split leaves GPUs idle while one service is the bottleneck. On an 8-GPU host we saw
+An env run needs several inference services at once: the duplex agent (MiniCPM-o on vLLM-Omni: by default
+Thinker-only, one GPU and up to 16 sessions per server; with `--audio-out` the full audio deployment, two GPUs and
+4–6 sessions per server), the user-simulator LLM, TTS, voice-clone TTS, and later a trainer. A bad split leaves GPUs idle while one service is the bottleneck. On an 8-GPU host we saw
 this happen: the user LLM held 4 GPUs and sat idle while the agent was the bottleneck. The tuner
 **measures** the running layout and moves GPUs toward the measured load.
 
@@ -221,7 +221,9 @@ On the synthetic profiles it agrees with the loop (agent=2, llm=1, tts=1, clone=
 - The generated `launch.sh` reproduces `scripts/run_*.sh` with GPU ids and ports as parameters.
   Check the host preset before using it on another host.
 
-## Real run (8× RTX 5090 32 GB, 2026-10-04)
+## Real run (8× RTX 5090 32 GB, 2026-10-04, full-audio agent)
+
+This run predates the Thinker-only default: it tuned the two-GPU audio deployment (today's `--audio-out`).
 
 Measured on one host with 8× RTX 5090 32 GB: MiniCPM-o 4.5 agents on vLLM-Omni (audio out, lockstep), live user LLM (Qwen3.8-27B FP8) + TTS + clone
 TTS, the four suite scenarios, 90 s episode cap, `--levels 2,4,8 --seconds 180`, three restarts by

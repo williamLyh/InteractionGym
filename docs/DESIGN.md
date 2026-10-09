@@ -178,6 +178,26 @@ ToolWorld(backend, latency_ms=0 | (call -> ms))          # generic node: routes 
 - A harness (pre-retrieving tools, or leaving lookup to the model) belongs on the agent side and can be built on top of the interface `discover` mode provides.
 - The trajectory records what the agent received at the start in `meta.agent.session`.
 
+## Module map
+
+| concept | where | what it is |
+|---|---|---|
+| `Sim`, `Node`, `Frame` | `core.py` | discrete-event simulation of a node graph; nodes exchange timestamped frames on named streams |
+| `Segment`, `Chunk` | `core.py` | an utterance (or any timed output) that plays out over time and can be cut; a step's slice of it |
+| `Env`, `VecEnv`, `AgentSpec` | `core.py` | the RL-facing wrapper: `reset` / `step` the agent every `AgentSpec.chunk_ms`; `VecEnv` runs episodes concurrently |
+| `Task` | `core.py` | scenario (persona, goal, turns, ...), initial world state, evaluation criteria |
+| `ReplayUser` | `user.py` | pre-timed turns, regardless of the agent (open loop) |
+| `UserSim` + `ScriptSource` / `LLMSource` | `user.py` | a reactive user: when to speak (turn taking, barge-in) is separate from what to say (script or LLM) |
+| `Voice` | `user.py` | renders a turn: given audio, TTS (voice chosen from the persona, voice cloning), or text with an estimated duration |
+| `LLMListener` | `user.py` | the user's listening decisions (LISTEN / BACKCHANNEL / INTERRUPT) at the agent's phrase boundaries, one greedy LLM call each (τ-Voice's prompt, extended) |
+| `Behaviors`, `ResponseDelay`, `TurnTaking`, `AsideWriter` | `user.py` | random events (noises, asides, being called away) by surroundings and the safety caps; LLM-written aside lines; content-aware reply gaps; turn-taking timing |
+| `Soundscape`, `background_spec`, `EventProcess` | `soundscape.py` | the episode's background track (silence / white / pink / brown / ambience), the noise event process (compound Poisson by surroundings) and noise clips, synthetic or from a sound bank (`scripts/fetch_noise_banks.py`) |
+| `ToolWorld`, `ToolBackend`, `FunctionBackend` | `tools.py` | stateful tools with simulated latency; all-up-front or discoverable schemas |
+| agents | `agents/` | `CannedAgent` (scripted), `vllm_omni.VllmOmniDuplexAgent` (vLLM-Omni duplex server), `cascaded.CascadedAgent` (VAD + ASR + LLM + TTS) |
+| `traj.episode` / `save` / `load` | `traj.py` | the trajectory record ([docs/FORMAT.md](docs/FORMAT.md), [schema](docs/trajectory.schema.json)) |
+| `eval.scores` | `eval.py` | one rule-based duplex score per user turn and their mean (metric and reward) |
+| viewer | `viewer/` | `export_html`, `export_run`, `export_agent_trace_html`; `python -m interaction_gym.viewer` |
+
 ## 3. Repository layout
 
 Entries marked "planned" do not exist yet.
