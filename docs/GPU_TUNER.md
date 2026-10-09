@@ -9,6 +9,25 @@ Thinker-only, one GPU and up to 16 sessions per server; with `--audio-out` the f
 this happen: the user LLM held 4 GPUs and sat idle while the agent was the bottleneck. The tuner
 **measures** the running layout and moves GPUs toward the measured load.
 
+## Why it matters: measured effect
+
+One 8× RTX 5090 32 GB host, MiniCPM-o 4.5 agents with audio output in lockstep, live user LLM + TTS + clone TTS
+(details in [Real run](#real-run-8-rtx-5090-32-gb-2026-10-04-full-audio-agent)). Every row is measured, not projected:
+
+| step | layout (GPU ids) | agent sessions | episodes/hour | vs start |
+|---|---|---|---|---|
+| hand-written start | agent=4+5, llm=0+1, tts=6/7, clone=6 | 4 | 447 | 1.00× |
+| tuner round 2: GPUs moved to the agent | agent=0+1/2+3, llm=4+5, tts=6, clone=7 | 8 | 687 | 1.54× |
+| tuner session cap 4 → 6 per server | same | 12 | **788** | **1.76×** |
+| session cap 8 (rejected by the tuner) | same | 16 | 460, 24 failed episodes (Code2Wav OOM) | 1.03× |
+
+Rows 1–2 are the tuner's layout rounds; rows 3–4 are its session-cap run on the round-2 layout (240 s per level; there the cap-4 baseline measured 703 ep/h). At cap 8 the 460 ep/h is at 16 concurrent episodes, after Code2Wav on one server ran out of memory.
+
+Same GPUs, same models, same episodes: the layout and the concurrency caps alone give 1.76× throughput. Even
+at the best layout the agent GPUs were only about a third busy (the per-unit pipeline is the limit), so too many
+sessions do not help either: the cap-8 row is what a guessed "more is better" setting costs. Thinker-only agents
+(the default) have a different balance (one GPU, 16 sessions per server): tune again rather than reuse these numbers.
+
 ## The loop (main path)
 
 ```

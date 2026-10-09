@@ -86,12 +86,29 @@ Notes:
 - **vLLM-Omni patch.** The agent server must run the patched vLLM-Omni from [Install](#agent-server-vllm-omni--our-patch-required-for-full-duplex-agents).
 - **Serving.** A reference deployment for one 8-GPU host is in [examples/serving/](examples/serving/), and the details are in [docs/agent_server.md](docs/agent_server.md).
 
-## Benchmarks and GPU tuner
+## GPU tuner: run it before any large run
+
+A run serves several models at once (the duplex agent, the user LLM, TTS and clone TTS), and **how the GPUs and session caps are split between them decides throughput far more than any single server setting**. A hand-written split typically leaves some services idle while the agent is the bottleneck. The tuner runs real episodes on the current layout, measures GPU util, queues and per-service wait time, and moves GPUs and session caps toward the measured load.
+
+| on one 8× RTX 5090 host (measured) | episodes/hour | |
+|---|---|---|
+| hand-written layout | 447 | 1.00× |
+| after the tuner (GPU split + session caps) | **788** | **1.76×** |
+| session cap pushed too high (tuner rejects it) | 460, 24 failed | 1.03× |
+
+Full table and setup: [docs/GPU_TUNER.md, "Why it matters"](docs/GPU_TUNER.md#why-it-matters-measured-effect). Re-tune when the models, the GPUs or the agent mode (Thinker-only vs `--audio-out`) change.
+
+```bash
+uv run python -m interaction_gym.gpu_tuner dry-run --rounds 6      # mock services: see what the loop does, no GPU
+PYTHONPATH=src:. python examples/gpu_tuner.py loop --layout "agent=2/3/4/5,llm=0+1,tts=6,clone=7" --out runs/gpu_tuner
+                                                                   # on the GPU host: measure the running layout, propose a better one
+```
+
+## Benchmarks
 
 ```bash
 uv sync --extra vllm-omni --extra fdbench
 uv run python examples/fdb3_ab.py --help                      # e.g. Full-Duplex-Bench v3, open vs closed loop
-uv run python -m interaction_gym.gpu_tuner dry-run --rounds 6 # GPU split across agent / LLM / TTS services
 ```
 
 The repository ships loaders only, no benchmark data, and several datasets are non-commercial. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) and [THIRD_PARTY.md](THIRD_PARTY.md). The release results are in [results/BENCHMARKS.md](results/BENCHMARKS.md).
@@ -105,7 +122,21 @@ The repository ships loaders only, no benchmark data, and several datasets are n
 | [FORMAT](docs/FORMAT.md) | output data: trajectory format, scoring ([schema](docs/trajectory.schema.json)) |
 | [BENCHMARKS](docs/BENCHMARKS.md) | benchmark loaders, open vs closed loop, metrics |
 | [agent_server](docs/agent_server.md), [AGENT_TRACE](docs/AGENT_TRACE.md) | agent-server protocol, token trace |
-| [GPU_TUNER](docs/GPU_TUNER.md) | serving-layout tuner |
+| [GPU_TUNER](docs/GPU_TUNER.md) | serving-layout tuner, measured speed-up |
+
+## Noise data
+
+No audio is shipped. By default the simulated user's background ambience (home, office, car, cafe, street) is real
+recordings from **DEMAND**: about 80 MB, fetched from Zenodo on first use into `~/.cache/interaction_gym/soundbank`.
+Set `IG_SOUNDBANK` to use another directory, or `IG_SOUNDBANK=synthetic` to use the synthetic stand-ins. If the fetch
+fails, the env falls back to synthetic noise. DEMAND is licensed CC BY-SA 3.0, so a bank derived from it is ShareAlike:
+
+> J. Thiemann, N. Ito, E. Vincent, "The Diverse Environments Multi-channel Acoustic Noise Database (DEMAND)",
+> ICA 2013, doi:[10.5281/zenodo.1227121](https://doi.org/10.5281/zenodo.1227121).
+
+Noise events (coughs, doors, phones, horns ...) are synthetic by default. Recorded events come from **MUSAN** (Snyder,
+Chen & Povey 2015, CC BY 4.0), in the optional full bank that `scripts/fetch_noise_banks.py` builds (an 11 GB
+download). See [THIRD_PARTY.md](THIRD_PARTY.md) and [docs/FORMAT.md §4.2](docs/FORMAT.md).
 
 ## License
 
