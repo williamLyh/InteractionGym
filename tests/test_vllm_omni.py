@@ -238,6 +238,15 @@ async def fake_text_server(ws, reply_after_ms=1500):
         await ws.send(json.dumps({"type": "input_audio_buffer.processed", "audio_end_ms": heard}))
 
 
+def test_a_realtime_session_is_not_traced():
+    # the server's token trace needs the input clock (it refuses trace_tokens without clock="input")
+    spec = AgentSpec(chunk_ms=100, audio="user.audio", sr=SR)
+    with pytest.warns(UserWarning, match="trace_tokens needs clock='input'"):
+        agent = VllmOmniDuplexAgent(spec, "ws://127.0.0.1:1/v1/realtime?duplex=1", clock="realtime", trace_tokens=True)
+    assert not agent.trace_tokens and agent.trace("e") is None
+    assert VllmOmniDuplexAgent(spec, "ws://127.0.0.1:1/v1/realtime?duplex=1", clock="input", trace_tokens=True).trace_tokens
+
+
 def test_text_only_output_is_timed_by_the_speaking_rate():
     async def main():
         async with websockets.serve(fake_text_server, "127.0.0.1", 0) as server:

@@ -48,7 +48,7 @@ Output: ``audio_out=True`` (the class default) plays the talker's speech (exact 
 second — calibrate it per model from audio episodes with ``interaction_gym.agents.speech_rate``.
 The estimate is off by a fraction of a second per utterance, which shifts when the user hears each part
 but not what happens. With a vLLM-Omni that ends text-only sessions at the Thinker (the reference
-deployment's ``patches/minicpmo_thinker_only.patch``), a text-only MiniCPM-o session runs no Talker or
+deployment's patched vLLM-Omni, ``patches/vllm-omni/``), a text-only MiniCPM-o session runs no Talker or
 Code2Wav, and a Thinker-only server (one GPU) serves it; this is how the repository's MiniCPM-o runners
 evaluate by default (``--audio-out`` for the talker's speech; docs/agent_server.md).
 The class default stays ``True``: it is a generic client of any vLLM-Omni duplex model, most of which have no
@@ -63,6 +63,7 @@ import asyncio
 import base64
 import json
 import time
+import warnings
 from pathlib import Path
 
 import websockets
@@ -166,7 +167,7 @@ class VllmOmniDuplexAgent:
         # if its first unit yields only a sliver of audio (e.g. 80 ms), that blip and the gap after it are kept
         prebuffer_ms: int | None = None,
         ack_timeout_s: float = 60.0,  # lockstep: no acknowledgement this long means the server is stuck
-        trace_tokens: bool = False,  # record the token sequences the model consumes / produces per unit
+        trace_tokens: bool = False,  # record the token sequences the model consumes / produces per unit (lockstep only)
         audio_out: bool = True,  # False: text only, timed at speech_cps
         speech_cps: float = MINICPMO_CPS,
         in_sr: int = IN_SR,
@@ -216,7 +217,12 @@ class VllmOmniDuplexAgent:
         self._err: dict | None = None  # an error the server answered it with
         self.appends = self.acks = 0  # lockstep: one processed acknowledgement per append
         self.unit_ms: int | None = None  # the model's own chunk length, as the server reports it
-        self.trace_tokens = trace_tokens
+        # The server's token trace relies on the input clock's unit tracking: it refuses a traced session without
+        # clock="input" (token_trace_requires_input_clock), so a realtime session is not traced.
+        self.trace_tokens = trace_tokens and clock == "input"
+        if trace_tokens and clock != "input":
+            warnings.warn("VllmOmniDuplexAgent: trace_tokens needs clock='input'; this realtime session is not traced",
+                          stacklevel=2)
         self.units: list[dict] = []  # debug.unit_tokens events, if traced
         self._created = asyncio.Event()
         self._acked = asyncio.Event()

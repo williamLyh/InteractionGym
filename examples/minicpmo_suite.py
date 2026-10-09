@@ -101,7 +101,7 @@ async def run(name: str, sc: dict, *, clock: str = "input", audio_out: bool = Fa
     task = Task(id=name, scenario={k: sc[k] for k in ("persona", "profile", "first_turn", "turn_taking", "background") if k in sc} | {"instructions": sc["goal"]})
     spec = AgentSpec(chunk_ms=200, audio="user.audio", sr=SR)
     env = Env({"user": user}, spec, max_ms=120_000)  # the user lays the scenario's background, if it has one
-    agent = VllmOmniDuplexAgent(spec, AGENT_URL, model=AGENT_MODEL, ref_audio=REF_AUDIO, clock=clock, audio_out=audio_out, trace_tokens=True,
+    agent = VllmOmniDuplexAgent(spec, AGENT_URL, model=AGENT_MODEL, ref_audio=REF_AUDIO, clock=clock, audio_out=audio_out, trace_tokens=clock == "input",
                                 session={"instructions": sc["agent"]})
     obs = await env.reset(task, seed=0)
     wall, done = time.monotonic(), False
