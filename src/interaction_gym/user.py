@@ -1085,7 +1085,9 @@ class UserSim(Node):
 
     Random events (noises, being addressed or called away; ``Behaviors``) come from seeded processes on the call clock
     that do not depend on what the agent does. ``soundscape`` adds the persona's background track to the episode
-    (``soundscape.background_spec``) and supplies noise recordings; None: no background, synthetic noises.
+    (``soundscape.background_spec``) and supplies noise recordings; None: ``Soundscape()``, a background from the
+    default bank (DEMAND ambience, fetched on first use; synthetic if unavailable) and the bank's noise events where it
+    has them, else synthetic ones.
     ``aside_writer`` writes the lines of asides and of being called away: an ``AsideWriter``, ``"auto"`` (one on the
     source's LLM when it has one) or None (the fixed lines).
 

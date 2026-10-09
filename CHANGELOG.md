@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **Recorded background ambience by default.** `Soundscape()`, the `UserSim` default, now uses a sound bank in a
+  user cache: `$IG_SOUNDBANK`, else `~/.cache/interaction_gym/soundbank`. If the bank has no ambience yet, the env
+  fetches the DEMAND part once (about 80 MB, CC BY-SA 3.0), printing one log line. The new `interaction_gym.noisebank`
+  holds this code, shared with `scripts/fetch_noise_banks.py`; `python -m interaction_gym.noisebank` pre-builds the
+  bank. If the fetch fails, the env warns once and uses the synthetic stand-ins.
+  - To opt out: `IG_SOUNDBANK=synthetic`, or `Soundscape(bank=None)` / `Soundscape(bank="synthetic")`.
+  - `IG_SOUNDBANK_FETCH=0` uses an existing bank but never downloads.
+  - Noise events are never fetched: MUSAN is 11 GB. They come from the bank if it is a full
+    `fetch_noise_banks.py` build, else they are synthetic.
+  - Benchmark users (`benchmark_soundscape()`) still use no bank.
+  - Clip choice and offset stay seeded by the episode.
+  - The tests force `IG_SOUNDBANK=synthetic` (tests/conftest.py).
 - **One vLLM-Omni patch for every server feature InteractionGym uses.** `patches/vllm-omni/` has one combined patch
   per supported base, plus its six parts and a README that maps each part to its upstream PR and says when to remove it:
   - `vllm_omni-0.31.0rc1-interactiongym.patch`, for `pip install vllm-omni==0.31.0rc1` with `vllm==0.31.0`;

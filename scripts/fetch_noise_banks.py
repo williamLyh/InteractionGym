@@ -17,7 +17,8 @@ The bank (``DIR/bank``) is laid out as the env expects (docs/FORMAT.md §4.2):
 Nothing here is redistributed by the repository: you download the datasets yourself and must follow their licenses
 (DEMAND: CC BY-SA 3.0; MUSAN: CC BY 4.0, with per-clip attribution in its ANNOTATIONS files; see THIRD_PARTY.md).
 
-DEMAND comes from its Zenodo record; only ``ch01.wav`` of each zip is fetched (HTTP range requests on the zip, so
+DEMAND comes from its Zenodo record (the code is shared with ``interaction_gym.noisebank``, which fetches the
+DEMAND part alone on first use); only ``ch01.wav`` of each zip is fetched (HTTP range requests on the zip, so
 ~7 MB per environment instead of ~100 MB). MUSAN is one 11 GB archive from OpenSLR (SLR17) or a mirror; only
 ``musan/noise/`` is extracted. Standard library only.
 """
@@ -25,38 +26,22 @@ DEMAND comes from its Zenodo record; only ``ch01.wav`` of each zip is fetched (H
 from __future__ import annotations
 
 import argparse
-import io
 import json
-import math
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import time
 import urllib.request
-import wave
-import zipfile
 from array import array
 from pathlib import Path
 
-SR = 16000
-AMBIENCE_DBFS = -30.0
-EVENT_DBFS = -20.0  # the active part of an event clip, the same as nominal speech (soundscape.SPEECH_DBFS)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))  # the DEMAND part is shared with the package
+from interaction_gym.noisebank import (AMBIENCE_DBFS, DEMAND_LICENSE, DEMAND_MAP, DEMAND_RECORD, SR,  # noqa: E402,F401
+                                       build_ambience, download_demand, log, read_wav, resample, rms, scale, write_wav)
 
-DEMAND_RECORD = "https://zenodo.org/api/records/1227121"
-DEMAND_LICENSE = "CC BY-SA 3.0 (DEMAND, Thiemann, Ito & Vincent 2013; doi:10.5281/zenodo.1227121)"
-# DEMAND environment -> our surroundings kind (docs/FORMAT.md §4.2). The 15 DEMAND environments are DKITCHEN,
-# DLIVING, DWASHING (domestic), NFIELD, NPARK, NRIVER (nature), OHALLWAY, OMEETING, OOFFICE (office), PCAFETER,
-# PRESTO, PSTATION (public), SCAFE, SPSQUARE, STRAFFIC (street), TBUS, TCAR, TMETRO (transport); SCAFE has no
-# 16 kHz version. Not used: nature (no such surroundings), PSTATION / TBUS / TMETRO (stations and public transport
-# are not "car").
-DEMAND_MAP = {"DKITCHEN": "home", "DLIVING": "home", "DWASHING": "home",
-              "OOFFICE": "office", "OMEETING": "office", "OHALLWAY": "office",
-              "PCAFETER": "cafe", "PRESTO": "cafe",
-              "STRAFFIC": "street", "SPSQUARE": "street",
-              "TCAR": "car"}
+EVENT_DBFS = -20.0  # the active part of an event clip, the same as nominal speech (soundscape.SPEECH_DBFS)
 
 MUSAN_PATH = "resources/17/musan.tar.gz"
 MUSAN_MIRRORS = ["https://openslr.elda.org", "https://openslr.magicdatatech.com", "https://www.openslr.org",
@@ -89,105 +74,7 @@ MAX_EVENT_S = {"siren": 8.0, "horn": 3.0, "dog_bark": 3.0, "phone_ring": 6.0, "d
                "sneeze": 2.0, "throat_clear": 2.0, "dishes": 3.0, "keyboard": 4.0, "cup": 3.0, "indicator": 4.0}
 
 
-def log(*a):
-    print(time.strftime("%H:%M:%S"), *a, flush=True)
-
-
 # ---------------------------------------------------------------- download
-
-
-class RangeFile(io.RawIOBase):
-    """A read-only, seekable view of a remote file over HTTP range requests (for ``zipfile``), with retries."""
-
-    def __init__(self, url: str, size: int, block: int = 1 << 20):
-        self.url, self.size, self.pos, self.block, self.cache = url, size, 0, block, {}
-
-    def seekable(self):
-        return True
-
-    def readable(self):
-        return True
-
-    def tell(self):
-        return self.pos
-
-    def seek(self, off, whence=0):
-        self.pos = off if whence == 0 else self.pos + off if whence == 1 else self.size + off
-        return self.pos
-
-    def _blk(self, i: int) -> bytes:
-        if i not in self.cache:
-            lo, hi = i * self.block, min((i + 1) * self.block, self.size) - 1
-            for attempt in range(8):
-                try:
-                    req = urllib.request.Request(self.url, headers={"Range": f"bytes={lo}-{hi}"})
-                    with urllib.request.urlopen(req, timeout=120) as r:
-                        data = r.read()
-                    if len(data) == hi - lo + 1:
-                        break
-                except Exception as e:  # noqa: BLE001
-                    log("range retry", attempt, repr(e))
-                time.sleep(5 * (attempt + 1))
-            else:
-                raise IOError(f"range {lo}-{hi} of {self.url} failed")
-            if len(self.cache) > 64:
-                self.cache.clear()
-            self.cache[i] = data
-        return self.cache[i]
-
-    def read(self, n=-1):
-        n = self.size - self.pos if n is None or n < 0 else min(n, self.size - self.pos)
-        out = bytearray()
-        while n > 0:
-            i, o = divmod(self.pos, self.block)
-            chunk = self._blk(i)[o:o + n]
-            out += chunk
-            self.pos += len(chunk)
-            n -= len(chunk)
-        return bytes(out)
-
-    def readinto(self, b):
-        data = self.read(len(b))
-        b[:len(data)] = data
-        return len(data)
-
-
-def _json(url: str):
-    for attempt in range(6):
-        try:
-            with urllib.request.urlopen(url, timeout=60) as r:
-                return json.load(r)
-        except Exception as e:  # noqa: BLE001
-            log("retry", url, repr(e))
-            time.sleep(10 * (attempt + 1))
-    raise IOError(url)
-
-
-def download_demand(dl: Path) -> None:
-    d = dl / "demand"
-    d.mkdir(parents=True, exist_ok=True)
-    rec = _json(DEMAND_RECORD)
-    (d / "record.json").write_text(json.dumps({k: rec[k] for k in ("doi", "links", "metadata") if k in rec}, indent=1))
-    files = {f["key"]: f for f in rec["files"]}
-
-    def one(env: str):
-        out = d / f"{env}_ch01.wav"
-        if out.exists():
-            return
-        f = files[f"{env}_16k.zip"]
-        log("DEMAND", env, f"{f['size'] / 1e6:.0f} MB zip, fetching ch01 only")
-        with zipfile.ZipFile(RangeFile(f["links"]["self"], f["size"], block=1 << 18)) as z:
-            name = next(n for n in z.namelist() if n.endswith("ch01.wav"))
-            data = z.read(name)
-        tmp = out.with_suffix(".part")
-        tmp.write_bytes(data)
-        tmp.rename(out)
-        log("DEMAND", env, "ok", len(data))
-
-    from concurrent.futures import ThreadPoolExecutor
-
-    with ThreadPoolExecutor(len(DEMAND_MAP)) as ex:  # the server is slow per connection: all environments at once
-        list(ex.map(one, DEMAND_MAP))
 
 
 def _size(url: str) -> int | None:
@@ -298,64 +185,6 @@ def download_musan(dl: Path, mirrors=MUSAN_MIRRORS, extra=MUSAN_EXTRA) -> Path:
 # ---------------------------------------------------------------- audio helpers
 
 
-def read_wav(p: Path) -> tuple[array, int]:
-    with wave.open(str(p)) as w:
-        sr, ch, sw, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
-        raw = w.readframes(n)
-    if sw != 2:
-        raise ValueError(f"{p}: {8 * sw}-bit")
-    a = array("h")
-    a.frombytes(raw)
-    if sys.byteorder == "big":
-        a.byteswap()
-    if ch > 1:
-        a = array("h", (int(sum(a[i:i + ch]) / ch) for i in range(0, len(a), ch)))
-    return a, sr
-
-
-def resample(a: array, sr: int, to: int = SR) -> array:
-    """Linear interpolation after a moving-average low-pass (enough for noise at a 16 kHz target)."""
-    if sr == to:
-        return a
-    k = max(1, round(sr / to))
-    if k > 1:
-        acc, s = [], 0
-        for i, x in enumerate(a):
-            s += x - (a[i - k] if i >= k else 0)
-            acc.append(s / k)
-    else:
-        acc = list(a)
-    n = int(len(acc) * to / sr)
-    out = array("h")
-    for j in range(n):
-        x = j * sr / to
-        i = int(x)
-        f = x - i
-        v = acc[i] * (1 - f) + acc[min(i + 1, len(acc) - 1)] * f
-        out.append(max(-32768, min(32767, int(v))))
-    return out
-
-
-def write_wav(p: Path, a: array, sr: int = SR) -> None:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    b = array("h", a)
-    if sys.byteorder == "big":
-        b.byteswap()
-    with wave.open(str(p), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(b.tobytes())
-
-
-def rms(xs) -> float:
-    return math.sqrt(sum(x * x for x in xs) / max(len(xs), 1))
-
-
-def scale(a: array, g: float) -> array:
-    return array("h", (max(-32768, min(32767, int(x * g))) for x in a))
-
-
 def active_part(a: array, sr: int, max_s: float, frame_ms: int = 20, rel_db: float = -30.0) -> array | None:
     """The clip from its first to last frame within ``rel_db`` of its loudest frame, at most ``max_s`` long (from
     the onset), with 20 ms margins and 10 ms fades; None for a silent clip."""
@@ -426,18 +255,7 @@ def build(dl: Path, bank: Path, overrides: dict[str, str | None] | None = None) 
            "sources": {"DEMAND": {"license": DEMAND_LICENSE, "url": DEMAND_RECORD, "map": DEMAND_MAP},
                        "MUSAN": {"license": MUSAN_LICENSE, "url": f"https://www.openslr.org/17/"}},
            "files": [], "skipped": {}}
-    for env, kind in DEMAND_MAP.items():
-        src = dl / "demand" / f"{env}_ch01.wav"
-        if not src.exists():
-            log("missing", src)
-            continue
-        a, sr = read_wav(src)
-        a = resample(a, sr)
-        a = scale(a, 32768 * 10 ** (AMBIENCE_DBFS / 20) / (rms(a) or 1))
-        out = tmp / "ambience" / kind / f"{env.lower()}.wav"
-        write_wav(out, a)
-        man["files"].append({"path": str(out.relative_to(tmp)), "group": "ambience", "name": kind, "dataset": "DEMAND",
-                             "source": f"{env}_16k.zip:{env}/ch01.wav", "license": DEMAND_LICENSE, "dur_s": round(len(a) / SR, 2)})
+    man["files"] += build_ambience(dl, tmp)
     noise = dl / "musan" / "musan" / "noise"
     meta = musan_meta(noise) if noise.is_dir() else {}
     overrides = overrides or {}

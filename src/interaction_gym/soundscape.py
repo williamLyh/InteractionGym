@@ -8,8 +8,9 @@
 - ``event_clip`` / ``event_audio``: the audio of a noise event (a cough, a door slam, a phone ring ...), from a sound
   bank directory when one is configured, else a synthetic stand-in; a burst is one clip repeated with gaps.
 - ``SoundBank``: a directory of recordings, laid out as ``ambience/<kind>/*.wav`` and ``events/<label>/*.wav`` (mono
-  16-bit WAV). Nothing is downloaded here; ``scripts/fetch_noise_banks.py`` builds one from DEMAND (ambience) and
-  MUSAN (events), see docs/FORMAT.md §4.2.
+  16-bit WAV). ``Soundscape()`` uses the default bank (``noisebank.default_bank``): DEMAND ambience, fetched once on
+  first use into a user cache (``$IG_SOUNDBANK``; ``synthetic`` to turn it off); ``scripts/fetch_noise_banks.py``
+  builds a full one from DEMAND (ambience) and MUSAN (events), see docs/FORMAT.md §4.2.
 
 Everything is seeded: the same seed gives the same track, offset and clips.
 """
@@ -99,8 +100,23 @@ class SoundBank:
         return fs[rng.randrange(len(fs))] if fs else None
 
 
-def _bank(bank) -> SoundBank | None:
-    return bank if isinstance(bank, SoundBank) or bank is None else SoundBank(bank)
+DEFAULT_BANK = "default"  # ``Soundscape(bank=...)``: the default bank (noisebank.default_bank)
+SYNTHETIC = "synthetic"  # ``Soundscape(bank=...)``: no recordings, the synthetic stand-ins (as ``None``)
+
+
+def _bank(bank, fetch: bool = True) -> SoundBank | None:
+    """A ``SoundBank`` for ``bank``: a ``SoundBank``, a directory, ``"default"`` (the default bank: fetched first if
+    ``fetch``, else only if already there; None if unavailable) or None / ``"synthetic"`` (None: no recordings)."""
+    if bank is None or isinstance(bank, SoundBank):
+        return bank
+    if isinstance(bank, str) and bank in (DEFAULT_BANK, SYNTHETIC):
+        if bank == SYNTHETIC:
+            return None
+        from .noisebank import default_bank
+
+        root = default_bank(fetch=fetch)
+        return SoundBank(root) if root is not None else None
+    return SoundBank(bank)
 
 
 # ---------------------------------------------------------------- background track
@@ -145,7 +161,8 @@ def background_spec(scenario_bg, surroundings: str, bank=None) -> dict:
         out["source"] = f"file:{spec['file']}"
     elif typ.startswith("ambience:"):
         kind = typ.split(":", 1)[1]
-        files = _bank(bank).files("ambience", kind) if bank is not None else []
+        b = _bank(bank)
+        files = b.files("ambience", kind) if b is not None else []
         out["source"] = "bank" if files else f"synthetic:{STAND_IN[kind]}"
     else:
         out["source"] = f"synthetic:{typ}"
@@ -310,7 +327,7 @@ def event_rates(surroundings: str, total: float | None = None, rates: dict | Non
 def event_clip(label: str, sr: int, rng: random.Random, bank=None) -> tuple[Audio, str]:
     """(audio, source) of one noise occurrence: a recording from the bank's ``events/<label>/`` if there is one
     (``file:<path>``), else a synthetic stand-in (``synthetic``)."""
-    b = _bank(bank)
+    b = _bank(bank, fetch=False)  # events never trigger the DEMAND download (it has none): a bank already there only
     path = b.pick("events", label, rng) if b is not None else None
     if path is not None:
         return _clip(str(path)), f"file:{path}"
@@ -430,8 +447,12 @@ def synth_event(label: str, sr: int, rng: random.Random) -> Audio:
 
 @dataclass(frozen=True)
 class Soundscape:
-    """A simulated user's acoustic setting: ``bank`` (a ``SoundBank`` or its directory) supplies recordings, else
-    synthetic stand-ins are used; ``background`` lays the surroundings' always-on track under the episode."""
+    """A simulated user's acoustic setting: ``bank`` supplies recordings, where it has them (else synthetic stand-ins
+    are used); ``background`` lays the surroundings' always-on track under the episode.
 
-    bank: object = None
+    ``bank``: ``"default"`` (the default: ``$IG_SOUNDBANK`` or the user cache, with the DEMAND ambience fetched there
+    on first use, falling back to synthetic if that fails; ``noisebank``), a ``SoundBank`` or its directory (used as
+    it is, never fetched), or None / ``"synthetic"`` (synthetic stand-ins only)."""
+
+    bank: object = DEFAULT_BANK
     background: bool = True

@@ -21,7 +21,7 @@ def benchmark_soundscape():
     """The acoustic setting of every benchmark user: no background track, no sound bank (no recorded noises)."""
     from ..soundscape import Soundscape
 
-    return Soundscape(background=False)
+    return Soundscape(bank=None, background=False)
 
 
 def benchmark_behaviors():

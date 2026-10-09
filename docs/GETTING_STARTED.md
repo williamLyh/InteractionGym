@@ -80,20 +80,31 @@ cloned from it by the clone TTS (`IG_CLONE_URL`, `IG_CLONE_MODEL`, default Qwen3
 voice, pace and manner for the whole call; each turn is also trimmed and loudness-normalised (`user.Voice`,
 docs/FORMAT.md §4.1.2). A `Voice` with a TTS but no clone TTS raises; `Voice(tts, clone=False)` opts out. The page shows what the user said, when, and why it barged in. The same LLM decides, at each phrase boundary of the agent, whether the user listens, backchannels or cuts in (`LLMInterrupt` = `LLMListener`); a persona with `surroundings` (e.g. `{"profile": {"surroundings": "cafe"}}`) also gets random noises, asides and a matching background track — every one a labelled user turn on the page (docs/FORMAT.md §4.4).
 
-Recorded noise instead of the synthetic stand-ins: build a sound bank once (DEMAND ambience + MUSAN noise events,
-MUSAN comes as one 11 GB archive of which only the noise part is kept, DEMAND as ~80 MB of range requests; the
-bank itself is ~115 MB, 16 kHz mono) and
-pass it to the user:
+**Noise.** The background ambience is recorded by default. On first use the env fetches the DEMAND recordings
+(about 80 MB of range requests to Zenodo) into `~/.cache/interaction_gym/soundbank` (or `$XDG_CACHE_HOME/...`). It
+prints one line naming the dataset, its licence and the directory, and reuses that bank afterwards. Parallel workers
+share one download through a file lock. The fetch can take several minutes (Zenodo is slow per connection; the bank is ~100 MB on
+disk), and the first episode waits for it, so on a server pre-build it (below). If the fetch fails (offline, a sandbox), the env warns once and uses the
+synthetic stand-ins instead; an episode never fails for want of recordings.
+
+| To | Do |
+|---|---|
+| pre-build the bank, e.g. on a server before a run | `uv run python -m interaction_gym.noisebank` |
+| keep the bank somewhere else | `export IG_SOUNDBANK=/path/to/bank` |
+| use only an existing bank, never download | `export IG_SOUNDBANK_FETCH=0` |
+| use synthetic noise only (CI, tests) | `export IG_SOUNDBANK=synthetic`, or `Soundscape(bank=None)` |
+
+Noise *events* (coughs, door slams, phone rings ...) stay synthetic unless the bank has recordings for them. The full
+bank adds MUSAN events. Build it once: MUSAN is one 11 GB archive, of which only the noise part is kept; the bank is
+about 115 MB, 16 kHz mono. Then point the env at it:
 
 ```bash
-uv run python scripts/fetch_noise_banks.py --out ~/dig_soundbank      # downloads, then builds ~/dig_soundbank/bank
+uv run python scripts/fetch_noise_banks.py --out ~/ig_soundbank      # downloads, then builds ~/ig_soundbank/bank
+export IG_SOUNDBANK=~/ig_soundbank/bank                                # the default bank: ambience + events
 ```
 
-```python
-UserSim(..., soundscape=Soundscape(bank="~/dig_soundbank/bank"))
-```
-
-Check the datasets' licenses first (THIRD_PARTY.md: DEMAND is CC BY-SA 3.0, MUSAN CC BY 4.0).
+You can also pass a bank directly: `UserSim(..., soundscape=Soundscape(bank="~/ig_soundbank/bank"))`. The
+datasets' licences are in THIRD_PARTY.md: DEMAND is CC BY-SA 3.0, MUSAN CC BY 4.0.
 
 ## 5. A full-duplex model as the agent
 

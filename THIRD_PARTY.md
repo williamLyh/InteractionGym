@@ -59,18 +59,23 @@ CC BY-NC 4.0 (non-commercial only).** Nothing else in the package uses it.
 | tau2-bench domains | MIT | `integrations.tau` |
 | AutomationBench public tasks | MIT | `integrations.automationbench` |
 
-## Noise datasets (downloaded by a script; never redistributed)
+## Noise datasets (downloaded on your machine; never redistributed)
 
-**We ship only a download / build script, not the audio.** `scripts/fetch_noise_banks.py` downloads these from their
-official sources on your machine and builds a local sound bank (`soundscape.SoundBank`) from them; the bank's
-`manifest.json` records the source file, dataset and license of every clip. No noise audio is in the repository or
-in any package, and a bank you build is yours to use under the datasets' licenses (a DEMAND-derived bank is
-ShareAlike, CC BY-SA 3.0).
+**We ship only download / build code, not the audio.** No noise audio is in the repository or in any package.
+
+- **DEMAND (default).** The env downloads DEMAND from its official Zenodo record on first use
+  (`interaction_gym.noisebank`) and builds the default ambience bank from it in a user cache
+  (`~/.cache/interaction_gym/soundbank`, or `$IG_SOUNDBANK`). `IG_SOUNDBANK=synthetic` turns this off.
+- **MUSAN (optional).** `scripts/fetch_noise_banks.py` downloads both datasets and builds the full bank, which adds
+  MUSAN noise events.
+
+Each bank's `manifest.json` records the source file, dataset and license of every clip. A bank built on your
+machine is yours to use under the datasets' licenses; a DEMAND-derived bank is ShareAlike (CC BY-SA 3.0).
 
 | Dataset | License (checked 2026-10-07 at the official source) | What the script uses | Attribution |
 |---|---|---|---|
-| [DEMAND](https://zenodo.org/records/1227121) (doi:10.5281/zenodo.1227121) | **CC BY-SA 3.0** Unported, per the record's description ("This work, the audio data and the document describing it, is licensed under a Creative Commons Attribution-ShareAlike 3.0 Unported License"); the Zenodo metadata field says CC BY 4.0 — we follow the authors' own, stricter statement | channel 1 of 11 of the 16 kHz recordings (ambience), RMS-normalised | J. Thiemann, N. Ito, E. Vincent, "The Diverse Environments Multi-channel Acoustic Noise Database (DEMAND)", ICA 2013. Derived banks are ShareAlike |
-| [MUSAN](https://www.openslr.org/17/) (OpenSLR SLR17) | **CC BY 4.0** (the OpenSLR page) | clips of `musan/noise/` with a clear event label, trimmed and normalised | D. Snyder, G. Chen, D. Povey, "MUSAN: A Music, Speech, and Noise Corpus", arXiv:1510.08484, 2015; per-clip sources (Freesound, SoundBible) in `musan/noise/*/ANNOTATIONS` and the bank manifest |
+| [DEMAND](https://zenodo.org/records/1227121) (doi:10.5281/zenodo.1227121) | **CC BY-SA 3.0** Unported, per the record's description ("This work, the audio data and the document describing it, is licensed under a Creative Commons Attribution-ShareAlike 3.0 Unported License"); the Zenodo metadata field says CC BY 4.0 — we follow the authors' own, stricter statement | channel 1 of 11 of the 16 kHz recordings (ambience), RMS-normalised; the default background, fetched on first use | J. Thiemann, N. Ito, E. Vincent, "The Diverse Environments Multi-channel Acoustic Noise Database (DEMAND)", ICA 2013. Derived banks are ShareAlike |
+| [MUSAN](https://www.openslr.org/17/) (OpenSLR SLR17) | **CC BY 4.0** (the OpenSLR page) | clips of `musan/noise/` with a clear event label, trimmed and normalised (full bank only; never fetched automatically) | D. Snyder, G. Chen, D. Povey, "MUSAN: A Music, Speech, and Noise Corpus", arXiv:1510.08484, 2015; per-clip sources (Freesound, SoundBible) in `musan/noise/*/ANNOTATIONS` and the bank manifest |
 
 The archive is fetched from the OpenSLR mirrors, and from a Hugging Face copy only when its size and sampled bytes
 match OpenSLR's.
