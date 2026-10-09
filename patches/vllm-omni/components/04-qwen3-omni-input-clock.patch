@@ -1,0 +1,309 @@
+diff --git a/vllm_omni/model_executor/common/duplex/pcm_buffer.py b/vllm_omni/model_executor/common/duplex/pcm_buffer.py
+index aec8b557..929839b2 100644
+--- a/vllm_omni/model_executor/common/duplex/pcm_buffer.py
++++ b/vllm_omni/model_executor/common/duplex/pcm_buffer.py
+@@ -111,6 +111,19 @@ class FixedFramePcmAppendBuffer(PcmAppendBuffer):
+             return None
+         return self._reserve_frame(payload, operation_id=operation_id, flush=False)
+ 
++    def prepare_backlog(self, *, operation_id: str, chunk_period_ms: int) -> FixedFramePcmAppendReservation | None:
++        """Reserve the next whole frame of audio already buffered (input-clocked sessions), or ``None``.
++
++        An append longer than one frame leaves its later frames buffered; the
++        runner of an input-clocked session drains them right after the append,
++        so the append's acknowledgement covers every frame it completed.
++        """
++        self._require_chunk_period(chunk_period_ms)
++        if len(self._buffer) < self.frame_bytes:
++            return None
++        payload: dict[str, object] = {"type": "audio", "audio": "", "format": "pcm_f32le"}
++        return self._reserve_frame(payload, operation_id=operation_id, flush=False)
++
+     def prepare_commit(self, *, operation_id: str, chunk_period_ms: int) -> FixedFramePcmAppendReservation:
+         self._require_chunk_period(chunk_period_ms)
+         if not self._buffer:
+diff --git a/vllm_omni/model_executor/models/aura_omni/duplex/plugin.py b/vllm_omni/model_executor/models/aura_omni/duplex/plugin.py
+index 5e87fa57..94ae3c32 100644
+--- a/vllm_omni/model_executor/models/aura_omni/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/aura_omni/duplex/plugin.py
+@@ -18,9 +18,10 @@ from vllm_omni.engine.duplex.contracts import (
+     DuplexAppendPlan,
+     DuplexFence,
+     DuplexOutputAction,
++    DuplexOutputContext,
+     DuplexOutputDecision,
+ )
+-from vllm_omni.engine.duplex.plugin import DuplexModelPlugin, EncodeAudio
++from vllm_omni.engine.duplex.plugin import DuplexModelPlugin, DuplexUnitOutputs, EncodeAudio
+ from vllm_omni.model_executor.models.aura_omni.duplex.capabilities import aura_duplex_capabilities
+ from vllm_omni.model_executor.models.aura_omni.duplex.data_plane import (
+     AuraDataPlaneContext,
+@@ -139,6 +140,9 @@ class AuraDuplexPlugin(DuplexModelPlugin):
+ 
+     plugin_id = "aura"
+     private_runtime_config_keys = _PRIVATE_KEYS
++    #: Units are committed turns; ``unit_output_complete`` below waits for the final-stage request.
++    #: Not opted in yet: a unit's input length would count the commit's retained video bytes as audio.
++    supports_input_clock = False
+ 
+     def __init__(self, encode_audio: EncodeAudio) -> None:
+         super().__init__(encode_audio)
+@@ -387,6 +391,30 @@ class AuraDuplexPlugin(DuplexModelPlugin):
+             return True
+         return bool(getattr(output, "finished", False))
+ 
++    # ---- input-clocked sessions ----
++
++    def unit_output_complete(
++        self,
++        *,
++        unit: DuplexUnitOutputs | None,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: DuplexOutputContext | None,
++        state: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> bool:
++        """A committed turn's audio is complete when its final-stage request finishes.
++
++        The Talker is fed sentence by sentence, so the final stage reports a
++        segment end per sentence; only the request's ``finished`` ends the turn
++        (the data plane's ``end_of_turn`` rule). A silent turn ends earlier, on
++        the Stage-1 listen decision. The engine credits each final-stage output
++        to the oldest speaking turn, so the turn completes on the finished
++        output credited to it.
++        """
++        del final_stage_id, new_context, state, runtime_config
++        return unit is not None and new_output is not None and bool(getattr(new_output, "finished", False))
++
+     def decide_output(
+         self,
+         *,
+diff --git a/vllm_omni/model_executor/models/nemotron_voicechat/duplex/data_plane.py b/vllm_omni/model_executor/models/nemotron_voicechat/duplex/data_plane.py
+index 156fddd8..b9fa9c21 100644
+--- a/vllm_omni/model_executor/models/nemotron_voicechat/duplex/data_plane.py
++++ b/vllm_omni/model_executor/models/nemotron_voicechat/duplex/data_plane.py
+@@ -126,6 +126,17 @@ def _audio_samples(audio: object | None) -> int:
+         return 0
+ 
+ 
++def stage2_audio_frames(output: object) -> int:
++    """80 ms frames one Stage-2 output covers (0 for an output without decoded audio)."""
++    output, completion, _ = _unwrap(output)
++    metadata = _multimodal(output, completion)
++    sample_count = _audio_samples(_audio_value(metadata))
++    if sample_count <= 0:
++        return 0
++    duration_ms = sample_count * 1000 / max(1, _sample_rate(metadata))
++    return max(1, round(duration_ms / 80))
++
++
+ def _speech_end_event(request_id: str) -> dict[str, object]:
+     return {
+         "stage_role": "tts",
+diff --git a/vllm_omni/model_executor/models/nemotron_voicechat/duplex/plugin.py b/vllm_omni/model_executor/models/nemotron_voicechat/duplex/plugin.py
+index b9d49c2b..9c663e8d 100644
+--- a/vllm_omni/model_executor/models/nemotron_voicechat/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/nemotron_voicechat/duplex/plugin.py
+@@ -31,6 +31,7 @@ from vllm_omni.engine.duplex.contracts import (
+     DuplexAppendPlan,
+     DuplexFence,
+     DuplexOutputAction,
++    DuplexOutputContext,
+     DuplexOutputDecision,
+ )
+ from vllm_omni.engine.duplex.intermediate import build_duplex_append_prompt
+@@ -38,6 +39,8 @@ from vllm_omni.engine.duplex.plugin import (
+     DefaultDuplexModelSessionState,
+     DuplexModelPlugin,
+     DuplexRuntimeConfigError,
++    DuplexUnitDecision,
++    DuplexUnitOutputs,
+     EncodeAudio,
+     reject_private_runtime_keys,
+ )
+@@ -47,6 +50,7 @@ from vllm_omni.model_executor.models.nemotron_voicechat.duplex.capabilities impo
+ from vllm_omni.model_executor.models.nemotron_voicechat.duplex.data_plane import (
+     NemotronVoiceChatDataPlaneContext,
+     NemotronVoiceChatDataPlaneSession,
++    stage2_audio_frames,
+ )
+ from vllm_omni.model_executor.models.nemotron_voicechat.duplex.input import (
+     NEMOTRON_VOICECHAT_FRAME_SAMPLES,
+@@ -231,6 +235,10 @@ class NemotronVoiceChatDuplexPlugin(DuplexModelPlugin):
+ 
+     plugin_id = "nemotron_voicechat"
+     private_runtime_config_keys = PRIVATE_RUNTIME_CONFIG_KEYS
++    #: Units are 80 ms frames; ``unit_decision`` / ``unit_output_complete`` below
++    #: treat the Stage-0 token as a side channel and count Stage-2 audio coverage.
++    #: Not opted in yet: the coverage rule needs the deployment's Code2Wav chunk size, which the plugin cannot see.
++    supports_input_clock = False
+     #: One silence continuation unit is one 80 ms acoustic frame at 16 kHz.
+     silence_continuation_samples = NEMOTRON_VOICECHAT_FRAME_SAMPLES
+ 
+@@ -326,6 +334,58 @@ class NemotronVoiceChatDuplexPlugin(DuplexModelPlugin):
+             )
+         )
+ 
++    # ---- input-clocked sessions ----
++
++    def unit_decision(
++        self,
++        *,
++        stage_id: int,
++        decision: DuplexOutputDecision | None,
++        output: object = None,
++        context: DuplexOutputContext | None = None,
++        runtime_config: Mapping[str, object] | None = None,
++    ) -> DuplexUnitDecision | None:
++        """Every frame's Stage-0 text token is a side channel: the frame's audio still comes from Stage 2.
++
++        The label follows the token: the session's PAD token
++        (``nvc_text_pad_id`` in its runtime configuration) keeps listening,
++        anything else (text, EOS) is the model speaking. A segment end without
++        a decision (the per-frame Talker segment) is not classified.
++        """
++        del output, context
++        if decision is None or stage_id != 0:
++            return None
++        token_ids = decision.metadata.get("nvc_text_token_ids")
++        last = token_ids[-1] if isinstance(token_ids, list | tuple) and token_ids else None
++        pad_id = (runtime_config or {}).get("nvc_text_pad_id")
++        return DuplexUnitDecision(label="listen" if last is not None and last == pad_id else "speak", ends_unit=False)
++
++    def unit_output_complete(
++        self,
++        *,
++        unit: DuplexUnitOutputs | None,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: DuplexOutputContext | None,
++        state: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> bool:
++        """A frame is complete once Stage 2 has produced audio for as many frames as Stage 0 decided.
++
++        The data plane aligns the two channels the same way (each non-empty
++        Stage-2 chunk covers ``round(duration / 80 ms)`` frames, at least one),
++        so the frame with ordinal ``n`` in its epoch is covered once ``n``
++        audio frames of that epoch went out. ``state`` starts empty in every
++        epoch, as does the epoch's Stage-0 request (and its Stage-2 stream).
++        """
++        del final_stage_id, new_context, runtime_config
++        covered = state.get("audio_frames", 0)
++        covered = covered if isinstance(covered, int) else 0
++        if new_output is not None:
++            covered += stage2_audio_frames(new_output)
++            state["audio_frames"] = covered
++        return unit is not None and covered >= unit.ordinal
++
+     def decide_output(
+         self,
+         *,
+diff --git a/vllm_omni/model_executor/models/personaplex/duplex/plugin.py b/vllm_omni/model_executor/models/personaplex/duplex/plugin.py
+index 1d2fbac9..916a3b4a 100644
+--- a/vllm_omni/model_executor/models/personaplex/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/personaplex/duplex/plugin.py
+@@ -23,16 +23,24 @@ from vllm_omni.engine.duplex.config import DuplexCapabilities, DuplexSessionConf
+ from vllm_omni.engine.duplex.contracts import (
+     DuplexAppendPlan,
+     DuplexFence,
++    DuplexOutputContext,
+     DuplexOutputDecision,
+ )
+ from vllm_omni.engine.duplex.plugin import (
+     DefaultDuplexModelSessionState,
+     DuplexModelPlugin,
+     DuplexRuntimeConfigError,
++    DuplexUnitOutputs,
+     EncodeAudio,
+     reject_changed_runtime_value,
+ )
+ from vllm_omni.model_executor.common.duplex.payload import decode_pcm_f32le_payload
++from vllm_omni.model_executor.common.request_outputs import (
++    audio_sample_count,
++    audio_value,
++    multimodal_output,
++    unwrap_request_output,
++)
+ from vllm_omni.model_executor.models.personaplex.duplex.capabilities import personaplex_capabilities
+ from vllm_omni.model_executor.models.personaplex.duplex.config import (
+     DEFAULT_PERSONA,
+@@ -91,6 +99,9 @@ class PersonaPlexDuplexPlugin(DuplexModelPlugin):
+ 
+     plugin_id = "personaplex"
+     private_runtime_config_keys = PRIVATE_RUNTIME_CONFIG_KEYS
++    #: Units are 80 ms frames; ``unit_output_complete`` below follows Code2Wav's chunking.
++    #: Not opted in yet: the hooks need the deployment's Code2Wav chunk sizes, which the plugin cannot see.
++    supports_input_clock = False
+     #: One codec frame: the runner keeps a model turn clocked with these when the client pauses.
+     silence_continuation_samples = FRAME_SIZE
+     silence_continuation_sample_rate_hz = SAMPLE_RATE
+@@ -171,6 +182,54 @@ class PersonaPlexDuplexPlugin(DuplexModelPlugin):
+             }
+         )
+ 
++    # ---- input-clocked sessions ----
++
++    #: Code2Wav chunking of the shipped deployment (``connectors.*.extra`` in
++    #: ``deploy/personaplex.yaml``); a deployment that changes it sets these too.
++    input_clock_codec_chunk_frames: int = 5
++    input_clock_initial_codec_chunk_frames: int = 1
++
++    def flushed_audio_frames(self, units: int) -> int:
++        """Audio frames Code2Wav has emitted once Stage 0 produced ``units`` frames.
++
++        The bridge emits ``initial`` frames as soon as ``initial + 1`` raw
++        frames exist (de-delay needs one successor frame), then ``chunk``
++        frames per ``chunk`` further raw frames.
++        """
++        chunk = max(1, int(self.input_clock_codec_chunk_frames))
++        initial = max(0, int(self.input_clock_initial_codec_chunk_frames))
++        if initial == 0:
++            return chunk * ((units - 1) // chunk) if units >= 1 else 0
++        return initial + chunk * ((units - initial - 1) // chunk) if units >= initial + 1 else 0
++
++    def unit_output_complete(
++        self,
++        *,
++        unit: DuplexUnitOutputs | None,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: DuplexOutputContext | None,
++        state: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> bool:
++        """A frame is complete once Code2Wav emitted every audio frame its chunking allows so far.
++
++        Code2Wav outputs cumulative audio of ``FRAME_SIZE`` samples per frame;
++        frames held back by the chunking come out with a later frame's input.
++        Counted per epoch against ``unit.ordinal``: a new epoch is a new Stage-0
++        request (its Code2Wav audio and chunking start over) and ``state``
++        starts empty with it.
++        """
++        del final_stage_id, new_context, runtime_config
++        covered = state.get("audio_frames", 0)
++        covered = covered if isinstance(covered, int) else 0
++        if new_output is not None:
++            output, completion = unwrap_request_output(new_output)
++            total = audio_sample_count(audio_value(multimodal_output(output, completion))) or 0
++            covered = max(covered, total // FRAME_SIZE)
++            state["audio_frames"] = covered
++        return unit is not None and covered >= self.flushed_audio_frames(unit.ordinal)
++
+     def decide_output(
+         self,
+         *,
+diff --git a/vllm_omni/model_executor/models/qwen3_omni/duplex/plugin.py b/vllm_omni/model_executor/models/qwen3_omni/duplex/plugin.py
+index 09658dfa..5998f362 100644
+--- a/vllm_omni/model_executor/models/qwen3_omni/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/qwen3_omni/duplex/plugin.py
+@@ -122,6 +122,8 @@ class QwenDataPlane(DuplexDataPlane):
+ class Qwen3OmniDuplexPlugin(DuplexModelPlugin):
+     plugin_id = "qwen3-omni"
+     projects_intermediate_outputs = True
++    #: Units are committed turns; the default hooks apply (the final stage finishes the turn).
++    supports_input_clock = True
+ 
+     def __init__(self, encode_audio):
+         self.data_plane = QwenDataPlane(encode_audio)

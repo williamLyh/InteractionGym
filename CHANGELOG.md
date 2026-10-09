@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **One vLLM-Omni patch for every server feature InteractionGym uses.** `patches/vllm-omni/` has one combined patch
+  per supported base, plus its six parts and a README that maps each part to its upstream PR and says when to remove it:
+  - `vllm_omni-0.31.0rc1-interactiongym.patch`, for `pip install vllm-omni==0.31.0rc1` with `vllm==0.31.0`;
+  - `vllm_omni-main-61cae20d-interactiongym.patch`, for a source checkout of upstream main at `61cae20d`, with the
+    upstream tests and docs.
+
+  It contains:
+  - input-clocked sessions and `silence_continuation` (vllm-omni#8485, final revision);
+  - the token trace, and the MiniCPM-o 4.5 and Qwen3-Omni input-clock opt-ins (follow-ups of #8485);
+  - the per-session MiniCPM-o feature extractor (#8638);
+  - Thinker-only MiniCPM-o text sessions, ported to the final PR revision.
+
+  vLLM-Omni 0.30.0 is not supported (see the README).
+- `scripts/apply_vllm_omni_patch.py`:
+  - locates the `vllm_omni` of an environment (`--python`) or a directory (`--target`);
+  - checks the version or commit against the supported bases;
+  - dry-runs the patch, backs up the touched files and applies it;
+  - has `--status` and `--revert` (byte for byte).
+
+### Changed
+- The former `examples/serving/reference/patches/{minicpmo_fe_per_session,minicpmo_thinker_only}.patch` are folded
+  into the new patch, as parts 05 and 06, and removed. The serving reference, docs/agent_server.md,
+  docs/GETTING_STARTED.md and the README now point at `patches/vllm-omni/`.
+- `VllmOmniDuplexAgent(trace_tokens=True)` requests the token trace only with `clock="input"`. The patched server refuses
+  a traced session without the input clock (`token_trace_requires_input_clock`). A realtime session warns and is not
+  traced. `minicpmo_suite.py` traces only its lockstep runs.
+- With the patch, lockstep runs on MiniCPM-o 4.5 and Qwen3-Omni only. Nemotron VoiceChat, PersonaPlex and AURA have
+  the unit hooks but do not opt in yet: run them in realtime mode. The earlier prototype build enabled them.
+
 ## [0.1.0] - 2026-10-09
 
 First public version.

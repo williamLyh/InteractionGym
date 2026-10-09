@@ -106,13 +106,25 @@ IG_AGENT_URL='ws://localhost:8010/v1/realtime?duplex=1' IG_MODEL_DIR=/path/to/mo
   uv run python examples/minicpmo_agent.py --html runs/minicpmo_agent.html
 ```
 
-This runs in realtime mode (works on stock vLLM-Omni). `--clock input` (lockstep) and `--trace-tokens` need a
-vLLM-Omni build with our duplex patches ([agent_server.md](agent_server.md)). For several personas, voice cloning
+This runs in realtime mode (works on stock vLLM-Omni). `--clock input` (lockstep), `--trace-tokens` and the
+Thinker-only server need the patched vLLM-Omni: install `vllm-omni==0.31.0rc1` (with `vllm==0.31.0`) and apply
+`patches/vllm-omni/vllm_omni-0.31.0rc1-interactiongym.patch`:
+
+```bash
+<env>/bin/pip install vllm==0.31.0 vllm-omni==0.31.0rc1 stepaudio2-minicpmo
+<env>/bin/pip install nvidia-cuda-nvcc==13.0.88 nvidia-cuda-crt==13.0.88 nvidia-nvvm==13.0.88   # flashinfer's JIT needs nvcc = the CUDA runtime
+c=<env>/lib/python3.12/site-packages/nvidia/cu13; ln -s lib $c/lib64; ln -s libcudart.so.13 $c/lib/libcudart.so  # its link step
+python scripts/apply_vllm_omni_patch.py --python <env>/bin/python --dry-run
+python scripts/apply_vllm_omni_patch.py --python <env>/bin/python
+```
+
+[patches/vllm-omni/README.md](../patches/vllm-omni/README.md) lists what the patch contains, its upstream PRs, the source-checkout
+variant and `--revert`. For several personas, voice cloning
 and the token-trace pages, see `examples/minicpmo_suite.py`.
 
 The agent's output is **text only by default**, timed at `speech_cps` (11.3 characters per second for MiniCPM-o
 4.5): `VllmOmniDuplexAgent(audio_out=False)`, served by a Thinker-only MiniCPM-o server (one GPU; the reference
-deployment's default, with its `patches/minicpmo_thinker_only.patch`). This is what every MiniCPM-o runner and
+deployment's default; needs the patch above). This is what every MiniCPM-o runner and
 example in the repository does. `--audio-out` asks for the agent's real speech and needs the full two-GPU deployment
 (`AGENT_LAYOUT=audio`); there, the first session after the server starts may return no audio (lazy initialisation):
 run it twice or warm the server up first. Text-only runs are not bit-identical to audio runs (the deployments

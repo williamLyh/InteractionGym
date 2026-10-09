@@ -14,8 +14,6 @@ scripts/tts_proxy.py              least-in-flight balancer over TTS replicas
 scripts/make_minicpmo_overlay.py  optional MiniCPM-o memory overlay (caps Code2Wav's lazy CUDA graphs)
 scripts/minicpmo_duplex_client.py, lockstep_check.py, token_trace_check.py   protocol smoke tests
 configs/*.yaml                    vLLM-Omni deploy configs (stage -> GPU placement, memory shares)
-patches/*.patch                   MiniCPM-o fixes for the vLLM-Omni install: per-session feature extractor,
-                                  Thinker-only text sessions (the default agent layout)
 pyshim/                           import alias MiniCPM-o's Code2Wav needs (on PYTHONPATH for the agent server)
 ```
 
@@ -26,25 +24,21 @@ pyshim/                           import alias MiniCPM-o's Code2Wav needs (on PY
    - `envs/llm`: [vLLM](https://github.com/vllm-project/vllm) for the user-simulator LLM;
    - `envs/tts`: [vLLM-Omni](https://github.com/vllm-project/vllm-omni) for TTS (stock is fine), with `fastapi`,
      `httpx` and `uvicorn` for the TTS proxy;
-   - `envs/omni`: vLLM-Omni for the duplex agents. For lockstep and the token trace, install the build with our
-     duplex patches (upstream PR [vllm-project/vllm-omni#8485](https://github.com/vllm-project/vllm-omni/pull/8485);
-     until it is merged: fork `williamLyh/vllm-omni`, branch `duplex-input-clock`). With a stock build set
-     `AGENT_TOKEN_TRACE=0` and run the client in realtime mode. MiniCPM-o also needs the `stepaudio2-minicpmo`
-     package (Token2wav). Apply both patches to that install:
+   - `envs/omni`: vLLM-Omni for the duplex agents, **with InteractionGym's patch** (lockstep, token trace,
+     per-session feature extractor, Thinker-only text sessions; [patches/vllm-omni/](../../../patches/vllm-omni/README.md)
+     has the contents and their upstream PRs). Install vllm-omni 0.31.0rc1 and apply the patch:
      ```bash
-     cd <envs/omni>/lib/python3.12/site-packages
-     patch -p1 < <this dir>/patches/minicpmo_fe_per_session.patch
-     patch -p1 < <this dir>/patches/minicpmo_thinker_only.patch
+     python3.12 -m venv envs/omni
+     envs/omni/bin/pip install vllm==0.31.0 vllm-omni==0.31.0rc1 stepaudio2-minicpmo   # stepaudio2: MiniCPM-o's Token2wav
+     envs/omni/bin/pip install nvidia-cuda-nvcc==13.0.88 nvidia-cuda-crt==13.0.88 nvidia-nvvm==13.0.88   # flashinfer's JIT needs nvcc = the CUDA runtime
+     c=envs/omni/lib/python3.12/site-packages/nvidia/cu13; ln -s lib $c/lib64; ln -s libcudart.so.13 $c/lib/libcudart.so  # its link step
+     python3 <repo>/scripts/apply_vllm_omni_patch.py --python envs/omni/bin/python --dry-run
+     python3 <repo>/scripts/apply_vllm_omni_patch.py --python envs/omni/bin/python
      ```
-     (`patch -p1 --dry-run` first to check; to keep the install untouched, apply them to an overlay copy instead,
-     e.g. one built by `scripts/make_minicpmo_overlay.py`, and set `IG_MINICPMO_OVERLAY`.)
-     - `minicpmo_fe_per_session.patch`: upstream MiniCPM-o duplex sessions share one audio feature extractor whose
-       log-mel floor each session's stream rewrites, so concurrent sessions change each other's input normalisation
-       (also the reference-voice features of a new session).
-     - `minicpmo_thinker_only.patch`: a session whose output modalities exclude audio ends at Stage 0 (the
-       Thinker; no Talker / Code2Wav work, the transcript comes from the Thinker's tokens), and the
-       `minicpmo_4_5_thinker` pipeline for the one-GPU Thinker-only layout. Audio sessions are unchanged, so the
-       same install serves both layouts. Not upstream; the header of the patch has the details and measurements.
+     (`--status` checks it, `--revert` undoes it.) With a stock vLLM-Omni, set `AGENT_TOKEN_TRACE=0`, use
+     `AGENT_LAYOUT=audio` and run the client in realtime mode. To keep the install untouched, apply the patch to an
+     overlay copy instead: build one with `scripts/make_minicpmo_overlay.py`, apply with `--target <overlay root> --force`
+     (an overlay has no version metadata; the dry run still checks every file) and set `IG_MINICPMO_OVERLAY`.
    No system CUDA toolkit? The launchers use the pip one inside the environment (`nvidia/cu13`) for flashinfer's JIT.
 3. Model weights as local directories under `models/` (or `IG_MODELS_DIR`), named as in `serving.env`:
    `Qwen3.8-27B-FP8` (LLM), `Qwen3-TTS-12Hz-1.7B-CustomVoice` (TTS), `Qwen3-TTS-12Hz-1.7B-Base` (voice clone;
@@ -72,7 +66,7 @@ sessions each). Clients get all four in `IG_AGENT_URLS`.
 | `thinker` (default) | 1 | `configs/minicpmo_4_5_thinker_1gpu.yaml` | 16 | text-only sessions only | evaluation and RL rollouts: the runners' default (text timed at `speech_cps`) |
 | `audio` | 2 (Thinker \| Talker + Code2Wav) | `configs/minicpmo_4_5_2gpu.yaml` | 4-6 | audio and text-only sessions | `--audio-out` runs: the agent's real speech, recordings, demos |
 
-The Thinker-only layout needs `patches/minicpmo_thinker_only.patch` (Setup, step 2). A client of it must ask for
+The Thinker-only layout needs the patched vLLM-Omni (Setup, step 2). A client of it must ask for
 text only (`VllmOmniDuplexAgent(audio_out=False)`, the runners' default): an audio session gets no output there.
 Its results are not bit-identical to the audio layout's (bf16-level logprob differences from the first speak unit,
 so sampled trajectories diverge), its agent timing is estimated from the text, and they are not directly comparable

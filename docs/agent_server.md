@@ -50,7 +50,7 @@ The agent side has one adapter per server protocol (`interaction_gym.agents`). A
 | `realtime` | wall clock | the adapter waits at least `chunk_ms` of wall time per step, like a real microphone | works with any vLLM-Omni duplex server; latency includes the model's real compute time; not fully reproducible |
 | `input` (lockstep) | amount of input audio: feeding 1 s of audio means 1 s has passed | after sending each step's audio, wait for the server's acknowledgement of that append, then advance the env | training and reproducible evaluation; speed depends only on how fast the model computes: no input means model time stands still, and continuous input can run faster than real time |
 
-The `input` clock is an extension added at vLLM-Omni's model-agnostic duplex engine layer, so it applies to all duplex models; it requires the patches described in [section F](#f-vllm-omni-server-features-and-patches). The adapter disables silence continuation (`extra_body.silence_continuation = false`) under both clocks: the env's microphone always carries background sound, and the server must never insert pure silence on its own.
+The `input` clock is an extension added at vLLM-Omni's model-agnostic duplex engine layer; a model opts in once its unit hooks match its real units (with the patch: MiniCPM-o 4.5 and Qwen3-Omni; a `clock: "input"` session on another model is refused with `input_clock_unsupported`). It requires the patches described in [section F](#f-vllm-omni-server-features-and-patches). The adapter disables silence continuation (`extra_body.silence_continuation = false`) under both clocks: the env's microphone always carries background sound, and the server must never insert pure silence on its own.
 
 ### Output: talker audio vs Thinker text only
 
@@ -59,7 +59,7 @@ The `input` clock is an extension added at vLLM-Omni's model-agnostic duplex eng
   utterance's duration from the agent's speaking rate (`speech_cps`, characters per second).
   - Served by a Thinker-only MiniCPM-o server (one GPU, 16 sessions; the reference deployment's default
     `AGENT_LAYOUT=thinker`, `configs/minicpmo_4_5_thinker_1gpu.yaml`) built with
-    `examples/serving/reference/patches/minicpmo_thinker_only.patch`: a text-only session ends at Stage 0, so no
+    the vLLM-Omni patch (`patches/vllm-omni/`, part 06): a text-only session ends at Stage 0, so no
     Talker or Code2Wav runs, and the transcript of each unit is cut from the Thinker's tokens exactly as the Talker
     hand-off would cut it. With the patch, the two-GPU audio deployment also serves text-only sessions at Stage 0.
   - Calibrate the rate with `interaction_gym.agents.speech_rate(episodes)` on episodes of the same model in audio mode; MiniCPM-o 4.5 under lockstep measured about 11.3 characters per second.
@@ -75,38 +75,44 @@ The `input` clock is an extension added at vLLM-Omni's model-agnostic duplex eng
   MiniCPM-o runners pass `audio_out=False` explicitly. `describe()` records the mode as `meta.agent.output`
   (`"audio"` or `"text @ 11.3 chars/s"`), and `check_output_mode` lets a resumable runner refuse to mix the two in
   one output file.
-- Without `minicpmo_thinker_only.patch` (stock or PR-branch vLLM-Omni), a session with `modalities: ["text"]` still passes the Thinker's output to the Talker and still generates audio (the adapter discards it): text-only output then saves no Talker / Code2Wav compute, and a Thinker-only pipeline does not exist.
+- Without that part of the patch (stock vLLM-Omni, or the PR branches alone), a session with `modalities: ["text"]` still passes the Thinker's output to the Talker and still generates audio (the adapter discards it): text-only output then saves no Talker / Code2Wav compute, and a Thinker-only pipeline does not exist.
 
 ### Compatibility of duplex models on vLLM-Omni
 
 | Model | Unit | Usage notes | Status |
 |---|---|---|---|
 | MiniCPM-o 4.5 | 1 s, the model decides to listen or speak | needs `ref_audio`; default configuration otherwise | fully usable: exact lockstep, token trace available |
-| Nemotron VoiceChat 11B | 80 ms frames | `AgentSpec.chunk_ms` must be a multiple of 80; output is 22.05 kHz (the adapter resamples automatically); it keeps emitting very quiet audio within a reply, so `split_silence_ms` is needed to split utterances; does not stop when interrupted | usable; with the patch for vLLM-Omni 0.30 the lockstep acknowledgement arrives one frame early (a fix is on the patch branch, not yet verified on GPU) |
+| Nemotron VoiceChat 11B | 80 ms frames | `AgentSpec.chunk_ms` must be a multiple of 80; output is 22.05 kHz (the adapter resamples automatically); it keeps emitting very quiet audio within a reply, so `split_silence_ms` is needed to split utterances; does not stop when interrupted | usable in realtime mode; lockstep is refused (`input_clock_unsupported`): the patch has its unit hooks but does not opt it in yet (an earlier prototype did, with acknowledgements one frame early) |
 | AURA | answers a whole turn after the user commits | requires client-side commit (`commit_after_silence_ms`; the server VAD depends on Silero, which was not installed in our build); every append must carry a video frame (`video_frame`); text arrives before audio | runs end to end, but has server-side problems: results are not reproducible, the TTS language is misconfigured, and later replies repeat text from earlier ones |
-| PersonaPlex 7B | 80 ms frames | — | cannot yet run in duplex mode in vLLM-Omni 0.30 |
-| Qwen3-Omni 30B | whole turn (commit) | — | needs about 70 GB in bf16 (at least four 32 GB GPUs); not tested |
+| PersonaPlex 7B | 80 ms frames | — | could not run in duplex mode in vLLM-Omni 0.30; not tested on 0.31; no lockstep (hooks only, not opted in) |
+| Qwen3-Omni 30B | whole turn (commit) | — | needs about 70 GB in bf16 (at least four 32 GB GPUs); not tested; the patch opts it into lockstep (appends acknowledged at once, the commit after the whole reply) |
 
 ## F. vLLM-Omni server features and patches
 
-Three server features used by `VllmOmniDuplexAgent` require our vLLM-Omni patches:
+The server features `VllmOmniDuplexAgent` uses beyond stock vLLM-Omni come in one patch, `patches/vllm-omni/`
+([README](../patches/vllm-omni/README.md)): install `vllm-omni==0.31.0rc1` (with `vllm==0.31.0`) and apply
+`vllm_omni-0.31.0rc1-interactiongym.patch` with `scripts/apply_vllm_omni_patch.py` (a variant for a source checkout
+of upstream main at `61cae20d` is next to it). It contains:
 
-- input-clocked lockstep: `session.extra_body.clock = "input"`;
-- disabling silence continuation: `extra_body.silence_continuation = false`;
-- the per-unit token trace: `session.extra_body.trace_tokens = true`, which also needs `duplex_session.enable_debug_events: true` in the deploy YAML.
+- input-clocked lockstep, `session.extra_body.clock = "input"`, and `extra_body.silence_continuation = false`:
+  upstream PR [vllm-project/vllm-omni#8485](https://github.com/vllm-project/vllm-omni/pull/8485) as revised after
+  review (the adapter's input-clocked mode, including the resend of refused inputs, depends on it);
+- the per-unit token trace, `session.extra_body.trace_tokens = true` (lockstep sessions only), which also needs
+  `duplex_session.enable_debug_events: true` in the deploy YAML; MiniCPM-o 4.5's and Qwen3-Omni's opt-in to the
+  input clock (follow-ups of #8485, not opened yet);
+- MiniCPM-o 4.5's per-session audio feature extractor, upstream PR
+  [vllm-project/vllm-omni#8638](https://github.com/vllm-project/vllm-omni/pull/8638);
+- MiniCPM-o 4.5's Thinker-only text sessions and the `minicpmo_4_5_thinker` pipeline for the one-GPU deployment
+  (InteractionGym only, not upstream).
 
-For MiniCPM-o 4.5 the reference deployment adds two patches on top (`examples/serving/reference/patches/`, not
-upstream): `minicpmo_fe_per_session.patch` (one audio feature extractor per session) and
-`minicpmo_thinker_only.patch` (text-only sessions end at the Thinker; the `minicpmo_4_5_thinker` pipeline for the
-one-GPU Thinker-only deployment, the default for evaluation).
-
-The patches are tracked upstream in PR [vllm-project/vllm-omni#8485](https://github.com/vllm-project/vllm-omni/pull/8485) and are available on the fork [williamLyh/vllm-omni](https://github.com/williamLyh/vllm-omni), branch `duplex-input-clock` (the adapter's input-clocked mode, including the resend of refused inputs, depends on that PR). Realtime mode (`clock = "realtime"`) works on stock vLLM-Omni. The rest of this section describes a vLLM-Omni build with the patches; a reference deployment is in [examples/serving/reference/](../examples/serving/reference/).
-
-The patch adds generic engine code (an input clock plus changes to the duplex session runner, config, manager and events) and one optional plugin hook. Sessions that do not opt in behave exactly as on stock vLLM-Omni.
+Realtime mode (`clock = "realtime"`) works on stock vLLM-Omni. The rest of this section describes a patched
+vLLM-Omni; a reference deployment is in [examples/serving/reference/](../examples/serving/reference/). The engine
+part is generic (an input clock plus changes to the duplex session runner, config, manager and events, and
+optional plugin hooks); sessions that do not opt in behave exactly as on stock vLLM-Omni.
 
 ### Lockstep (input-clocked) duplex sessions
 
-Opt in per session in the first `session.update`: `session.extra_body.clock = "input"`. The contract below is that of PR #8485 as revised after review (the authoritative text is `docs/serving/realtime_duplex_api.md` → *Input-clocked sessions* on that branch). Then:
+Opt in per session in the first `session.update`: `session.extra_body.clock = "input"`. The contract below is that of PR #8485 as revised after review (the authoritative text is `docs/serving/realtime_duplex_api.md` → *Input-clocked sessions* in vLLM-Omni with the patch; the source-checkout patch adds it). Then:
 
 - The server never invents input: there is no wall-clock silence continuation (this implies `silence_continuation: false`). If the client sends nothing, model time does not advance and nothing is emitted. Idle handling is that of any duplex session (`idle_timeout_s` and the lease's `idle_ttl_s`, 300 s by default): a simulated user that pauses longer is released like any idle client.
 - Every `input_audio_buffer.append`, `input_audio_buffer.commit` and `response.create` gets exactly one acknowledgement, in input order:
@@ -122,7 +128,7 @@ Opt in per session in the first `session.update`: `session.extra_body.clock = "i
 
   It is sent only after everything that input caused has been sent: for each unit it completed, the listen/speak decision was taken and, if the model spoke, all of that unit's text and audio deltas (and `response.done` if the response ended there) went out first. An append that only buffers a partial unit is acknowledged once the acknowledgements before it are out, with `units: []`. `units[].decision` is the model's decision (`listen`, `speak`), or `dropped`, `cancelled`, `aborted` or `timed_out` (with a `reason`) for a unit that will produce no further output.
 - **Refused inputs.** An input the session refuses before any of it reaches the model is still acknowledged in input order, with `"decision": "rejected"` and `"reason"` = the error code (`input_backpressure`, `invalid_input_modality`, or for an append whose audio the engine cannot convert `bad_audio` / `bad_event`) at the top level of the acknowledgement; its `error` (with the input's `event_id`) comes first. An input rejected before it reaches the session (transport layer: `engine_backpressure`, `bad_audio`, `bad_event`, `unsupported_audio_format`, `event_too_large`, ...) gets only an `error` carrying the input's `event_id`, and no `input_index`. Since `bad_audio` / `bad_event` can come from either layer, the adapter waits `ack_grace_s` (1 s) after such an error for a possible acknowledgement.
-- Client loop (what the adapter does): send one input with a fresh `event_id`, wait for its acknowledgement, repeat; nothing later is sent before the input in flight is acknowledged. A refusal a resend can fix (`input_backpressure`, `engine_backpressure`) is resent after a bounded exponential back-off (`retry_backoff_s` = 0.05 s doubling up to `retry_backoff_max_s` = 1 s), so the model never misses audio. After `max_input_retries` (default 5) resends, or at once for a refusal a resend cannot fix, the input is given up: it is recorded in `agent.input_stats["dropped_inputs"]` (`t`, `type`, `reason`, `attempts`; also `input_retries` and `input_errors`, and in the agent trace) and the step raises `InputDroppedError`, or, with `on_input_dropped="mark"`, the episode goes on and `agent.failed` says why it is invalid. Put `agent.input_stats` into the episode `meta` when you keep it. On a server build without the revised PR (e.g. the earlier prototype patch) refused inputs are never acknowledged, so such a refusal ends in the adapter's `ack_timeout_s` error instead.
+- Client loop (what the adapter does): send one input with a fresh `event_id`, wait for its acknowledgement, repeat; nothing later is sent before the input in flight is acknowledged. A refusal a resend can fix (`input_backpressure`, `engine_backpressure`) is resent after a bounded exponential back-off (`retry_backoff_s` = 0.05 s doubling up to `retry_backoff_max_s` = 1 s), so the model never misses audio. After `max_input_retries` (default 5) resends, or at once for a refusal a resend cannot fix, the input is given up: it is recorded in `agent.input_stats["dropped_inputs"]` (`t`, `type`, `reason`, `attempts`; also `input_retries` and `input_errors`, and in the agent trace) and the step raises `InputDroppedError`, or, with `on_input_dropped="mark"`, the episode goes on and `agent.failed` says why it is invalid. Put `agent.input_stats` into the episode `meta` when you keep it. On a server build without the revised PR (e.g. the earlier prototype build) refused inputs are never acknowledged, so such a refusal ends in the adapter's `ack_timeout_s` error instead.
 - Keep each append at most one model unit long (MiniCPM-o: 1 s; 200 ms works well). The MiniCPM-o PCM buffer submits at most one unit per append, so larger appends build a backlog (`unit_end_ms` lags behind `audio_end_ms`).
 - Timeouts: if units are open and the model pipeline produces nothing for `extra_body.input_clock_unit_timeout_s` (default 15 s), the oldest open unit is settled as `timed_out` (`no_progress`); a unit older than `input_clock_unit_max_s` (default 60 s) is settled too (`max_age`). They only release acknowledgements; the session's resources are handled as for any session.
 - Silence continuation can also be disabled on its own, without the input clock: `extra_body.silence_continuation = false`.
@@ -133,7 +139,7 @@ Measured with MiniCPM-o 4.5 (two questions in 32.6 s of input): pauses of 12 s a
 
 ### Per-unit token trace (debug)
 
-Opt in per session with `session.extra_body.trace_tokens = true` (with or without `clock: "input"`; nothing is tracked when it is off). The deploy YAML must set `duplex_session.enable_debug_events: true`. For every model unit, when the unit completes (in lockstep: before the `input_audio_buffer.processed` that covers it), the server emits:
+Opt in per session with `session.extra_body.trace_tokens = true`, together with `clock: "input"`: the server refuses a traced session without the input clock (`token_trace_requires_input_clock`), so the adapter requests the trace only in lockstep (`trace_tokens=True` with `clock="realtime"` warns and records nothing). The deploy YAML must set `duplex_session.enable_debug_events: true`. For every model unit, when the unit completes (in lockstep: before the `input_audio_buffer.processed` that covers it), the server emits:
 
 ```
 {"type": "debug.unit_tokens", "event_id": "...", "session_id": "...", "unit_index": 3, "end_ms": 4000,
@@ -167,4 +173,4 @@ Notes: the previous unit's terminator (`<|listen|>` / `<|chunk_eos|>`) is re-fed
 - Output: `response.output_audio.delta` (PCM16, 24 kHz, about 1 s each) and `response.output_audio_transcript.delta`.
 - Audio deployment: the first duplex session after the server starts can come back with listen decisions only and no audio while the Talker and Code2Wav finish lazy initialization. Send one throw-away warm-up session before real episodes.
 - Thinker-only deployment: ask for text only (`modalities: ["text"]`); an audio session gets no output there. `ref_audio` is still sent: its embeddings are part of the Thinker's prompt, so leaving it out would change what the model sees.
-- Use a vLLM-Omni build that includes upstream PR [vllm-project/vllm-omni#8227](https://github.com/vllm-project/vllm-omni/pull/8227): with it, a unit `<|speak|> ... <|turn_eos|> <|listen|>` goes to the Talker instead of being taken as a listen decision. Without it (e.g. vLLM-Omni 0.30.0), that unit's text and turn end are lost and the response stays open.
+- Use a vLLM-Omni build that includes upstream PR [vllm-project/vllm-omni#8227](https://github.com/vllm-project/vllm-omni/pull/8227): with it, a unit `<|speak|> ... <|turn_eos|> <|listen|>` goes to the Talker instead of being taken as a listen decision. Without it (e.g. vLLM-Omni 0.30.0), that unit's text and turn end are lost and the response stays open. vLLM-Omni 0.31.0rc1, the base of the patch, includes it.

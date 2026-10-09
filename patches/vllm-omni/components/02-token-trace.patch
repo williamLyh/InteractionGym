@@ -1,0 +1,953 @@
+diff --git a/vllm_omni/config/stage_config.py b/vllm_omni/config/stage_config.py
+index b243ea88..5b515446 100644
+--- a/vllm_omni/config/stage_config.py
++++ b/vllm_omni/config/stage_config.py
+@@ -554,6 +554,11 @@ class DuplexSessionRuntimeConfig:
+     # compile their real shapes. The empty per-stage JIT registry does not.
+     # A negative value disables every startup warmup.
+     warmup_frames: int = 0
++    # Debug events that expose model internals to clients (``debug.unit_tokens``,
++    # requested per session with ``extra_body.trace_tokens``). The token trace
++    # carries the full model context, including server-side prompts and
++    # templates a client cannot otherwise see, so operators opt in here.
++    enable_debug_events: bool = False
+ 
+     def __post_init__(self) -> None:
+         positive = {
+diff --git a/vllm_omni/engine/duplex/plugin.py b/vllm_omni/engine/duplex/plugin.py
+index e919757f..0cc6701a 100644
+--- a/vllm_omni/engine/duplex/plugin.py
++++ b/vllm_omni/engine/duplex/plugin.py
+@@ -603,6 +603,45 @@ class DuplexModelPlugin(ABC):
+         del final_stage_id, new_output, new_context, state, runtime_config
+         return unit is not None and unit.final_segment_finished
+ 
++    # ---- token trace (extra_body.trace_tokens) ----
++
++    def unit_token_trace(
++        self,
++        *,
++        stage_id: int,
++        output: object,
++        context: DuplexOutputContext | None,
++        cursor: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> dict[str, object] | None:
++        """The token ids one stage consumed and produced for one model unit.
++
++        Called on the stage's segment end for each unit, in order (traced
++        input-clocked sessions only). ``cursor``
++        is a per-session, per-stage dict the hook may keep state in (e.g.
++        cumulative lengths). Return ``{"stage": name, "input": [...],
++        "output": [...]}`` whose items are token ids (the engine adds the
++        tokenizer piece) or ready ``[id, text]`` pairs (ids outside the text
++        vocabulary, e.g. codec codes). A Stage-0 result may add
++        ``"prompt_input"``: the initial context folded into the first unit,
++        reported once as unit -1.
++
++        Default: the deltas of the stage output's ``prompt_token_ids`` and of
++        its first completion's ``token_ids`` since the previous segment end. A
++        model whose stage builds its prompt from embeddings (placeholder ids in
++        the scheduler) overrides this to report the real ids.
++        """
++        del context, runtime_config
++        return default_unit_token_trace(stage_id=stage_id, output=output, cursor=cursor)
++
++    def token_trace_started(self, *, session_id: str) -> None:
++        """A traced session was created (lets a plugin start recording what only it sees)."""
++        del session_id
++
++    def token_trace_stopped(self, *, session_id: str) -> None:
++        """The traced session closed: drop anything recorded for it."""
++        del session_id
++
+     # ---- session policy (was ServingRuntimeAdapter) ----
+ 
+     @abstractmethod
+@@ -718,6 +757,50 @@ def _silence_pcm_f32le_base64(samples: int) -> str:
+     return base64.b64encode(bytes(max(0, samples) * 4)).decode("ascii")
+ 
+ 
++def token_id_list(value: object) -> list[int]:
++    """Token ids from a list / tuple / tensor / ndarray (anything else gives ``[]``)."""
++    if value is None:
++        return []
++    tolist = getattr(value, "tolist", None)
++    if callable(tolist):
++        try:
++            value = tolist()
++        except (TypeError, ValueError, RuntimeError):
++            return []
++    if not isinstance(value, list | tuple):
++        return []
++    ids: list[int] = []
++    for item in value:
++        try:
++            ids.append(int(item))
++        except (TypeError, ValueError):
++            continue
++    return ids
++
++
++def default_unit_token_trace(*, stage_id: int, output: object, cursor: dict[str, object]) -> dict[str, object]:
++    """Engine-visible deltas of ``prompt_token_ids`` and first-completion ``token_ids`` since the last segment.
++
++    The deltas are taken within one stage request: a model that opens a new
++    request per turn (Qwen3-Omni, AURA) starts both offsets over at 0.
++    """
++    prompt = token_id_list(getattr(output, "prompt_token_ids", None))
++    outputs = getattr(output, "outputs", None)
++    completion = outputs[0] if isinstance(outputs, list) and outputs else None
++    generated = token_id_list(getattr(completion, "token_ids", None)) if completion is not None else []
++    request_id = getattr(output, "request_id", None)
++    if cursor.get("request_id") != request_id:
++        cursor.clear()
++        cursor["request_id"] = request_id
++    prompt_start = cursor.get("prompt_len", 0)
++    output_start = cursor.get("output_len", 0)
++    prompt_start = prompt_start if isinstance(prompt_start, int) and prompt_start <= len(prompt) else 0
++    output_start = output_start if isinstance(output_start, int) and output_start <= len(generated) else 0
++    cursor["prompt_len"] = len(prompt)
++    cursor["output_len"] = len(generated)
++    return {"stage": f"stage{stage_id}", "input": prompt[prompt_start:], "output": generated[output_start:]}
++
++
+ def payload_turn_id(payload: object) -> int | None:
+     if not isinstance(payload, Mapping):
+         return None
+@@ -750,8 +833,10 @@ __all__ = [
+     "PcmAppendBuffer",
+     "PcmAppendReservation",
+     "coerce_int",
++    "default_unit_token_trace",
+     "load_duplex_plugin",
+     "payload_turn_id",
+     "reject_changed_runtime_value",
++    "token_id_list",
+     "validate_duplex_plugin_sampling",
+ ]
+diff --git a/vllm_omni/engine/duplex/session/control.py b/vllm_omni/engine/duplex/session/control.py
+index f528a8cc..caa4d674 100644
+--- a/vllm_omni/engine/duplex/session/control.py
++++ b/vllm_omni/engine/duplex/session/control.py
+@@ -31,6 +31,7 @@ from vllm_omni.engine.duplex.session.emitter import SessionEmitter
+ from vllm_omni.engine.duplex.session.input_clock import check_input_clock_supported, check_input_clock_unchanged
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity
+ from vllm_omni.engine.duplex.session.model_channel import ModelChannel
++from vllm_omni.engine.duplex.session.token_trace import check_token_trace_allowed, check_token_trace_unchanged
+ from vllm_omni.engine.duplex.turn_detection import (
+     PendingTurnDetectionUpdate,
+     ServerTurnDetector,
+@@ -245,6 +246,12 @@ class SessionControl:
+             # The clock mode and its timeouts are fixed at creation, like the
+             # acknowledgements they decide.
+             check_input_clock_unchanged(session.config.extra_body, candidate_config.extra_body)
++            # So is the token trace, which rides on the clock's units.
++            check_token_trace_allowed(
++                candidate_config.extra_body,
++                debug_events_enabled=bool(self._ctx.manager.runtime_config.enable_debug_events),
++            )
++            check_token_trace_unchanged(session.config.extra_body, candidate_config.extra_body)
+         except DuplexRuntimeConfigError as exc:
+             self._out.emit_error(exc.code, str(exc), event_id=realtime_event_id)
+             reject_update()
+diff --git a/vllm_omni/engine/duplex/session/input_clock.py b/vllm_omni/engine/duplex/session/input_clock.py
+index bdc6d155..a72fbb73 100644
+--- a/vllm_omni/engine/duplex/session/input_clock.py
++++ b/vllm_omni/engine/duplex/session/input_clock.py
+@@ -80,9 +80,9 @@ import math
+ import time
+ from collections import deque
+ from collections.abc import Callable, Collection, Mapping
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from fractions import Fraction
+-from typing import TypeGuard
++from typing import TYPE_CHECKING, TypeGuard
+ 
+ from vllm.logger import init_logger
+ 
+@@ -96,6 +96,9 @@ from vllm_omni.engine.duplex.plugin import (
+ )
+ from vllm_omni.protocol.duplex.events import DuplexEvent, InputProcessed
+ 
++if TYPE_CHECKING:
++    from vllm_omni.engine.duplex.session.token_trace import TokenTracer
++
+ logger = init_logger(__name__)
+ 
+ UNIT_TIMEOUT_KEY = "input_clock_unit_timeout_s"
+@@ -197,7 +200,8 @@ class StageProgress:
+     segment_finished: bool
+     #: The plugin's classification of a decision taken on this output, if any.
+     decision: DuplexUnitDecision | None = None
+-    #: The final-stage output and its context (``None`` for other stages).
++    #: The output and its context: always for the final stage, and on a segment end of
++    #: any stage when the session is token-traced (``None`` otherwise).
+     output: object | None = None
+     context: DuplexOutputContext | None = None
+ 
+@@ -227,6 +231,9 @@ class InputClockUnit:
+     # Pipeline view, kept after the unit was settled so its late output stays its own.
+     upstream_segment_finished: bool = False
+     final_segment_finished: bool = False
++    #: Token trace (``extra_body.trace_tokens``): per-stage ids, and the initial prompt on the first unit.
++    traces: list[dict[str, object]] = field(default_factory=list)
++    prompt_trace: dict[str, object] | None = None
+ 
+     @property
+     def index(self) -> int:
+@@ -301,6 +308,8 @@ class InputClock:
+         #: Epochs whose hold overflowed: their later-stage progress is no longer held (``_hold``).
+         self._hold_overflowed: set[int] = set()
+         self._closed = False
++        #: Per-unit token trace (``extra_body.trace_tokens``); ``None`` unless the session asked for it.
++        self.tracer: TokenTracer | None = None
+         #: Last time the pipeline produced something (or became busy): the liveness valve's reference.
+         self.last_progress = clock()
+         self._failed_hooks: set[str] = set()
+@@ -610,6 +619,7 @@ class InputClock:
+             self._hold(progress)
+             return
+         if progress.segment_finished:
++            self._trace(self._speaking[0], progress)
+             self._speaking[0].final_segment_finished = True
+         self._advance_speaking(progress.final_stage_id, progress.output, progress.context)
+ 
+@@ -674,7 +684,9 @@ class InputClock:
+             unit = self._claim_unaccepted(epoch, ordinal)
+         if unit is None:
+             self._warn("input clock: Stage-0 segment end %s of epoch %s matches no submission", ordinal, epoch)
++            self._trace(None, progress)
+             return
++        self._trace(unit, progress)
+         decision = progress.decision
+         ends_unit = (decision is not None and decision.ends_unit) or progress.final_stage_id == 0
+         if not unit.complete:
+@@ -716,9 +728,11 @@ class InputClock:
+         )
+         if target is None:
+             if progress.segment_finished or (progress.decision is not None and progress.decision.ends_unit):
+-                # Ahead of the Stage-0 segment end that makes its unit speaking.
++                # Ahead of the Stage-0 segment end that makes its unit speaking (traced when replayed).
+                 self._hold(progress)
+             return
++        if progress.segment_finished:
++            self._trace(target, progress)
+         decision = progress.decision
+         if decision is not None and decision.ends_unit:
+             self._speaking.remove(target)
+@@ -816,6 +830,22 @@ class InputClock:
+             self._suppressed_warnings = 0
+         logger.warning(message, *args)
+ 
++    def _trace(self, unit: InputClockUnit | None, progress: StageProgress) -> None:
++        """Collect a stage's segment ids for ``unit``; with no unit to credit, the segment is still consumed.
++
++        The plugin's per-stage cursor (and, e.g., a queue of hand-offs) then
++        stays aligned with the stage's segments. The trace is a debug aid: a
++        failure is logged and never reaches the session.
++        """
++        if self.tracer is None:
++            return
++        try:
++            self.tracer.on_stage_segment(
++                unit, stage_id=progress.stage_id, output=progress.output, context=progress.context
++            )
++        except Exception:
++            logger.exception("token trace: collecting stage %s failed", progress.stage_id)
++
+     def _complete(self, unit: InputClockUnit) -> None:
+         unit.complete = True
+         # Units are acknowledged in order: advance over the completed prefix.
+@@ -827,6 +857,14 @@ class InputClock:
+             if head.reason is not None:
+                 entry["reason"] = head.reason
+             self._completed_since_ack.append((head.seq, entry, self._unit_end))
++            if self.tracer is not None and not self._closed:
++                # Before the acknowledgement that covers this unit (and, at
++                # teardown, before the session's terminal event). A debug aid:
++                # a failure must not hold back the acknowledgements or the teardown.
++                try:
++                    self.tracer.emit_unit(head, end_ms=self.unit_end_us // 1000)
++                except Exception:
++                    logger.exception("token trace: rendering unit %s failed", head.index)
+ 
+     # ------------------------------------------------------------------ #
+     # Acknowledgements                                                   #
+diff --git a/vllm_omni/engine/duplex/session/manager.py b/vllm_omni/engine/duplex/session/manager.py
+index 8fc0687c..39c0b912 100644
+--- a/vllm_omni/engine/duplex/session/manager.py
++++ b/vllm_omni/engine/duplex/session/manager.py
+@@ -59,6 +59,11 @@ from vllm_omni.engine.duplex.plugin import DuplexModelPlugin, DuplexRuntimeConfi
+ from vllm_omni.engine.duplex.session.engine_session import DuplexEngineSession, DuplexFenceMismatchError
+ from vllm_omni.engine.duplex.session.input_clock import check_input_clock_supported
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity, DuplexLeaseConfig, DuplexLeaseState
++from vllm_omni.engine.duplex.session.token_trace import (
++    check_token_trace_allowed,
++    load_trace_tokenizer,
++    token_trace_enabled,
++)
+ from vllm_omni.engine.duplex.turn_detection import SileroVADBackendProvider
+ 
+ if TYPE_CHECKING:
+@@ -576,6 +581,16 @@ class DuplexSessionManager:
+             config = message.session_config
+             self.plugin.validate_client_extra_body(config.extra_body)
+             check_input_clock_supported(self.plugin, config.extra_body)
++            check_token_trace_allowed(
++                config.extra_body, debug_events_enabled=bool(self.runtime_config.enable_debug_events)
++            )
++            trace_tokenizer = None
++            if token_trace_enabled(config.extra_body) and self.model_config is not None:
++                # Off the event loop and before the session exists: loaded on the
++                # first traced unit instead, a cold load would block every session on this loop.
++                trace_tokenizer = await asyncio.get_running_loop().run_in_executor(
++                    self.executor, load_trace_tokenizer, self.model_config
++                )
+             try:
+                 runtime_config = await self.plugin.prepare_runtime_config(config, model_config=self.model_config)
+             except DuplexRuntimeConfigError:
+@@ -603,6 +618,7 @@ class DuplexSessionManager:
+                 manager=self,
+                 model_config=self.model_config,
+             )
++            runner.trace_tokenizer = trace_tokenizer
+             self.runners[session_id] = runner
+             self._outputs[session_id] = message.output_buffer
+             # Reserve the Stage0 request resource atomically with admission.
+@@ -658,6 +674,9 @@ class DuplexSessionManager:
+         if owned_runner:
+             self.runners.pop(session_id, None)
+             self._outputs.pop(session_id, None)
++        if runner is not None and runner.token_traced:
++            # The runner started the plugin's trace when it was built; nothing else will stop it.
++            self.plugin.token_trace_stopped(session_id=session_id)
+         pending: _PendingRequestCleanup | None = None
+         key: tuple[str, int] | None = None
+         if session is not None:
+diff --git a/vllm_omni/engine/duplex/session/runner.py b/vllm_omni/engine/duplex/session/runner.py
+index e50e9c19..2f13f5d1 100644
+--- a/vllm_omni/engine/duplex/session/runner.py
++++ b/vllm_omni/engine/duplex/session/runner.py
+@@ -29,6 +29,7 @@ from fractions import Fraction
+ from typing import TYPE_CHECKING, TypeVar
+ 
+ from vllm.logger import init_logger
++from vllm.tokenizers import TokenizerLike
+ 
+ from vllm_omni.engine.duplex.commands import (
+     AckPlayback,
+@@ -112,6 +113,7 @@ from vllm_omni.engine.duplex.session.input_clock import (
+ )
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity
+ from vllm_omni.engine.duplex.session.model_channel import ModelChannel
++from vllm_omni.engine.duplex.session.token_trace import TokenTracer, token_trace_enabled
+ from vllm_omni.engine.duplex.turn_detection import (
+     TurnDetectionResult,
+ )
+@@ -252,6 +254,17 @@ class DuplexSessionRunner:
+                 unit_timeout_s=unit_timeout_s(session.config.extra_body),
+                 unit_max_age_s=unit_max_age_s(session.config.extra_body),
+             )
++            # The per-unit token trace rides on the clock's units (fixed at creation, like the clock).
++            if token_trace_enabled(session.config.extra_body) and manager.runtime_config.enable_debug_events:
++                self._input_clock.tracer = TokenTracer(
++                    plugin=plugin,
++                    tokenizer_loader=self._trace_tokenizer,
++                    emit=self._emit_events,
++                    runtime_config=self._input_clock_runtime_config,
++                )
++                plugin.token_trace_started(session_id=session.session_id)
++        #: Tokenizer that names the ids of a token-traced session (set by the manager at open).
++        self.trace_tokenizer: TokenizerLike | None = None
+         #: Acknowledgement owed for the client input being handled right now.
+         self._current_input_ack: PendingAck | None = None
+         #: The unit each append task in flight carries, until its outcome is settled.
+@@ -503,6 +516,15 @@ class DuplexSessionRunner:
+             if response_cancelled or turn is None or turn != live_turn:
+                 clock.release_placeholder(turn, reason)
+ 
++    @property
++    def token_traced(self) -> bool:
++        """Whether the session sends per-unit token traces (``extra_body.trace_tokens``)."""
++        return self._input_clock is not None and self._input_clock.tracer is not None
++
++    def _trace_tokenizer(self) -> TokenizerLike | None:
++        # Loaded by the manager off the event loop when the session opened.
++        return self.trace_tokenizer
++
+     def _close_input_clock(self, reason: str) -> None:
+         """Teardown: acknowledge every owed input (``aborted`` units) before the terminal event."""
+         clock = self._input_clock
+@@ -547,6 +569,9 @@ class DuplexSessionRunner:
+             return None
+         # A decision, or a segment end of a stage before the final one: the plugin may classify it.
+         classified = decision is not None or (context.segment_finished and not final)
++        # The final stage's output feeds ``unit_output_complete``; the token
++        # trace also reads every stage's segment ends.
++        carries_output = final or (clock.tracer is not None and context.segment_finished)
+         return StageProgress(
+             stage_id=stage_id,
+             final_stage_id=final_stage_id,
+@@ -557,8 +582,8 @@ class DuplexSessionRunner:
+                 if classified
+                 else None
+             ),
+-            output=output if final else None,
+-            context=context if final else None,
++            output=(TokenTracer.on_arrival(output) if clock.tracer is not None else output) if carries_output else None,
++            context=context if carries_output else None,
+         )
+ 
+     def _stash_stage_metrics(self, stage_id: int, metrics: StageRequestStats | None, output: object) -> None:
+@@ -1042,6 +1067,8 @@ class DuplexSessionRunner:
+         session = self.session
+         self.plugin.data_plane.close_session(session.session_id, active_request_id=session.active_request_id)
+         self.run.stream_request_id = None
++        if self.token_traced:
++            self.plugin.token_trace_stopped(session_id=session.session_id)
+ 
+     # ------------------------------------------------------------------ #
+     # Append path (was the audio-append branch + start_native_append)    #
+diff --git a/vllm_omni/engine/duplex/session/token_trace.py b/vllm_omni/engine/duplex/session/token_trace.py
+new file mode 100644
+index 00000000..5c97263b
+--- /dev/null
++++ b/vllm_omni/engine/duplex/session/token_trace.py
+@@ -0,0 +1,261 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
++
++"""Opt-in per-unit token trace (``session.extra_body.trace_tokens == true``).
++
++For every model unit the session emits one ``debug.unit_tokens`` event with
++the token ids each stage consumed and produced for that unit, plus (once) the
++initial prompt as unit ``-1``: what the model actually saw, special tokens
++included, which is what one needs to check a duplex model's chunk layout
++(unit delimiters, audio placeholders, listen/speak control tokens, TTS
++boundaries).
++
++Units are the input clock's (one Stage-0 submission each, see
++``input_clock``), so the trace is available on input-clocked sessions only:
++the clock's preconditions (one Stage-0 segment end per accepted submission,
++a new epoch for every cancel that calls off appends, no silence
++continuation, the plugin's unit boundaries) are what make the mapping of ids
++to units exact. An event goes out when its unit completes, before the
++``input_audio_buffer.processed`` that covers the unit. Like the clock, the
++option is fixed when the session is created.
++
++The engine owns the unit mapping and the rendering (token pieces from the
++model's tokenizer, special-id detection). Which ids a stage consumed and
++produced for one segment is asked of the plugin
++(``DuplexModelPlugin.unit_token_trace``).
++"""
++
++from __future__ import annotations
++
++import copy
++from collections.abc import Callable, Mapping
++from typing import TYPE_CHECKING
++
++from vllm.logger import init_logger
++from vllm.tokenizers import TokenizerLike, cached_tokenizer_from_config
++
++from vllm_omni.engine.duplex.config import input_clocked
++from vllm_omni.engine.duplex.contracts import DuplexOutputContext
++from vllm_omni.engine.duplex.plugin import DuplexRuntimeConfigError, default_unit_token_trace
++from vllm_omni.protocol.duplex.events import DuplexEvent, UnitTokens
++
++if TYPE_CHECKING:
++    from vllm_omni.engine.duplex.session.input_clock import InputClockUnit
++
++logger = init_logger(__name__)
++
++TRACE_KEY = "trace_tokens"
++
++
++def token_trace_enabled(extra_body: object) -> bool:
++    return isinstance(extra_body, Mapping) and extra_body.get(TRACE_KEY) is True
++
++
++def check_token_trace_allowed(extra_body: object, *, debug_events_enabled: bool) -> None:
++    """Refuse ``trace_tokens`` unless the deployment enabled debug events and the session is input-clocked."""
++    if not token_trace_enabled(extra_body):
++        return
++    if not debug_events_enabled:
++        raise DuplexRuntimeConfigError(
++            "extra_body.trace_tokens needs a server with duplex_session.enable_debug_events: true",
++            code="token_trace_disabled",
++        )
++    if not input_clocked(extra_body):
++        raise DuplexRuntimeConfigError(
++            'extra_body.trace_tokens needs an input-clocked session (extra_body.clock: "input")',
++            code="token_trace_requires_input_clock",
++        )
++
++
++def check_token_trace_unchanged(current: Mapping[str, object], candidate: Mapping[str, object]) -> None:
++    """Refuse a ``session.update`` that turns the trace on or off: like the clock, it is fixed at creation."""
++    if token_trace_enabled(current) != token_trace_enabled(candidate):
++        raise DuplexRuntimeConfigError(
++            f"session.update cannot change extra_body.{TRACE_KEY}: it is fixed at session creation",
++            code="input_clock_update_unsupported",
++        )
++
++
++def load_trace_tokenizer(model_config: object) -> TokenizerLike | None:
++    """The model's tokenizer for naming traced ids (blocking: run it in an executor); ``None`` if it cannot load."""
++    try:
++        return cached_tokenizer_from_config(model_config)
++    except Exception:
++        logger.warning("token trace: no tokenizer; ids are sent without their pieces", exc_info=True)
++        return None
++
++
++class TokenTracer:
++    """Collects per-stage token ids onto units and emits ``debug.unit_tokens``."""
++
++    def __init__(
++        self,
++        *,
++        plugin: object,
++        tokenizer_loader: Callable[[], TokenizerLike | None],
++        emit: Callable[[list[DuplexEvent]], None],
++        runtime_config: Callable[[], Mapping[str, object]] | None = None,
++    ) -> None:
++        self._plugin = plugin
++        self._tokenizer_loader = tokenizer_loader
++        self._tokenizer: TokenizerLike | None = None
++        self._tokenizer_loaded = False
++        self._special_ids: set[int] = set()
++        self._emit = emit
++        self._runtime_config = runtime_config
++        self._cursors: dict[int, dict[str, object]] = {}
++        self._prompt_emitted = False
++
++    @staticmethod
++    def on_arrival(output: object) -> object:
++        """The output as the trace reads it later, in mailbox order: its token id lists copied now.
++
++        A stage output's ``prompt_token_ids`` and its completions' ``token_ids``
++        / ``cumulative_token_ids`` can alias the stage's live lists, which may
++        hold the next unit's ids by the time the clock takes the output.
++        """
++        try:
++            view = copy.copy(output)
++            prompt = getattr(output, "prompt_token_ids", None)
++            if isinstance(prompt, list):
++                setattr(view, "prompt_token_ids", list(prompt))
++            completions = getattr(output, "outputs", None)
++            if isinstance(completions, list):
++                copies = [copy.copy(completion) for completion in completions]
++                for completion in copies:
++                    for name in ("token_ids", "cumulative_token_ids"):
++                        if isinstance(getattr(completion, name, None), list):
++                            setattr(completion, name, list(getattr(completion, name)))
++                setattr(view, "outputs", copies)
++            return view
++        except Exception:
++            logger.debug("token trace: stage output %s not copied", type(output).__name__, exc_info=True)
++            return output
++
++    # ------------------------------------------------------------------ #
++    # Collection                                                         #
++    # ------------------------------------------------------------------ #
++
++    def on_stage_segment(
++        self, unit: InputClockUnit | None, *, stage_id: int, output: object, context: DuplexOutputContext | None
++    ) -> None:
++        """A stage ended its segment for ``unit``: collect the ids it consumed and produced.
++
++        With ``unit`` None (a segment no unit is credited with) the hook still
++        runs, so its per-stage cursor advances, and the ids are dropped.
++        """
++        if output is None:
++            return
++        cursor = self._cursors.setdefault(stage_id, {})
++        runtime_config = self._runtime_config() if self._runtime_config is not None else {}
++        hook = getattr(self._plugin, "unit_token_trace", None)
++        try:
++            trace = (
++                hook(stage_id=stage_id, output=output, context=context, cursor=cursor, runtime_config=runtime_config)
++                if callable(hook)
++                else default_unit_token_trace(stage_id=stage_id, output=output, cursor=cursor)
++            )
++        except Exception:
++            # A debug aid must never take the session down with it.
++            logger.exception("token trace: unit_token_trace failed for stage %s", stage_id)
++            return
++        if not trace or unit is None:
++            return
++        trace = dict(trace)
++        prompt_input = trace.pop("prompt_input", None)
++        if isinstance(prompt_input, list) and prompt_input:
++            unit.prompt_trace = {"stage": trace.get("stage", f"stage{stage_id}"), "input": prompt_input}
++        if trace.get("input") or trace.get("output"):
++            unit.traces.append(trace)
++
++    # ------------------------------------------------------------------ #
++    # Rendering                                                          #
++    # ------------------------------------------------------------------ #
++
++    def _ensure_tokenizer(self) -> None:
++        if self._tokenizer_loaded:
++            return
++        self._tokenizer_loaded = True
++        try:
++            tokenizer = self._tokenizer_loader()
++            special: set[int] = set()
++            if tokenizer is not None:
++                special = {int(i) for i in getattr(tokenizer, "all_special_ids", None) or ()}
++                get_added_vocab = getattr(tokenizer, "get_added_vocab", None)
++                if callable(get_added_vocab):
++                    special.update(int(i) for i in get_added_vocab().values())
++        except Exception:
++            logger.warning("token trace: no tokenizer; ids are sent without their pieces", exc_info=True)
++            tokenizer, special = None, set()
++        self._tokenizer = tokenizer
++        self._special_ids = special
++
++    def _render(self, items: list[object], special: set[int]) -> list[list[object]]:
++        """``[[id, text], ...]``: plugin-labelled pairs pass through, bare ids get the tokenizer piece."""
++        bare = sorted({item for item in items if isinstance(item, int)})
++        pieces: dict[int, str] = {}
++        if bare and self._tokenizer is not None:
++            try:
++                names = self._tokenizer.convert_ids_to_tokens(bare)
++                pieces = {token_id: str(name) for token_id, name in zip(bare, names, strict=False)}
++            except Exception:
++                # Ids the tokenizer cannot name (e.g. outside its vocabulary): sent with their number.
++                logger.warning("token trace: the tokenizer could not name ids %s", bare[:8], exc_info=True)
++        rendered: list[list[object]] = []
++        for item in items:
++            if isinstance(item, int):
++                rendered.append([item, pieces.get(item, str(item))])
++                if item in self._special_ids:
++                    special.add(item)
++            elif isinstance(item, list | tuple) and len(item) == 2:
++                try:
++                    rendered.append([int(item[0]), str(item[1])])
++                except (TypeError, ValueError):
++                    continue
++        return rendered
++
++    def _stage_payload(self, trace: Mapping[str, object], special: set[int]) -> dict[str, object]:
++        payload: dict[str, object] = {"stage": str(trace.get("stage"))}
++        for key in ("input", "output"):
++            items = trace.get(key)
++            if isinstance(items, list) and items:
++                payload[key] = self._render(items, special)
++        return payload
++
++    def emit_unit(self, unit: InputClockUnit, *, end_ms: int) -> None:
++        self._ensure_tokenizer()
++        events: list[DuplexEvent] = []
++        if not self._prompt_emitted and unit.prompt_trace is not None:
++            self._prompt_emitted = True
++            prompt_special: set[int] = set()
++            events.append(
++                UnitTokens(
++                    unit_index=-1,
++                    end_ms=0,
++                    decision="prompt",
++                    stages=(self._stage_payload(unit.prompt_trace, prompt_special),),
++                    special_ids=tuple(sorted(prompt_special)),
++                )
++            )
++        special: set[int] = set()
++        stages = tuple(self._stage_payload(trace, special) for trace in unit.traces)
++        events.append(
++            UnitTokens(
++                unit_index=unit.index,
++                end_ms=end_ms,
++                decision=unit.decision or "unknown",
++                stages=stages,
++                special_ids=tuple(sorted(special)),
++            )
++        )
++        self._emit(events)
++
++
++__all__ = [
++    "TRACE_KEY",
++    "TokenTracer",
++    "check_token_trace_allowed",
++    "check_token_trace_unchanged",
++    "load_trace_tokenizer",
++    "token_trace_enabled",
++]
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
+index 061ca14f..f09698ed 100644
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
+@@ -45,6 +45,7 @@ from vllm_omni.model_executor.common.request_outputs import coerce_int as _coerc
+ from vllm_omni.model_executor.common.request_outputs import coerce_int_list as _coerce_int_list
+ from vllm_omni.model_executor.common.request_outputs import first_completion as _first_completion
+ from vllm_omni.model_executor.common.request_outputs import multimodal_output as _multimodal_output
++from vllm_omni.model_executor.models.minicpmo_4_5.duplex import token_trace as _token_trace
+ from vllm_omni.model_executor.models.minicpmo_4_5.duplex.capabilities import (
+     minicpmo45_native_capabilities,
+ )
+@@ -833,6 +834,29 @@ class MiniCPMO45DuplexPlugin(DuplexModelPlugin):
+             modalities=modalities,
+         )
+ 
++    # ---- per-unit token trace (extra_body.trace_tokens) ----
++
++    def token_trace_started(self, *, session_id: str) -> None:
++        _token_trace.start(session_id)
++
++    def token_trace_stopped(self, *, session_id: str) -> None:
++        _token_trace.stop(session_id)
++
++    def unit_token_trace(
++        self,
++        *,
++        stage_id: int,
++        output: object,
++        context: object,
++        cursor: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> dict[str, object] | None:
++        """Thinker and Talker ids per unit: their scheduler prompts are placeholders (see ``token_trace``)."""
++        del context
++        return _token_trace.unit_token_trace(
++            stage_id=stage_id, output=output, cursor=cursor, runtime_config=runtime_config
++        )
++
+ 
+ __all__ = [
+     "PRIVATE_RUNTIME_CONFIG_KEYS",
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/token_trace.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/token_trace.py
+new file mode 100644
+index 00000000..a0353c13
+--- /dev/null
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/token_trace.py
+@@ -0,0 +1,135 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
++
++"""MiniCPM-o 4.5 ids for the opt-in per-unit token trace (``extra_body.trace_tokens``).
++
++``unit_token_trace`` reports what the Thinker (Stage 0) and the Talker (Stage 1)
++consumed and produced for one unit; the plugin's hook of the same name calls it.
++
++The Talker's per-unit input is built by the Thinker->Talker stage bridge
++(``llm2tts``, which runs in the orchestrator process): the unit's Thinker text
++ids, embedded and summed with their projected hidden states, then
++``<audio_bos>``. The scheduler only sees placeholder ids for that prompt, so
++the bridge records the real ids here for traced sessions, and the plugin's
++``unit_token_trace`` takes one entry per Talker segment end.
++
++Entries are keyed by the stage request id, which carries the session and the
++epoch: a cancelled epoch's leftover hand-offs are dropped when the next epoch's
++request records its first one, and everything of a session goes when its trace
++stops. With no traced session the bridge does nothing beyond one set check.
++"""
++
++from __future__ import annotations
++
++from collections import deque
++from collections.abc import Mapping
++
++from vllm_omni.engine.duplex.contracts import duplex_session_id_from_request_id
++from vllm_omni.engine.duplex.plugin import token_id_list
++from vllm_omni.model_executor.common.request_outputs import first_completion, multimodal_output
++
++#: ``tts_config.audio_bos_token_id`` of the released checkpoint; the Talker
++#: appends it after the hand-off condition (``_build_condition_embeddings``).
++TTS_AUDIO_BOS_ID = 151687
++
++_TRACED_SESSIONS: set[str] = set()
++#: request id -> (session id, hand-offs not yet taken by a Talker segment end)
++_HANDOFFS: dict[str, tuple[str, deque[list[int]]]] = {}
++
++
++def start(session_id: str) -> None:
++    _TRACED_SESSIONS.add(session_id)
++
++
++def stop(session_id: str) -> None:
++    _TRACED_SESSIONS.discard(session_id)
++    for request_id in [rid for rid, (sid, _) in _HANDOFFS.items() if sid == session_id]:
++        del _HANDOFFS[request_id]
++
++
++def record_handoff(request_id: str, token_ids: list[int]) -> None:
++    """Called by the stage bridge for every Talker hand-off; a no-op unless the session is traced."""
++    if not _TRACED_SESSIONS:
++        return
++    session_id = duplex_session_id_from_request_id(request_id)
++    if session_id is None or session_id not in _TRACED_SESSIONS:
++        return
++    entry = _HANDOFFS.get(request_id)
++    if entry is None:
++        # A new request of this session (a new epoch): an older one's hand-offs never reach a Talker.
++        for stale in [rid for rid, (sid, _) in _HANDOFFS.items() if sid == session_id]:
++            del _HANDOFFS[stale]
++        entry = _HANDOFFS[request_id] = (session_id, deque())
++    entry[1].append([int(token_id) for token_id in token_ids])
++
++
++def pop_handoff(request_id: str) -> list[int] | None:
++    entry = _HANDOFFS.get(request_id)
++    return entry[1].popleft() if entry is not None and entry[1] else None
++
++
++def _cursor_int(cursor: Mapping[str, object], key: str, limit: int) -> int:
++    value = cursor.get(key, 0)
++    return value if isinstance(value, int) and 0 <= value <= limit else 0
++
++
++def unit_token_trace(
++    *, stage_id: int, output: object, cursor: dict[str, object], runtime_config: Mapping[str, object]
++) -> dict[str, object] | None:
++    """Per-unit token ids of the Thinker (Stage 0) and the Talker (Stage 1).
++
++    Thinker: the scheduler's prompt ids are placeholders. The worker ships
++    the ids it actually appended (``<unit>``, the audio placeholders, the
++    re-fed previous terminator and ``</unit>``; on the first unit the
++    session context, reported as the prompt) in the output's multimodal
++    metadata as ``duplex_prompt_token_ids``: one prompt-length row per
++    segment, accumulated across segments, so this unit's ids are its tail.
++    Output: the delta of the cumulative generated ids.
++
++    Talker: input is the bridge's hand-off (``record_handoff``) followed by
++    the ``<audio_bos>`` the Talker appends; output the codec ids generated
++    in the segment, labelled ``s3:<id>``.
++    """
++    completion = first_completion(output)
++    generated = token_id_list(getattr(completion, "token_ids", None)) if completion is not None else []
++    prompt = token_id_list(getattr(output, "prompt_token_ids", None))
++    request_id = getattr(output, "request_id", None)
++    first_segment = "seen" not in cursor
++    if cursor.get("request_id") != request_id:
++        # A new stage request (a new epoch) restarts the cumulative ids.
++        cursor["request_id"], cursor["output_len"], cursor["prompt_len"] = request_id, 0, 0
++    cursor["seen"] = True
++    output_start = _cursor_int(cursor, "output_len", len(generated))
++    prompt_start = _cursor_int(cursor, "prompt_len", len(prompt))
++    cursor["output_len"], cursor["prompt_len"] = len(generated), len(prompt)
++    new_output = generated[output_start:]
++    new_prompt_len = len(prompt) - prompt_start
++    if stage_id == 0:
++        real = token_id_list(multimodal_output(output, completion).get("duplex_prompt_token_ids"))
++        unit_input = real[-new_prompt_len:] if 0 < new_prompt_len <= len(real) else prompt[prompt_start:]
++        trace: dict[str, object] = {"stage": "thinker", "input": unit_input, "output": new_output}
++        context_len = runtime_config.get("duplex_first_append_context_tokens")
++        # Only the session's first segment carries the context; a later
++        # Stage-0 window rebuild (sliding window) is reported whole.
++        if first_segment and isinstance(context_len, int) and 0 < context_len <= len(unit_input):
++            trace["prompt_input"] = unit_input[:context_len]
++            trace["input"] = unit_input[context_len:]
++        return trace
++    if stage_id == 1:
++        handoff = pop_handoff(request_id) if isinstance(request_id, str) else None
++        talker_input: list[object]
++        if handoff is not None:
++            # The Talker's own boundary token; the Thinker tokenizer names
++            # the same id differently, so it is labelled explicitly.
++            talker_input = [*handoff, [TTS_AUDIO_BOS_ID, "<audio_bos>"]]
++        else:
++            talker_input = [[token_id, f"placeholder:{token_id}"] for token_id in prompt[prompt_start:]]
++        return {
++            "stage": "talker",
++            "input": talker_input,
++            "output": [[token_id, f"s3:{token_id}"] for token_id in new_output],
++        }
++    return None
++
++
++__all__ = ["TTS_AUDIO_BOS_ID", "pop_handoff", "record_handoff", "start", "stop", "unit_token_trace"]
+diff --git a/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py b/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
+index fe8ba266..f0936735 100644
+--- a/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
++++ b/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
+@@ -20,6 +20,7 @@ from vllm_omni.model_executor.models.minicpmo_4_5 import (
+     MINICPMO45_DUPLEX_CODEC_TOKENS_PER_CHUNK,
+     MINICPMO45_DUPLEX_TURN_END_CODEC_TOKENS,
+ )
++from vllm_omni.model_executor.models.minicpmo_4_5.duplex import token_trace as _token_trace
+ from vllm_omni.model_executor.models.minicpmo_4_5.pipeline import MINICPMO45_REFERENCE_AUDIO_KEY
+ 
+ logger = logging.getLogger(__name__)
+@@ -1046,6 +1047,9 @@ def llm2tts(
+             if not handoff_ids:
+                 continue
+         set_tts_handoff(model_intermediate_buffer, handoff_ids, handoff_hidden)
++        if is_native_duplex_handoff and handoff_ids:
++            # Opt-in token trace: the Talker scheduler only sees placeholder ids.
++            _token_trace.record_handoff(str(llm_output.request_id), handoff_ids)
+         if native_turn_end_handoff:
+             model_intermediate_buffer.setdefault("meta", {})["turn_end"] = True
+ 
+diff --git a/vllm_omni/protocol/duplex/errors.py b/vllm_omni/protocol/duplex/errors.py
+index 214fe07c..9e14ffc9 100644
+--- a/vllm_omni/protocol/duplex/errors.py
++++ b/vllm_omni/protocol/duplex/errors.py
+@@ -40,6 +40,8 @@ REALTIME_ERROR_TYPES_BY_CODE: dict[str, str] = {
+     "instructions_update_unsupported": "invalid_request_error",
+     "input_clock_unsupported": "invalid_request_error",
+     "input_clock_update_unsupported": "invalid_request_error",
++    "token_trace_disabled": "invalid_request_error",
++    "token_trace_requires_input_clock": "invalid_request_error",
+     "persona_update_unsupported": "invalid_request_error",
+     "voice_update_unsupported": "invalid_request_error",
+     "unsupported_nemotron_duplex_mode": "invalid_request_error",
+diff --git a/vllm_omni/protocol/duplex/events.py b/vllm_omni/protocol/duplex/events.py
+index 3b83d1a8..c304c3a5 100644
+--- a/vllm_omni/protocol/duplex/events.py
++++ b/vllm_omni/protocol/duplex/events.py
+@@ -368,6 +368,34 @@ class InputProcessed(RealtimeEvent):
+     reason: str | None = None
+ 
+ 
++@dataclass(frozen=True, slots=True, kw_only=True)
++class UnitTokens(RealtimeEvent):
++    """Opt-in debug trace (``extra_body.trace_tokens``): token ids one model unit consumed and produced.
++
++    ``stages`` items are ``{"stage": name, "input": [[id, piece], ...], "output": [[id, piece], ...]}``
++    with absent lists omitted; ``special_ids`` are the tokenizer's special / added ids among them.
++    ``unit_index`` -1 with ``decision`` ``"prompt"`` is the initial context, sent once.
++    """
++
++    wire_type = "debug.unit_tokens"
++
++    unit_index: int = 0
++    end_ms: int = 0
++    decision: str = ""
++    stages: tuple[Mapping[str, object], ...] = ()
++    special_ids: tuple[int, ...] = ()
++
++    def _wire_fields(self) -> dict[str, object]:
++        return {
++            "session_id": self.session_id,
++            "unit_index": self.unit_index,
++            "end_ms": self.end_ms,
++            "decision": self.decision,
++            "stages": [wire_value(stage) for stage in self.stages],
++            "special_ids": list(self.special_ids),
++        }
++
++
+ @dataclass(frozen=True, slots=True, kw_only=True)
+ class DuplexRawEvent(RealtimeEvent):
+     """A session-internal event with no dedicated Realtime type (``duplex.<internal type>``)."""
+@@ -404,7 +432,7 @@ def error_event(
+ 
+ 
+ #: The complete event vocabulary a duplex client may receive: 21 Tier 1
+-#: classes re-exported unchanged, the 9 Tier 2 ones defined above, and 13
++#: classes re-exported unchanged, the 9 Tier 2 ones defined above, and 14
+ #: Tier 3 ones. A duplex consumer imports from here and never reaches past
+ #: this module into ``vllm_omni.protocol.realtime``.
+ __all__ = [
+@@ -454,6 +482,7 @@ __all__ = [
+     "SessionResyncRequired",
+     "Speak",
+     "TurnEvent",
++    "UnitTokens",
+     # Bases and helpers shared with the Tier 1 surface.
+     "DuplexEvent",
+     "REALTIME_ERROR_TYPES_BY_CODE",

@@ -1,0 +1,406 @@
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/data_plane.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/data_plane.py
+index afed6459..954e08f1 100644
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/data_plane.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/data_plane.py
+@@ -193,7 +193,7 @@ class MiniCPMO45DataPlaneSession(DuplexDataPlane):
+             text = ""
+ 
+         finished = bool(getattr(output, "finished", False))
+-        tts_is_last_chunk = _bool_metadata(mm_output, ("tts_is_last_chunk",), default=False)
++        tts_is_last_chunk = is_last_tts_chunk(mm_output)
+         token_ids = _completion_token_ids(completion)
+         native_decision = _native_decision(completion, mm_output, token_ids=token_ids, finished=finished)
+         if native_decision == "listen":
+@@ -717,6 +717,11 @@ def _audio_num_samples(audio_data: object) -> int | None:
+         return None
+ 
+ 
++def is_last_tts_chunk(mm_output: dict[str, object]) -> bool:
++    """Whether a Code2Wav output carries the connector's flush of a unit's remaining codes (``tts_is_last_chunk``)."""
++    return _bool_metadata(mm_output, ("tts_is_last_chunk",), default=False)
++
++
+ def _bool_metadata(
+     mm_output: dict[str, object],
+     names: tuple[str, ...],
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/input.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/input.py
+index 16c0f3ee..b2c6f8c3 100644
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/input.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/input.py
+@@ -324,6 +324,27 @@ class MiniCPMO45PcmAppendBuffer(PcmAppendBuffer):
+         self._reservations.append(reservation)
+         return reservation
+ 
++    def prepare_backlog(self, *, operation_id: str, chunk_period_ms: int) -> MiniCPMO45PcmAppendReservation | None:
++        """Reserve the next whole chunk of audio already buffered (input-clocked sessions), or ``None``.
++
++        An append longer than one chunk leaves its later chunks buffered; the
++        runner of an input-clocked session drains them right after the append,
++        so the append's acknowledgement covers every chunk it completed.
++        """
++        sample_rate_hz = self._sample_rate_hz
++        if sample_rate_hz is None:
++            return None
++        min_samples = max(1, int(sample_rate_hz * max(1, int(chunk_period_ms)) / 1000))
++        if len(self._buffer) // 4 < min_samples:
++            return None
++        payload: dict[str, object] = {
++            "type": "audio",
++            "audio": "",
++            "format": "pcm_f32le",
++            "sample_rate_hz": sample_rate_hz,
++        }
++        return self.prepare_append(payload, operation_id=operation_id, chunk_period_ms=chunk_period_ms)
++
+     def prepare_commit(
+         self,
+         *,
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
+index f09698ed..3c72777b 100644
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/plugin.py
+@@ -30,12 +30,15 @@ from vllm_omni.engine.duplex.contracts import (
+     DuplexAppendPlan,
+     DuplexFence,
+     DuplexOutputAction,
++    DuplexOutputContext,
+     DuplexOutputDecision,
+ )
+ from vllm_omni.engine.duplex.intermediate import build_duplex_append_prompt
+ from vllm_omni.engine.duplex.plugin import (
+     DuplexModelPlugin,
+     DuplexRuntimeConfigError,
++    DuplexUnitDecision,
++    DuplexUnitOutputs,
+     EncodeAudio,
+     reject_changed_runtime_value,
+     reject_private_runtime_keys,
+@@ -52,6 +55,7 @@ from vllm_omni.model_executor.models.minicpmo_4_5.duplex.capabilities import (
+ from vllm_omni.model_executor.models.minicpmo_4_5.duplex.data_plane import (
+     MiniCPMO45DataPlaneContext,
+     MiniCPMO45DataPlaneSession,
++    is_last_tts_chunk,
+ )
+ from vllm_omni.model_executor.models.minicpmo_4_5.duplex.policy import (
+     MiniCPMO45DuplexPolicy,
+@@ -104,6 +108,70 @@ PRIVATE_RUNTIME_CONFIG_KEYS = frozenset(
+ )
+ 
+ 
++def _talker_gets_nothing(output: object, context: DuplexOutputContext) -> str | None:
++    """Whether the stage bridge hands the Talker nothing for this Stage-0 segment (so no Talker segment end follows).
++
++    The unit's ids are the tail of the Thinker's generated ids after the
++    previous unit terminator (the segment's own ids may be only the last
++    streamed delta), sliced with the bridge's span function on the bridge's
++    inputs (the unit's ids and whether a ``<|tts_bos|>`` was folded into the
++    prompt). Only a segment that ends with a unit terminator is judged;
++    anything else is left to the default (the unit speaks). Returns the
++    label of a unit that ends here (``speak_empty``, or ``listen`` for a unit
++    with no ``<|speak|>``), else ``None``.
++    """
++    if not context.segment_finished:
++        return None
++    completion = _first_completion(output)
++    metadata = _multimodal_output(output, completion)
++    special_token_ids = _special_token_ids(dict(context.segment_output_metadata))
++    special_token_ids.update(_special_token_ids(metadata))
++    listen_id = special_token_ids.get("listen_token_id")
++    terminators = {
++        listen_id,
++        special_token_ids.get("chunk_eos_token_id"),
++        special_token_ids.get("chunk_tts_eos_token_id"),
++    } - {None}
++    ids = max(
++        (
++            _completion_token_ids(completion),
++            _coerce_int_list(getattr(completion, "cumulative_token_ids", None)),
++            list(context.segment_token_ids),
++        ),
++        key=len,
++    )
++    if listen_id is None or not ids or ids[-1] not in terminators:
++        return None  # not a native duplex unit end: nothing to tell
++    start = len(ids) - 1
++    while start > 0 and ids[start - 1] not in terminators:
++        start -= 1
++    unit_ids = ids[start:]
++    speak_id = special_token_ids.get("speak_token_id")
++    if start == 0 and unit_ids[0] != speak_id:
++        return None  # the ids may not reach back to the unit's start (only the last delta): nothing to tell
++    tts_bos_id = special_token_ids.get("tts_bos_token_id")
++    # The bridge searches for ``<|tts_bos|>`` from the token just before the unit: inside the unit, or folded as
++    # the last prompt token. Before a later unit sits the previous unit's terminator; before the first, the prompt.
++    tts_bos_offset: int | None = MiniCPMO45DuplexPolicy.NO_TTS_BOS
++    if tts_bos_id is not None:
++        tts_bos_offset = None  # unknown until shown otherwise: the span is then taken as the larger one
++        if start > 0:
++            tts_bos_offset = MiniCPMO45DuplexPolicy.NO_TTS_BOS
++        else:
++            prompt = _coerce_int_list(metadata.get("duplex_prompt_token_ids")) or _coerce_int_list(
++                getattr(output, "prompt_token_ids", None)
++            )
++            if prompt:
++                tts_bos_offset = 0 if prompt[-1] == tts_bos_id else MiniCPMO45DuplexPolicy.NO_TTS_BOS
++        for index, token_id in enumerate(unit_ids):
++            if token_id == tts_bos_id:
++                tts_bos_offset = index + 1
++    span = MiniCPMO45DuplexPolicy.talker_handoff_span(unit_ids, special_token_ids, tts_bos_offset=tts_bos_offset)
++    if span is not None and span[2] > span[1]:
++        return None
++    return MiniCPMO45DuplexPlugin.UNIT_DECISION_SPEAK_EMPTY if speak_id in unit_ids else "listen"
++
++
+ class MiniCPMO45ClientRuntimeConfigError(DuplexRuntimeConfigError):
+     pass
+ 
+@@ -537,6 +605,9 @@ class MiniCPMO45DuplexPlugin(DuplexModelPlugin):
+ 
+     plugin_id = "minicpmo45"
+     private_runtime_config_keys = PRIVATE_RUNTIME_CONFIG_KEYS
++    #: Units are the 1 s chunks Stage 0 decides; ``unit_output_complete`` below
++    #: finds where Code2Wav's audio for a speaking unit ends.
++    supports_input_clock = True
+     silence_continuation_samples = 16000
+ 
+     def __init__(self, encode_audio: EncodeAudio) -> None:
+@@ -615,6 +686,74 @@ class MiniCPMO45DuplexPlugin(DuplexModelPlugin):
+             )
+         )
+ 
++    # ---- input-clocked sessions ----
++
++    #: ``units[].decision`` of a speak whose Thinker segment hands the Talker nothing.
++    UNIT_DECISION_SPEAK_EMPTY = "speak_empty"
++
++    def unit_decision(
++        self,
++        *,
++        stage_id: int,
++        decision: DuplexOutputDecision | None,
++        output: object = None,
++        context: DuplexOutputContext | None = None,
++        runtime_config: Mapping[str, object] | None = None,
++    ) -> DuplexUnitDecision | None:
++        """A Stage-0 segment that gives the Talker nothing ends its unit (``speak_empty``, or ``listen``).
++
++        The stage bridge (``llm2tts``) skips such a segment (e.g. ids
++        ``[<|speak|>, <|chunk_eos|>]``), so no Talker segment end, and no
++        Code2Wav flush, ever follows for the unit: without this it would wait
++        for the timeouts. The check uses the bridge's own slicing
++        (``MiniCPMO45DuplexPolicy.talker_handoff_span``).
++        """
++        if decision is None:
++            label = _talker_gets_nothing(output, context) if stage_id == 0 and context is not None else None
++            return DuplexUnitDecision(label=label) if label is not None else None
++        return super().unit_decision(
++            stage_id=stage_id,
++            decision=decision,
++            output=output,
++            context=context,
++            runtime_config=runtime_config,
++        )
++
++    def unit_output_complete(
++        self,
++        *,
++        unit: DuplexUnitOutputs | None,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: object | None,
++        state: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> bool:
++        """Code2Wav streams across unit boundaries without marking a segment end per unit.
++
++        The Talker->Code2Wav connector forwards whole codec windows as they
++        fill and, at every Talker segment end (one per unit), flushes the rest
++        as one chunk flagged ``tts_is_last_chunk`` (an empty marker when
++        nothing is left). Code2Wav echoes the flag on its output. A speaking
++        unit is therefore complete once its Talker segment has ended and a
++        Code2Wav output carrying the flag was credited to it; the orchestrator
++        may deliver the two in either order, so the flag is remembered in
++        ``state``. (Output that overtakes the unit's Stage-0 segment end is
++        held by the engine and handed over once the unit speaks.) A Code2Wav
++        segment end alone does not complete a unit: the flag is per unit,
++        while a segment end can also be a trailing control-only snapshot of
++        the previous unit (a repeated turn end), which the engine would
++        otherwise credit to the next unit.
++        """
++        del final_stage_id, new_context, runtime_config
++        if unit is None:
++            return False
++        if new_output is not None and is_last_tts_chunk(_multimodal_output(new_output, _first_completion(new_output))):
++            state["flushed_unit"] = unit.index
++        if not unit.upstream_segment_finished:
++            return False
++        return state.get("flushed_unit") == unit.index
++
+     def decide_output(
+         self,
+         *,
+diff --git a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/policy.py b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/policy.py
+index 11539af0..e98eb135 100644
+--- a/vllm_omni/model_executor/models/minicpmo_4_5/duplex/policy.py
++++ b/vllm_omni/model_executor/models/minicpmo_4_5/duplex/policy.py
+@@ -95,6 +95,83 @@ class MiniCPMO45DuplexPolicy:
+     DEFAULT_MIN_NEW_SPEAK_TOKENS_BEFORE_CHUNK_BOUNDARY = 8
+     REPETITION_HISTORY_SIZE = 512
+ 
++    @staticmethod
++    def tts_boundary_token_ids(special_token_ids: Mapping[str, int]) -> set[int]:
++        """Tokens that bound a native duplex unit's Talker hand-off (chunk terminators and framing tokens).
++
++        Official duplex conditions the Talker on mid-unit ``<|speak|>`` tokens
++        and on ``<|turn_eos|>`` (its embedding is the trained stop signal), so
++        neither bounds the slice.
++        """
++        return {
++            token_id
++            for token_id in (
++                special_token_ids.get("tts_eos_token_id"),
++                special_token_ids.get("tts_pad_token_id"),
++                special_token_ids.get("listen_token_id"),
++                special_token_ids.get("chunk_eos_token_id"),
++                special_token_ids.get("chunk_tts_eos_token_id"),
++                special_token_ids.get("unit_token_id"),
++                special_token_ids.get("unit_end_token_id"),
++            )
++            if token_id is not None
++        }
++
++    #: ``tts_bos_offset`` of a unit known to have no ``<|tts_bos|>`` (none in it, none folded into the prompt).
++    NO_TTS_BOS = -1
++
++    @classmethod
++    def talker_handoff_span(
++        cls,
++        out_ids: Sequence[int],
++        special_token_ids: Mapping[str, int],
++        *,
++        tts_bos_offset: int | None,
++    ) -> tuple[int, int, int, bool] | None:
++        """Where one unit's Talker hand-off sits in the Thinker's segment ids (the stage bridge's slicing).
++
++        Mirrors the official ``streaming_generate`` unit loop: the leading
++        LISTEN run is skipped; the hand-off starts after ``<|tts_bos|>`` when
++        the unit has one (``tts_bos_offset``: the index right after it, 0 when
++        it was folded as the last prompt token), otherwise (``NO_TTS_BOS``)
++        after the unit's first decision token, and ends before the chunk
++        terminator, or after ``<|turn_eos|>``. ``None`` means it is not known
++        whether a ``<|tts_bos|>`` was folded into the prompt: the span is then
++        taken as if it was (the larger hand-off), so a caller asking whether
++        the Talker gets nothing only gets "nothing" when that holds either way.
++        Returns ``(unit_start, start, end, segment_end)`` (``segment_end``: a
++        chunk terminator closed it), or ``None`` when the
++        unit has no decision token to start from. ``start == end`` means the
++        Talker gets nothing for the unit.
++        """
++        listen_id = special_token_ids.get("listen_token_id")
++        turn_eos_id = special_token_ids.get("turn_eos_token_id")
++        tts_end_ids = cls.tts_boundary_token_ids(special_token_ids)
++        unit_start = 0
++        while unit_start < len(out_ids) and out_ids[unit_start] == listen_id:
++            unit_start += 1
++        if tts_bos_offset is None or tts_bos_offset >= 0:
++            start = max(unit_start, tts_bos_offset or 0)
++        elif unit_start < len(out_ids) and out_ids[unit_start] not in tts_end_ids:
++            start = unit_start + 1
++        else:
++            return None
++        end = len(out_ids)
++        segment_end = False
++        for index in range(start, len(out_ids)):
++            token_id = out_ids[index]
++            if turn_eos_id is not None and token_id == turn_eos_id:
++                end = index + 1
++                break
++            if token_id in tts_end_ids:
++                end = index
++                segment_end = token_id in {
++                    special_token_ids.get("chunk_eos_token_id"),
++                    special_token_ids.get("chunk_tts_eos_token_id"),
++                }
++                break
++        return unit_start, start, max(start, end), segment_end
++
+     @staticmethod
+     def speech_unit_closed_by_listen(token_ids: Sequence[int], special_token_ids: Mapping[str, int]) -> bool:
+         """Whether a unit ending in LISTEN closes speech rather than deciding to listen.
+diff --git a/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py b/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
+index f0936735..c9dc55ac 100644
+--- a/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
++++ b/vllm_omni/model_executor/stage_input_processors/minicpmo_4_5_omni.py
+@@ -21,6 +21,7 @@ from vllm_omni.model_executor.models.minicpmo_4_5 import (
+     MINICPMO45_DUPLEX_TURN_END_CODEC_TOKENS,
+ )
+ from vllm_omni.model_executor.models.minicpmo_4_5.duplex import token_trace as _token_trace
++from vllm_omni.model_executor.models.minicpmo_4_5.duplex.policy import MiniCPMO45DuplexPolicy
+ from vllm_omni.model_executor.models.minicpmo_4_5.pipeline import MINICPMO45_REFERENCE_AUDIO_KEY
+ 
+ logger = logging.getLogger(__name__)
+@@ -564,22 +565,7 @@ def _require_native_tts_boundary_metadata(special_token_ids):
+ 
+ 
+ def _native_tts_boundary_token_ids(special_token_ids):
+-    # Official duplex conditions the talker on mid-unit <|speak|> tokens AND
+-    # the <|turn_eos|> token+hidden (its embedding is the trained stop
+-    # signal); only chunk terminators and framing tokens bound the slice.
+-    return {
+-        token_id
+-        for token_id in (
+-            special_token_ids.get("tts_eos_token_id"),
+-            special_token_ids.get("tts_pad_token_id"),
+-            special_token_ids.get("listen_token_id"),
+-            special_token_ids.get("chunk_eos_token_id"),
+-            special_token_ids.get("chunk_tts_eos_token_id"),
+-            special_token_ids.get("unit_token_id"),
+-            special_token_ids.get("unit_end_token_id"),
+-        )
+-        if token_id is not None
+-    }
++    return MiniCPMO45DuplexPolicy.tts_boundary_token_ids(special_token_ids)
+ 
+ 
+ def _native_duplex_output_is_control_only(
+@@ -954,31 +940,15 @@ def llm2tts(
+             # handed to the Talker, and anything sampled after it is a stale
+             # tail that must not enter TTS.
+             out_ids = llm_output_ids
+-            listen_id = special_token_ids.get("listen_token_id")
+-            turn_eos_id = special_token_ids.get("turn_eos_token_id")
+-            unit_start = 0
+-            while unit_start < len(out_ids) and out_ids[unit_start] == listen_id:
+-                unit_start += 1
+-            if tts_bos_idx is not None:
+-                out_start = max(unit_start, tts_bos_idx - prompt_token_ids_len)
+-            elif unit_start < len(out_ids) and out_ids[unit_start] not in tts_end_ids:
+-                out_start = unit_start + 1
+-            else:
+-                out_start = None
+-            if out_start is not None:
+-                out_end = len(out_ids)
+-                for idx_t in range(out_start, len(out_ids)):
+-                    token_id = out_ids[idx_t]
+-                    if turn_eos_id is not None and token_id == turn_eos_id:
+-                        out_end = idx_t + 1
+-                        break
+-                    if token_id in tts_end_ids:
+-                        out_end = idx_t
+-                        native_segment_end = token_id in {
+-                            special_token_ids.get("chunk_eos_token_id"),
+-                            special_token_ids.get("chunk_tts_eos_token_id"),
+-                        }
+-                        break
++            span = MiniCPMO45DuplexPolicy.talker_handoff_span(
++                out_ids,
++                special_token_ids,
++                tts_bos_offset=(
++                    tts_bos_idx - prompt_token_ids_len if tts_bos_idx is not None else MiniCPMO45DuplexPolicy.NO_TTS_BOS
++                ),
++            )
++            if span is not None:
++                unit_start, out_start, out_end, native_segment_end = span
+                 if out_end > out_start:
+                     tts_token_ids_slice = torch.tensor(out_ids[out_start:out_end], dtype=torch.long)
+                     tts_hidden_slice = _native_duplex_forwarded_hidden_rows(

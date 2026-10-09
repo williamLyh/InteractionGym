@@ -24,7 +24,7 @@ Since 2026-10-09 every runner here that drives MiniCPM-o 4.5 (`fdb_baseline.py`,
 `audiomc_ab.py`, `minicpmo_suite.py`, `minicpmo_agent.py`, `gpu_tuner.py`, and `gpu_tuner.probe_agent`) runs it
 **Thinker-only with text output**, as our RL rollouts do: `VllmOmniDuplexAgent(audio_out=False)` against
 the reference deployment's Thinker-only servers (`AGENT_LAYOUT=thinker`, one GPU and 16 sessions each,
-`patches/minicpmo_thinker_only.patch`). The agent's text is timed at `speech_cps` (MiniCPM-o 4.5: 11.3 characters
+`patches/vllm-omni/`, part 06 `minicpmo-thinker-only`). The agent's text is timed at `speech_cps` (MiniCPM-o 4.5: 11.3 characters
 per second, calibrated on lockstep audio episodes). `--audio-out` selects the full Thinker + Talker + Code2Wav
 deployment (`AGENT_LAYOUT=audio`) and the agent's real speech. `meta.agent.output` records which (`"audio"` or
 `"text @ 11.3 chars/s"`), and a runner refuses to resume an output folder that holds the other mode.

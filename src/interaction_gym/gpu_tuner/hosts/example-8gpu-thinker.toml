@@ -24,7 +24,7 @@ env = """
 """
 
 [services.agent]  # MiniCPM-o 4.5 full duplex, Thinker only (text-only sessions): one GPU per server
-# scripts/run_minicpmo.sh with AGENT_LAYOUT=thinker: the patched vLLM-Omni env with patches/minicpmo_thinker_only.patch
+# scripts/run_minicpmo.sh with AGENT_LAYOUT=thinker: the vLLM-Omni env patched with patches/vllm-omni/
 # and configs/minicpmo_4_5_thinker_1gpu.yaml; GPUS / PORT move it. One server per replica (duplex sessions cannot be DP).
 # Clients must ask for text only (VllmOmniDuplexAgent(audio_out=False)): audio sessions get no output from it.
 model = "openbmb/MiniCPM-o-4_5"

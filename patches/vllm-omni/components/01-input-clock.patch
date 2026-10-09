@@ -1,0 +1,2295 @@
+diff --git a/vllm_omni/engine/duplex/config.py b/vllm_omni/engine/duplex/config.py
+index a5762200..d7faa26a 100644
+--- a/vllm_omni/engine/duplex/config.py
++++ b/vllm_omni/engine/duplex/config.py
+@@ -259,6 +259,16 @@ class DuplexAudioChunk:
+     sample_rate_hz: int | None = None
+ 
+ 
++#: ``extra_body`` key and value that make a session input-clocked (``session/input_clock.py``).
++INPUT_CLOCK_KEY = "clock"
++INPUT_CLOCK_VALUE = "input"
++
++
++def input_clocked(extra_body: object) -> bool:
++    """Whether a session's ``extra_body`` opts into the input clock (``clock: "input"``)."""
++    return isinstance(extra_body, Mapping) and extra_body.get(INPUT_CLOCK_KEY) == INPUT_CLOCK_VALUE
++
++
+ @dataclass
+ class DuplexSessionConfig:
+     model: str | None = None
+diff --git a/vllm_omni/engine/duplex/plugin.py b/vllm_omni/engine/duplex/plugin.py
+index 26402f10..e919757f 100644
+--- a/vllm_omni/engine/duplex/plugin.py
++++ b/vllm_omni/engine/duplex/plugin.py
+@@ -26,6 +26,7 @@ from vllm_omni.engine.duplex.config import DuplexCapabilities, DuplexSessionConf
+ from vllm_omni.engine.duplex.contracts import (
+     DuplexAppendPlan,
+     DuplexFence,
++    DuplexOutputContext,
+     DuplexOutputDecision,
+ )
+ 
+@@ -125,6 +126,18 @@ class PcmAppendBuffer(ABC):
+     @abstractmethod
+     def flush(self, *, chunk_period_ms: int) -> dict[str, object] | None: ...
+ 
++    def prepare_backlog(self, *, operation_id: str, chunk_period_ms: int) -> PcmAppendReservation | None:
++        """Reserve one more whole unit from audio already buffered, if there is one (input-clocked sessions).
++
++        After an append emitted its unit, an input-clocked session calls this
++        until it returns ``None``, so an append longer than one unit submits
++        every whole unit it completed and is acknowledged after all of them.
++        Default: ``None`` (one unit per append; the rest waits for later
++        appends).
++        """
++        del operation_id, chunk_period_ms
++        return None
++
+ 
+ class DuplexModelSessionState(ABC):
+     """Model-owned per-session state; owned by the session runner (one per session)."""
+@@ -236,6 +249,37 @@ class DuplexDataPlaneContext:
+     modalities: tuple[str, ...] = ()
+ 
+ 
++@dataclass(frozen=True, slots=True)
++class DuplexUnitDecision:
++    """How a plugin decision taken at a stage segment end affects the model unit (input-clocked sessions)."""
++
++    #: Reported in ``input_audio_buffer.processed.units[].decision`` (e.g. ``"listen"``).
++    label: str
++    #: False when the decision is a side channel and the unit still produces
++    #: final-stage output (the unit then completes through ``unit_output_complete``).
++    ends_unit: bool = True
++
++
++@dataclass(frozen=True, slots=True)
++class DuplexUnitOutputs:
++    """What the engine knows about the oldest model unit still producing final-stage output."""
++
++    #: 0-based index of the unit among all units of the session (the order they were
++    #: created in): a stable key, not a position in the output stream (units that
++    #: never reached Stage 0, or whose epoch was cancelled, have indices too).
++    index: int
++    #: Whether the stage just before the final stage reported its segment end for this unit.
++    upstream_segment_finished: bool
++    #: Whether a final-stage output credited to this unit marked a segment end.
++    final_segment_finished: bool
++    #: Session epoch the unit was submitted in (a cancel starts a new one).
++    epoch: int = 0
++    #: 1-based position of the unit among the Stage-0 submissions its epoch accepted
++    #: (the n-th Stage-0 segment end of the epoch decided it), counting units whose
++    #: decision ended them; units that never reached Stage 0 take none.
++    ordinal: int = 0
++
++
+ class DuplexDataPlane(ABC):
+     """Projects raw stage outputs of one model into internal duplex events."""
+ 
+@@ -290,6 +334,19 @@ class DuplexModelPlugin(ABC):
+     """
+ 
+     projects_intermediate_outputs: bool = False
++    #: Whether sessions of this model may set ``extra_body.clock == "input"``;
++    #: otherwise such a session is refused (``input_clock_unsupported``). No
++    #: model opts in yet. A plugin opts in once ``unit_decision`` /
++    #: ``unit_output_complete`` match its real unit boundaries, and only if
++    #: Stage 0 ends every accepted submission with exactly one segment end, in
++    #: submission order, with the unit's decision taken on that segment-ending
++    #: output: the n-th Stage-0 segment end of an epoch decides the n-th
++    #: accepted unit. An extra or missing segment end (e.g. a prefill-only
++    #: append that ends no segment) shifts the epoch's later units onto the
++    #: wrong segment ends: an acknowledgement may then arrive before its unit's
++    #: output, or wait for the timeouts, until the next cancel starts a new
++    #: epoch; the timeouts keep acknowledgements coming but do not resynchronise.
++    supports_input_clock: bool = False
+     plugin_id: str = ""
+     private_runtime_config_keys: frozenset[str] = frozenset()
+     #: Samples per silence unit the runner appends to keep a model turn going.
+@@ -456,6 +513,96 @@ class DuplexModelPlugin(ABC):
+         del stage_count
+         return frozenset()
+ 
++    # ---- input-clocked sessions (extra_body.clock == "input") ----
++
++    def unit_decision(
++        self,
++        *,
++        stage_id: int,
++        decision: DuplexOutputDecision | None,
++        output: object = None,
++        context: DuplexOutputContext | None = None,
++        runtime_config: Mapping[str, object] | None = None,
++    ) -> DuplexUnitDecision | None:
++        """Classify a stage segment end for the input clock.
++
++        The input clock tracks every model unit (one Stage-0 submission) until
++        all of its output has been emitted, so it can acknowledge the client
++        input that caused it. Called when a stage output arrives (so it reads
++        the live output at that moment), for every output of a stage before
++        the final one that carries a decision, and for every segment end of
++        such a stage without a decision (``decision is None``; ``output`` and
++        ``context`` are that stage output). ``runtime_config`` is the
++        session's runtime configuration (passed by the engine; the default
++        only keeps direct calls short). Decisions taken on the final stage are
++        not consulted. Default: no classification without a decision;
++        otherwise the label is ``"listen"`` when the decision metadata sets
++        ``model_listen`` (the framework key several models' data planes set),
++        else the action, and any decision ends the unit (``ends_unit=True``);
++        a plugin whose decisions do not all end the unit overrides this. A
++        plugin whose stage can end a segment that hands the next stage nothing
++        (so the unit would wait for a segment end that never comes) returns a
++        decision with ``ends_unit=True`` for it.
++        """
++        del stage_id, output, context, runtime_config
++        if decision is None:
++            return None
++        metadata = decision.metadata
++        if metadata.get("model_listen") is True:
++            label = "listen"
++        else:
++            label = str(getattr(decision.action, "value", decision.action))
++        return DuplexUnitDecision(label=label, ends_unit=True)
++
++    def unit_output_complete(
++        self,
++        *,
++        unit: DuplexUnitOutputs | None,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: DuplexOutputContext | None,
++        state: dict[str, object],
++        runtime_config: Mapping[str, object],
++    ) -> bool:
++        """Input clock: is the final-stage output of ``unit`` (the oldest speaking unit) complete?
++
++        Called after every final-stage output (``new_output`` / ``new_context``,
++        credited to ``unit``), after the segment end of the stage just before
++        the final stage, and, once a unit completed, again for the next one
++        with no new output (so one output may complete several units). The
++        engine only calls it with a speaking unit (``unit`` is never None; the
++        type keeps ``None`` for compatibility).
++
++        The engine keeps no output history: a plugin that needs more than the
++        flags of ``unit`` keeps it in ``state``, a dict it owns for the current
++        epoch: the engine hands it a new, empty one whenever a cancel starts a
++        new epoch, since the cancelled epoch's outputs are dropped and its
++        units settled. For example, ``state["flagged_unit"] = unit.index``
++        when ``new_output`` carries an end-of-unit flag; or, for a final stage
++        that emits one frame per Stage-0 submission, a count of the epoch's
++        frames compared with ``unit.ordinal`` (not ``unit.index``, which also
++        counts units that never reached Stage 0 and those of earlier epochs).
++        Output of a later stage that reaches the session before the Stage-0
++        segment end that makes its unit speaking (the orchestrator may deliver
++        different stages' outputs in either order) is held by the engine and
++        handed to the hook, in arrival order, once that unit is speaking.
++        ``runtime_config`` is the session's runtime configuration.
++
++        A hook that raises is logged (once per session) and its call counts
++        as "not complete": the unit is then settled by the timeouts. The same
++        holds for ``unit_decision`` ("no decision").
++
++        Default: the final stage marks one streaming segment end per unit, and
++        final-stage outputs of different units do not interleave. A model whose
++        final stage streams across unit boundaries must override this. Turns
++        never overlap in an input-clocked session (it does not open the
++        concurrent-turn gate, ``supports_concurrent_turn_requests``), because
++        the clock credits outputs to the speaking units in order; crediting by
++        request instead is future work.
++        """
++        del final_stage_id, new_output, new_context, state, runtime_config
++        return unit is not None and unit.final_segment_finished
++
+     # ---- session policy (was ServingRuntimeAdapter) ----
+ 
+     @abstractmethod
+@@ -594,6 +741,8 @@ __all__ = [
+     "DefaultDuplexModelSessionState",
+     "DuplexDataPlane",
+     "DuplexDataPlaneContext",
++    "DuplexUnitDecision",
++    "DuplexUnitOutputs",
+     "DuplexModelPlugin",
+     "DuplexModelSessionState",
+     "DuplexRuntimeConfigError",
+diff --git a/vllm_omni/engine/duplex/session/control.py b/vllm_omni/engine/duplex/session/control.py
+index 5de703ac..f528a8cc 100644
+--- a/vllm_omni/engine/duplex/session/control.py
++++ b/vllm_omni/engine/duplex/session/control.py
+@@ -28,6 +28,7 @@ from vllm_omni.engine.duplex.plugin import DuplexRuntimeConfigError
+ from vllm_omni.engine.duplex.session import helpers
+ from vllm_omni.engine.duplex.session.context import DuplexSessionContext
+ from vllm_omni.engine.duplex.session.emitter import SessionEmitter
++from vllm_omni.engine.duplex.session.input_clock import check_input_clock_supported, check_input_clock_unchanged
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity
+ from vllm_omni.engine.duplex.session.model_channel import ModelChannel
+ from vllm_omni.engine.duplex.turn_detection import (
+@@ -239,6 +240,15 @@ class SessionControl:
+             self._out.emit_error(exc.code, str(exc) or "session.update was rejected", event_id=realtime_event_id)
+             reject_update()
+             return
++        try:
++            check_input_clock_supported(self._ctx.plugin, candidate_config.extra_body)
++            # The clock mode and its timeouts are fixed at creation, like the
++            # acknowledgements they decide.
++            check_input_clock_unchanged(session.config.extra_body, candidate_config.extra_body)
++        except DuplexRuntimeConfigError as exc:
++            self._out.emit_error(exc.code, str(exc), event_id=realtime_event_id)
++            reject_update()
++            return
+         if candidate_config.instructions != session.config.instructions and model_state.context_locked:
+             self._out.emit_error(
+                 "instructions_update_unsupported",
+diff --git a/vllm_omni/engine/duplex/session/helpers.py b/vllm_omni/engine/duplex/session/helpers.py
+index 5a74d3c7..e0233f50 100644
+--- a/vllm_omni/engine/duplex/session/helpers.py
++++ b/vllm_omni/engine/duplex/session/helpers.py
+@@ -125,6 +125,25 @@ def audio_payload_size_bytes(payload: Mapping[str, object]) -> int:
+         return 0
+ 
+ 
++def base64_payload_size_bytes(payload: Mapping[str, object]) -> int:
++    """Decoded size of a payload's base64 audio, from its length (no decode).
++
++    For audio the engine encoded itself (no whitespace); ``audio_payload_size_bytes``
++    validates client input.
++    """
++    audio = payload.get("audio") or payload.get("data")
++    if not isinstance(audio, str):
++        return 0
++    return len(audio) * 3 // 4 - len(audio[-2:]) + len(audio[-2:].rstrip("="))
++
++
++def pcm_bytes_per_sample(fmt: object) -> int:
++    """Bytes per mono sample of an engine-side PCM payload format."""
++    if isinstance(fmt, str) and fmt.lower() in {"pcm16", "pcm_s16le", "s16le"}:
++        return 2
++    return 4  # pcm_f32le, the engine's decoded format
++
++
+ # --------------------------------------------------------------------------- #
+ # Turn transitions                                                            #
+ # --------------------------------------------------------------------------- #
+diff --git a/vllm_omni/engine/duplex/session/input_clock.py b/vllm_omni/engine/duplex/session/input_clock.py
+new file mode 100644
+index 00000000..bdc6d155
+--- /dev/null
++++ b/vllm_omni/engine/duplex/session/input_clock.py
+@@ -0,0 +1,958 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
++
++"""Input-clocked sessions: model time advances only with client input.
++
++A session opts in with ``extra_body.clock == "input"`` at creation (on a model
++whose plugin sets ``DuplexModelPlugin.supports_input_clock``). The server then
++never invents input of its own (no silence continuation) and acknowledges
++every client input that can advance the model and reaches the session -- each
++``input_audio_buffer.append``, ``input_audio_buffer.commit`` and
++``response.create`` -- with exactly one ``input_audio_buffer.processed`` event,
++in input order, sent only once every output that input caused has been sent.
++A client can therefore step the model as fast as acknowledgements come back,
++or pause between inputs (within the session's usual idle window), and always
++knows which outputs belong to which input position.
++
++How "every output that input caused" is known, without model specifics:
++
++* A *unit* is one Stage-0 submission: whatever the model plugin's PCM buffer
++  cut on an append (a 1 s chunk, an 80 ms frame) or a committed turn. The
++  runner creates the unit when it starts the append that submits it; when
++  Stage 0 accepts the submission the unit gets its *ordinal*, its position
++  among the Stage-0 submissions of its epoch.
++* Every Stage-0 submission ends in exactly one Stage-0 segment end, in
++  submission order, so the n-th Stage-0 segment end of an epoch *decides* the
++  unit with ordinal n. A plugin decision that ends the unit's pipeline (a
++  listen, a silent turn) completes it (``DuplexModelPlugin.unit_decision``).
++  Otherwise the unit is *speaking*.
++* A speaking unit completes only on the session's final stage: when the plugin
++  says its final-stage output is complete
++  (``DuplexModelPlugin.unit_output_complete``; default: the final stage marks
++  one segment end per unit). Speaking units take final-stage output in the
++  order they were decided. A non-final stage (an intermediate text stage)
++  finishing never completes a unit; a non-final stage ends a unit only through
++  a decision with ``ends_unit=True`` (e.g. a silent turn that never reaches
++  TTS). Later-stage progress that overtakes the Stage-0 segment end of its
++  unit is held and replayed once that unit is speaking.
++* Units are acknowledged strictly in order. An acknowledgement waits for every
++  unit created up to the end of its input (its *watermark*) and for the
++  acknowledgements before it.
++
++Completion is kept apart from receiving a stage output: the runner turns each
++stage output into a ``StageProgress`` item on its mailbox queued *after* that
++output (and after any projected intermediate output or metrics it produced),
++so an acknowledgement can never overtake the events it covers.
++
++Units that will never produce model output are *settled* explicitly, each with
++a defined ``units[].decision``: an append that never reached Stage 0
++(``dropped``); open units of a cancelled epoch, an append the cancel called
++off, and a deferred committed turn that was not submitted because a cancel
++ended its response or its audio was dropped (``cancelled``); session teardown
++(``aborted``); and timeouts (``timed_out``): the liveness valve when the
++pipeline produced nothing for
++``extra_body.input_clock_unit_timeout_s`` (default 15 s) while a unit was
++open, and a maximum unit age, ``extra_body.input_clock_unit_max_s`` (default
++60 s), for a unit that keeps producing but never completes.
++
++Settling only concerns the acknowledgement. A unit settled before its output
++arrived keeps its place in the pipeline: while its submission is unresolved it
++can still be matched by a Stage-0 segment end that overtakes its acceptance
++callback, its Stage-0 segment end still decides it (and only it), and if it
++speaks it still takes its own final-stage output until that output is
++complete, so late output is never credited to the next unit. That includes a
++deferred committed turn whose reserved slot was settled before the turn was
++submitted: when the end of the response submits it after all, the submission
++takes that settled unit's place instead of becoming a new unit. Only a
++submission that ended without reaching Stage 0 (or whose epoch was cancelled)
++leaves the pipeline. Output of a cancelled epoch is dropped by the session (the
++cancelled-output boundary), so its units leave the pipeline with the cancel.
++
++The plugin hooks run on the session's output path: a hook that raises is
++logged (once per session and hook) and treated as "no decision" / "not
++complete", so the unit is left to the timeouts instead of failing every later
++stage output.
++"""
++
++from __future__ import annotations
++
++import math
++import time
++from collections import deque
++from collections.abc import Callable, Collection, Mapping
++from dataclasses import dataclass
++from fractions import Fraction
++from typing import TypeGuard
++
++from vllm.logger import init_logger
++
++from vllm_omni.engine.duplex.config import INPUT_CLOCK_KEY, input_clocked
++from vllm_omni.engine.duplex.contracts import DuplexOutputContext, DuplexOutputDecision
++from vllm_omni.engine.duplex.plugin import (
++    DuplexModelPlugin,
++    DuplexRuntimeConfigError,
++    DuplexUnitDecision,
++    DuplexUnitOutputs,
++)
++from vllm_omni.protocol.duplex.events import DuplexEvent, InputProcessed
++
++logger = init_logger(__name__)
++
++UNIT_TIMEOUT_KEY = "input_clock_unit_timeout_s"
++DEFAULT_UNIT_TIMEOUT_S = 15.0
++UNIT_MAX_AGE_KEY = "input_clock_unit_max_s"
++DEFAULT_UNIT_MAX_AGE_S = 60.0
++
++#: Client events an input-clocked session acknowledges (``wire_type`` of the command).
++ACKNOWLEDGED_INPUTS = frozenset({"input_audio_buffer.append", "input_audio_buffer.commit", "response.create"})
++
++#: ``units[].decision`` of a unit that was settled instead of completed by the model.
++DECISION_DROPPED = "dropped"
++DECISION_CANCELLED = "cancelled"
++DECISION_ABORTED = "aborted"
++DECISION_TIMED_OUT = "timed_out"
++#: ``units[].decision`` of a unit whose pipeline continued past Stage 0, unless
++#: the plugin labelled the decision.
++DECISION_SPEAK = "speak"
++
++#: ``units[].reason`` values the clock sets itself (cancel and close reasons come from the session).
++REASON_NO_PROGRESS = "no_progress"
++REASON_MAX_AGE = "max_age"
++
++#: Stage progress held for a unit that is not speaking yet (``InputClock._hold``), at most.
++_MAX_HELD_PROGRESS = 256
++#: At most one warning per session this often; the rest of a burst is logged at debug level.
++_WARNING_INTERVAL_S = 30.0
++
++
++def _is_positive_seconds(raw: object) -> TypeGuard[int | float]:
++    return isinstance(raw, int | float) and not isinstance(raw, bool) and math.isfinite(raw) and raw > 0
++
++
++def _positive_seconds(extra_body: object, key: str, default: float) -> float:
++    raw = extra_body.get(key) if isinstance(extra_body, Mapping) else None
++    if _is_positive_seconds(raw):
++        return float(raw)
++    return default
++
++
++def unit_timeout_s(extra_body: object) -> float:
++    return _positive_seconds(extra_body, UNIT_TIMEOUT_KEY, DEFAULT_UNIT_TIMEOUT_S)
++
++
++def unit_max_age_s(extra_body: object) -> float:
++    return _positive_seconds(extra_body, UNIT_MAX_AGE_KEY, DEFAULT_UNIT_MAX_AGE_S)
++
++
++def check_input_clock_supported(plugin: DuplexModelPlugin, extra_body: object) -> None:
++    """Refuse ``clock: "input"`` on a model whose plugin has not opted in, or with an invalid timeout.
++
++    The timeouts are only checked for an input-clocked session (a session
++    without the clock ignores them); ``null`` means the default, and any other
++    value that is not a positive number of seconds is refused
++    (``invalid_duplex_runtime_config``) rather than replaced by the default.
++    """
++    if not input_clocked(extra_body):
++        return
++    if not plugin.supports_input_clock:
++        raise DuplexRuntimeConfigError(
++            f'extra_body.clock "input" is not supported by {plugin.plugin_id or "this model"}',
++            code="input_clock_unsupported",
++        )
++    assert isinstance(extra_body, Mapping)
++    for key in (UNIT_TIMEOUT_KEY, UNIT_MAX_AGE_KEY):
++        value = extra_body.get(key)
++        if value is not None and not _is_positive_seconds(value):
++            raise DuplexRuntimeConfigError(
++                f"extra_body.{key} must be a positive number of seconds, got {extra_body[key]!r}",
++                code="invalid_duplex_runtime_config",
++            )
++
++
++def check_input_clock_unchanged(current: Mapping[str, object], candidate: Mapping[str, object]) -> None:
++    """Refuse a ``session.update`` that changes the clock or its timeouts: they are fixed at creation.
++
++    The timeouts are only compared for an input-clocked session; a session
++    without the clock is unaffected by them.
++    """
++    settings: list[tuple[str, Callable[[object], object]]] = [(INPUT_CLOCK_KEY, input_clocked)]
++    if input_clocked(current):
++        settings += [(UNIT_TIMEOUT_KEY, unit_timeout_s), (UNIT_MAX_AGE_KEY, unit_max_age_s)]
++    for key, effective in settings:
++        if effective(current) != effective(candidate):
++            raise DuplexRuntimeConfigError(
++                f"session.update cannot change extra_body.{key}: the input clock is fixed at session creation",
++                code="input_clock_update_unsupported",
++            )
++
++
++@dataclass(frozen=True, slots=True)
++class StageProgress:
++    """Mailbox item queued behind one stage output's events: what it means for the input clock."""
++
++    stage_id: int
++    final_stage_id: int
++    #: Session epoch of the output's request.
++    epoch: int
++    segment_finished: bool
++    #: The plugin's classification of a decision taken on this output, if any.
++    decision: DuplexUnitDecision | None = None
++    #: The final-stage output and its context (``None`` for other stages).
++    output: object | None = None
++    context: DuplexOutputContext | None = None
++
++
++@dataclass(slots=True, eq=False)
++class InputClockUnit:
++    """One Stage-0 submission, tracked until all of its output has been emitted."""
++
++    seq: int
++    #: Client input this unit consumed, in microseconds (exact: samples / rate).
++    input_us: int | Fraction
++    #: Session epoch the unit was submitted in (a cancel advances it).
++    epoch: int = 0
++    #: Clock time the unit was submitted (claimed, for a reserved turn).
++    started_at: float = 0.0
++    #: Reserved for a deferred committed turn that has not been submitted yet,
++    #: keyed by that turn (its committed-audio operation id).
++    placeholder: bool = False
++    turn: str | None = None
++    #: 1-based position among the Stage-0 submissions of its epoch, once Stage 0 accepted it.
++    ordinal: int | None = None
++    #: The acknowledgement no longer waits for this unit (completed by the model, or settled).
++    complete: bool = False
++    decision: str | None = None
++    #: Why a settled unit ended (cancel / close / timeout reason), reported with the decision.
++    reason: str | None = None
++    # Pipeline view, kept after the unit was settled so its late output stays its own.
++    upstream_segment_finished: bool = False
++    final_segment_finished: bool = False
++
++    @property
++    def index(self) -> int:
++        return self.seq - 1
++
++
++@dataclass(slots=True)
++class PendingAck:
++    index: int
++    trigger: str
++    audio_end_us: int
++    #: Units created before this input was handled; ``None`` until then.
++    watermark: int | None = None
++    #: Error code of an input refused before any of it reached the model (acknowledged as ``rejected``).
++    refused: str | None = None
++    #: Input audio this input added to ``audio_end_ms`` (taken back if the input is refused).
++    audio_us: Fraction = Fraction(0)
++
++
++class InputClock:
++    """Unit tracking and input acknowledgements for one session."""
++
++    def __init__(
++        self,
++        *,
++        emit: Callable[[list[DuplexEvent]], None],
++        plugin: DuplexModelPlugin,
++        runtime_config: Callable[[], Mapping[str, object]],
++        unit_timeout_s: float = DEFAULT_UNIT_TIMEOUT_S,
++        unit_max_age_s: float = DEFAULT_UNIT_MAX_AGE_S,
++        clock: Callable[[], float] = time.monotonic,
++    ) -> None:
++        self._emit = emit
++        self._plugin = plugin
++        self._runtime_config = runtime_config
++        self._clock = clock
++        self.unit_timeout_s = unit_timeout_s
++        self.unit_max_age_s = unit_max_age_s
++        #: Units the acknowledgements still wait for, in creation order (the completed prefix is dropped).
++        self._units: deque[InputClockUnit] = deque()
++        self._acks: deque[PendingAck] = deque()
++        self._units_created = 0
++        self._units_completed = 0
++        self._input_count = 0
++        # Exact (samples / rate), so per-append rounding never accumulates.
++        self._audio_end = Fraction(0)
++        self._unit_end = Fraction(0)
++        #: Settled units not yet reported, oldest first: (seq, ``units[]`` entry, unit end after it).
++        self._completed_since_ack: deque[tuple[int, dict[str, object], Fraction]] = deque()
++        #: ``unit_end_ms`` of the last acknowledgement (the units it reported end there).
++        self._reported_unit_end = Fraction(0)
++        #: Plugin-owned state for ``unit_output_complete``, new in every epoch.
++        self._plugin_state: dict[str, object] = {}
++        #: Stage outputs of an epoch below this were cancelled (their events are dropped).
++        self._live_epoch = 0
++        #: Per epoch: Stage-0 submissions accepted, and Stage-0 segment ends seen.
++        self._accepted: dict[int, int] = {}
++        self._segment_ends: dict[int, int] = {}
++        #: Units whose Stage-0 submission is unresolved (started, neither accepted nor ended), in
++        #: submission order, settled or not: a segment end that overtakes its acceptance callback
++        #: belongs to the oldest of its epoch.
++        self._in_submission: deque[InputClockUnit] = deque()
++        #: Accepted units waiting for their Stage-0 segment end, by (epoch, ordinal).
++        self._undecided: dict[tuple[int, int], InputClockUnit] = {}
++        #: Speaking units waiting for their final-stage output, in decision order.
++        self._speaking: deque[InputClockUnit] = deque()
++        #: Reserved slots settled before their deferred turn was submitted, by turn: a submission
++        #: of that turn that no client input made (the end of the response) takes the settled unit.
++        self._settled_turns: dict[str, InputClockUnit] = {}
++        #: Later-stage progress that arrived before any unit of its epoch was speaking (``_hold``).
++        self._held: deque[StageProgress] = deque()
++        #: Epochs whose hold overflowed: their later-stage progress is no longer held (``_hold``).
++        self._hold_overflowed: set[int] = set()
++        self._closed = False
++        #: Last time the pipeline produced something (or became busy): the liveness valve's reference.
++        self.last_progress = clock()
++        self._failed_hooks: set[str] = set()
++        self._last_warning_at: float | None = None
++        self._suppressed_warnings = 0
++
++    @property
++    def audio_end_us(self) -> int:
++        return math.floor(self._audio_end)
++
++    @property
++    def unit_end_us(self) -> int:
++        return math.floor(self._unit_end)
++
++    @property
++    def input_count(self) -> int:
++        """Client inputs admitted so far (the ``input_index`` of the latest one)."""
++        return self._input_count
++
++    # ------------------------------------------------------------------ #
++    # Input side                                                         #
++    # ------------------------------------------------------------------ #
++
++    def admit_input(self, trigger: str, *, refused: str | None = None) -> PendingAck:
++        """A client input reached the session (in wire order): it takes the next index, its acknowledgement is owed.
++
++        ``refused`` is the error code of an input the session refused at
++        admission (the runner sets ``PendingAck.refused`` later for an append
++        refused while its audio is prepared): it is acknowledged in input order
++        like an input that only buffers audio, as ``decision: "rejected"`` with
++        that code as ``reason``.
++        """
++        self._input_count += 1
++        ack = PendingAck(index=self._input_count, trigger=trigger, audio_end_us=self.audio_end_us, refused=refused)
++        if not self._closed:
++            self._acks.append(ack)
++        return ack
++
++    def begin_input(self, ack: PendingAck) -> None:
++        """The input left the mailbox and is being handled (the inputs before it are handled)."""
++        ack.audio_end_us = self.audio_end_us
++
++    def note_input_audio(self, ack: PendingAck, *, samples: int, sample_rate_hz: int) -> None:
++        """The input being handled carries ``samples`` of audio: it counts in ``audio_end_ms`` from now on.
++
++        Audio the session later discards without submitting it (an overlap
++        ``drop``, a silent chunk skipped in turn mode, a cleared buffer) stays
++        counted: ``audio_end_ms`` is the client's input position.
++        """
++        if samples <= 0 or sample_rate_hz <= 0:
++            return
++        audio_us = Fraction(samples * 1_000_000, int(sample_rate_hz))
++        self._audio_end += audio_us
++        ack.audio_us += audio_us
++        ack.audio_end_us = self.audio_end_us
++
++    def refuse_input(self, ack: PendingAck, code: str) -> None:
++        """The input being handled was refused before any of it reached the model (error ``code``).
++
++        It is acknowledged as ``rejected`` and its audio no longer counts in
++        ``audio_end_ms``: the client sends it again if the model should hear it.
++        """
++        ack.refused = code
++        self._audio_end -= ack.audio_us
++        ack.audio_us = Fraction(0)
++        ack.audio_end_us = self.audio_end_us
++
++    def end_input(self, ack: PendingAck) -> None:
++        """The input is handled (its units, if any, exist): fix its watermark.
++
++        An input that only buffered audio created no unit, so its watermark is
++        already reached: it is acknowledged as soon as the acknowledgements
++        before it are out. An input that submitted several units is
++        acknowledged once, after all of them, and lists each in ``units``.
++        """
++        if ack.watermark is None:
++            ack.watermark = self._units_created
++        self.flush()
++
++    def _note_busy(self, now: float) -> None:
++        # The valve measures how long the pipeline has been silent while it
++        # had work: client input that arrives while units are open does not
++        # hold it off, but a pipeline that was idle starts a fresh window.
++        if not self._units:
++            self.last_progress = now
++
++    def new_unit(
++        self, *, input_us: int | Fraction, epoch: int, turn: str | None = None, from_input: bool = True
++    ) -> InputClockUnit:
++        """A Stage-0 submission is starting; the submission of a deferred turn claims its reserved slot.
++
++        A deferred turn whose slot was already settled (timed out, or released
++        by a cancel that kept its audio) takes that settled unit's place when
++        the end of the response submits it (``from_input=False``): its output
++        stays its own and no acknowledgement waits for it. Submitted by a
++        client input (a ``response.create``, a commit it was merged into), it
++        is that input's new unit.
++        """
++        now = self._clock()
++        input_us = max(0, input_us)
++        if turn is not None:
++            for unit in self._units:
++                if unit.placeholder and unit.turn == turn:
++                    unit.placeholder = False
++                    unit.input_us = input_us
++                    unit.epoch = epoch
++                    unit.started_at = now
++                    self._in_submission.append(unit)
++                    return unit
++            settled = self._settled_turns.pop(turn, None)
++            if settled is not None and not from_input and not self._closed:
++                # Its acknowledgement entry is out; it only keeps its place in the
++                # pipeline (a command waiting for this append treats it as healthy).
++                settled.decision = settled.reason = None
++                settled.epoch = epoch
++                settled.started_at = now
++                self._in_submission.append(settled)
++                return settled
++        self._note_busy(now)
++        self._units_created += 1
++        unit = InputClockUnit(seq=self._units_created, input_us=input_us, epoch=epoch, started_at=now)
++        if self._closed:
++            unit.complete = True  # nothing is acknowledged after teardown
++        else:
++            self._units.append(unit)
++            self._in_submission.append(unit)
++        return unit
++
++    def reserve_unit(self, turn: str | None) -> None:
++        """A committed turn was deferred behind the active response: count it now, submit it later.
++
++        A second commit deferred before the first was submitted is merged into
++        the same turn (one submission), so it takes over the open slot instead
++        of reserving another.
++        """
++        if self._closed:
++            return
++        # The retained turn is now this one: an earlier settled slot's turn will not be submitted as such.
++        self._settled_turns.clear()
++        for unit in self._units:
++            if unit.placeholder:
++                unit.turn = turn
++                return
++        self._note_busy(self._clock())
++        self._units_created += 1
++        self._units.append(InputClockUnit(seq=self._units_created, input_us=0, placeholder=True, turn=turn))
++
++    def rekey_placeholder(self, old_turn: str | None, new_turn: str | None) -> None:
++        """The deferred turn is now carried by another commit (merged into it)."""
++        if old_turn is not None:
++            self._settled_turns.pop(old_turn, None)
++        for unit in self._units:
++            if unit.placeholder and unit.turn == old_turn:
++                unit.turn = new_turn
++                return
++
++    def placeholder_turns(self) -> list[str | None]:
++        return [unit.turn for unit in self._units if unit.placeholder]
++
++    def release_placeholder(self, turn: str | None, reason: str) -> None:
++        """The deferred turn was not submitted: its audio was dropped, or the response it waited for was cancelled."""
++        for unit in list(self._units):
++            if unit.placeholder and unit.turn == turn:
++                self.settle_unit(unit, DECISION_CANCELLED, reason=reason)
++                return
++
++    def unit_submitted(self, unit: InputClockUnit) -> None:
++        """Stage 0 accepted the unit's submission: it takes the next ordinal of its epoch.
++
++        Also for a unit already settled (e.g. timed out while it waited for
++        Stage 0): its output is still coming and must stay its own.
++        """
++        self._end_submission(unit)
++        if unit.ordinal is not None or self._closed or unit.epoch < self._live_epoch:
++            # Already claimed, or its epoch was cancelled (its output is dropped).
++            return
++        ordinal = self._accepted.get(unit.epoch, 0) + 1
++        self._accepted[unit.epoch] = ordinal
++        unit.ordinal = ordinal
++        self._undecided[(unit.epoch, ordinal)] = unit
++
++    def append_finished(self, unit: InputClockUnit) -> None:
++        """The append task that carried ``unit`` ended (not cancelled).
++
++        A unit that never reached Stage 0 will never finish (``dropped``). An
++        append that fails after Stage 0 accepted it closes the session, whose
++        teardown settles the unit (``aborted``).
++        """
++        self._end_submission(unit)
++        if unit.ordinal is None:
++            self.settle_unit(unit, DECISION_DROPPED)
++            self._drop_stray_held()
++
++    def _end_submission(self, unit: InputClockUnit) -> None:
++        try:
++            self._in_submission.remove(unit)
++        except ValueError:
++            pass
++
++    # ------------------------------------------------------------------ #
++    # Settling (units that will produce no further model output)         #
++    # ------------------------------------------------------------------ #
++
++    def _settle(self, unit: InputClockUnit, decision: str, reason: str | None) -> None:
++        if unit.complete:
++            return
++        if unit.placeholder and unit.turn is not None and not self._closed:
++            # Its turn may still be submitted when the response ends: that submission stays this unit's.
++            self._settled_turns[unit.turn] = unit
++        unit.placeholder = False
++        unit.decision = decision
++        unit.reason = reason
++        self._complete(unit)
++
++    def settle_unit(self, unit: InputClockUnit, decision: str, *, reason: str | None = None) -> None:
++        """Complete ``unit`` without its model output, reporting ``decision`` (and ``reason``)."""
++        if self._closed:
++            return
++        self._settle(unit, decision, reason)
++        self.flush()
++
++    def cancel_open(self, reason: str, *, before_epoch: int) -> None:
++        """A cancel advanced the session epoch: settle the units submitted before it.
++
++        Stage outputs of those epochs are dropped by the session (the
++        cancelled-output boundary), so their units would never complete and
++        leave the pipeline here. A deferred turn that is still waiting keeps
++        its slot; it is released with ``release_placeholder`` when the cancel
++        also dropped its audio.
++        """
++        if self._closed:
++            return
++        if before_epoch > self._live_epoch:
++            # The plugin's per-epoch view (e.g. a count of the epoch's output
++            # frames) starts over: the cancelled epochs' output is dropped.
++            self._plugin_state = {}
++        self._live_epoch = max(self._live_epoch, before_epoch)
++        self._held = deque(progress for progress in self._held if progress.epoch >= before_epoch)
++        self._hold_overflowed = {epoch for epoch in self._hold_overflowed if epoch >= before_epoch}
++        for unit in list(self._units):
++            if not unit.placeholder and unit.epoch < before_epoch:
++                self._settle(unit, DECISION_CANCELLED, reason)
++        self._undecided = {key: unit for key, unit in self._undecided.items() if key[0] >= before_epoch}
++        self._in_submission = deque(unit for unit in self._in_submission if unit.epoch >= before_epoch)
++        self._speaking = deque(unit for unit in self._speaking if unit.epoch >= before_epoch)
++        for counts in (self._accepted, self._segment_ends):
++            for epoch in [epoch for epoch in counts if epoch < before_epoch]:
++                del counts[epoch]
++        self.flush()
++
++    def close(self, reason: str) -> None:
++        """Session teardown: settle what is open, acknowledge every owed input at once, then stop.
++
++        Open units and reserved turns are settled as ``aborted``. All inputs
++        whose acknowledgement is still owed -- including one still being
++        handled -- are acknowledged by a single event (``first_input_index``
++        .. ``input_index``, or a plain acknowledgement when only one is owed),
++        emitted before the session's terminal event, so a teardown adds at
++        most one event to the session's output. Afterwards the clock emits
++        nothing.
++        """
++        if self._closed:
++            return
++        for unit in list(self._units):
++            self._settle(unit, DECISION_ABORTED, reason)
++        self._closed = True
++        self._settled_turns.clear()
++        self._held.clear()
++        self._in_submission.clear()
++        self._undecided.clear()
++        self._speaking.clear()
++        if not self._acks:
++            return
++        first, last = self._acks[0], self._acks[-1]
++        self._acks.clear()
++        # Inputs still queued were never handled: report all audio handled so far.
++        last.audio_end_us = self.audio_end_us
++        self._emit([self._ack_event(last, first_index=first.index if first is not last else None, teardown=True)])
++
++    # ------------------------------------------------------------------ #
++    # Model side (called from the mailbox, after the referenced output)  #
++    # ------------------------------------------------------------------ #
++
++    def note_progress(self) -> None:
++        """The session's pipeline produced something (resets the liveness valve)."""
++        self.last_progress = self._clock()
++
++    def on_stage_progress(self, progress: StageProgress) -> None:
++        """Account for one stage output whose events have just been emitted."""
++        if self._closed or progress.epoch < self._live_epoch:
++            # Teardown, or a cancelled epoch: its events were dropped and its units settled.
++            return
++        if progress.stage_id == 0:
++            if progress.segment_finished:
++                self._on_stage0_segment_end(progress)
++                self._drop_stray_held()
++        else:
++            self._on_later_stage_progress(progress)
++        self.flush()
++
++    def _on_later_stage_progress(self, progress: StageProgress) -> None:
++        if progress.stage_id < progress.final_stage_id:
++            self._on_upstream_progress(progress)
++            return
++        if not self._speaking:
++            # Ahead of the Stage-0 segment end that makes its unit speaking.
++            self._hold(progress)
++            return
++        if progress.segment_finished:
++            self._speaking[0].final_segment_finished = True
++        self._advance_speaking(progress.final_stage_id, progress.output, progress.context)
++
++    def _hold(self, progress: StageProgress) -> None:
++        """Keep a later stage's progress that no speaking unit can take yet, for the next unit that speaks.
++
++        The orchestrator delivers different stages' outputs to the session in
++        either order, so a later stage's output can overtake the Stage-0
++        segment end that makes its unit speaking. That unit's Stage-0
++        submission is then still undecided: progress is held only while its
++        epoch has one, and replayed, in arrival order, when the next unit of
++        the epoch starts speaking. Progress with no such submission is stray
++        and dropped, so it never ends a unit submitted after it arrived.
++        """
++        epoch = progress.epoch
++        if epoch in self._hold_overflowed or not self._stage0_pending(epoch):
++            self._warn("input clock: stage %s progress of epoch %s matches no unit; dropped", progress.stage_id, epoch)
++            return
++        if len(self._held) >= _MAX_HELD_PROGRESS:
++            # Which held item belongs to which unit is lost: credit none of them. The epoch's later
++            # units are left to the timeouts; a cancel (a new epoch) recovers.
++            logger.error(
++                "input clock: more than %d stage progress events overtook their Stage-0 segment ends;"
++                " dropped all of them and stop holding progress for epoch %s",
++                _MAX_HELD_PROGRESS,
++                epoch,
++            )
++            self._held.clear()
++            self._hold_overflowed.add(epoch)
++            return
++        self._held.append(progress)
++
++    def _stage0_pending(self, epoch: int) -> bool:
++        """A Stage-0 submission of ``epoch`` has no segment end yet (accepted or not)."""
++        return any(key[0] == epoch for key in self._undecided) or any(
++            unit.epoch == epoch and unit.ordinal is None for unit in self._in_submission
++        )
++
++    def _drop_stray_held(self) -> None:
++        """Held progress whose epoch has no undecided Stage-0 submission left will never find its unit."""
++        if not self._held:
++            return
++        kept = deque(progress for progress in self._held if self._stage0_pending(progress.epoch))
++        if len(kept) != len(self._held):
++            self._warn(
++                "input clock: dropped %d held stage progress events that match no unit", len(self._held) - len(kept)
++            )
++            self._held = kept
++
++    def _replay_held(self) -> None:
++        held, self._held = self._held, deque()
++        for progress in held:
++            if progress.epoch >= self._live_epoch:
++                self._on_later_stage_progress(progress)
++
++    def _on_stage0_segment_end(self, progress: StageProgress) -> None:
++        epoch = progress.epoch
++        ordinal = self._segment_ends.get(epoch, 0) + 1
++        self._segment_ends[epoch] = ordinal
++        unit = self._undecided.pop((epoch, ordinal), None)
++        if unit is None:
++            unit = self._claim_unaccepted(epoch, ordinal)
++        if unit is None:
++            self._warn("input clock: Stage-0 segment end %s of epoch %s matches no submission", ordinal, epoch)
++            return
++        decision = progress.decision
++        ends_unit = (decision is not None and decision.ends_unit) or progress.final_stage_id == 0
++        if not unit.complete:
++            # A unit settled before its segment end arrived keeps its settled decision.
++            unit.decision = decision.label if decision is not None and decision.label else DECISION_SPEAK
++        if ends_unit:
++            if not unit.complete:
++                self._complete(unit)
++            return
++        unit.upstream_segment_finished = progress.final_stage_id == 1
++        self._speaking.append(unit)
++        if self._held:
++            self._replay_held()
++        self._advance_speaking(progress.final_stage_id, None, None)
++
++    def _claim_unaccepted(self, epoch: int, ordinal: int) -> InputClockUnit | None:
++        """A segment end that overtook its submission's acceptance callback: give that unit the ordinal now.
++
++        Appends run in wire order, so only the oldest unit of the epoch whose
++        submission is still unresolved can be the one Stage 0 answered. That
++        includes a unit already settled (e.g. timed out before its acceptance
++        callback ran): it leaves the acknowledgements, not the pipeline, so a
++        later unit queued behind it is never claimed in its place.
++        """
++        for unit in self._in_submission:
++            if unit.epoch == epoch and unit.ordinal is None:
++                self._in_submission.remove(unit)
++                unit.ordinal = ordinal
++                self._accepted[epoch] = max(self._accepted.get(epoch, 0), ordinal)
++                return unit
++        return None
++
++    def _on_upstream_progress(self, progress: StageProgress) -> None:
++        """A non-final stage after Stage 0: it ends a unit only through a decision that ends the pipeline."""
++        upstream = progress.stage_id == progress.final_stage_id - 1
++        target = next(
++            (unit for unit in self._speaking if not (upstream and unit.upstream_segment_finished)),
++            None,
++        )
++        if target is None:
++            if progress.segment_finished or (progress.decision is not None and progress.decision.ends_unit):
++                # Ahead of the Stage-0 segment end that makes its unit speaking.
++                self._hold(progress)
++            return
++        decision = progress.decision
++        if decision is not None and decision.ends_unit:
++            self._speaking.remove(target)
++            if not target.complete:
++                if decision.label:
++                    target.decision = decision.label
++                self._complete(target)
++        elif upstream and progress.segment_finished:
++            target.upstream_segment_finished = True
++        else:
++            return
++        self._advance_speaking(progress.final_stage_id, None, None)
++
++    def unit_decision(
++        self,
++        *,
++        stage_id: int,
++        decision: DuplexOutputDecision | None,
++        output: object = None,
++        context: DuplexOutputContext | None = None,
++    ) -> DuplexUnitDecision | None:
++        """The plugin's classification of a segment end for the clock (``None``: none, or the hook raised)."""
++        try:
++            return self._plugin.unit_decision(
++                stage_id=stage_id,
++                decision=decision,
++                output=output,
++                context=context,
++                runtime_config=self._runtime_config(),
++            )
++        except Exception:
++            self._hook_failed("unit_decision", "no decision")
++            return None
++
++    def _advance_speaking(
++        self,
++        final_stage_id: int,
++        new_output: object | None,
++        new_context: DuplexOutputContext | None,
++    ) -> None:
++        """Ask the plugin about the oldest speaking unit; cascade while it keeps saying yes."""
++        runtime_config = self._runtime_config()
++        while self._speaking:
++            unit = self._speaking[0]
++            try:
++                done = self._plugin.unit_output_complete(
++                    unit=DuplexUnitOutputs(
++                        index=unit.index,
++                        epoch=unit.epoch,
++                        # Set for every speaking unit (its Stage-0 segment end gave it one).
++                        ordinal=unit.ordinal or 0,
++                        upstream_segment_finished=unit.upstream_segment_finished,
++                        final_segment_finished=unit.final_segment_finished,
++                    ),
++                    final_stage_id=final_stage_id,
++                    new_output=new_output,
++                    new_context=new_context,
++                    state=self._plugin_state,
++                    runtime_config=runtime_config,
++                )
++            except Exception:
++                self._hook_failed("unit_output_complete", "not complete")
++                return
++            if not done:
++                return
++            self._speaking.popleft()
++            if not unit.complete:
++                self._complete(unit)
++            # The output was already counted; the next unit is asked with no new output.
++            new_output = new_context = None
++
++    def _hook_failed(self, hook: str, treated_as: str) -> None:
++        if hook in self._failed_hooks:
++            logger.debug("input clock: plugin hook %s raised again", hook, exc_info=True)
++            return
++        self._failed_hooks.add(hook)
++        logger.exception(
++            "input clock: plugin hook %s raised; treated as %s, the unit is left to the timeouts"
++            " (further failures of this hook in the session are logged at debug level)",
++            hook,
++            treated_as,
++        )
++
++    def _warn(self, message: str, *args: object) -> None:
++        """A warning at most every ``_WARNING_INTERVAL_S`` per session; the rest of a burst goes to debug."""
++        now = self._clock()
++        if self._last_warning_at is not None and now - self._last_warning_at < _WARNING_INTERVAL_S:
++            self._suppressed_warnings += 1
++            logger.debug(message, *args)
++            return
++        self._last_warning_at = now
++        if self._suppressed_warnings:
++            message += " (%d similar messages since the previous warning were logged at debug level)"
++            args = (*args, self._suppressed_warnings)
++            self._suppressed_warnings = 0
++        logger.warning(message, *args)
++
++    def _complete(self, unit: InputClockUnit) -> None:
++        unit.complete = True
++        # Units are acknowledged in order: advance over the completed prefix.
++        while self._units and self._units[0].complete:
++            head = self._units.popleft()
++            self._units_completed += 1
++            self._unit_end += head.input_us
++            entry: dict[str, object] = {"end_ms": self.unit_end_us // 1000, "decision": head.decision}
++            if head.reason is not None:
++                entry["reason"] = head.reason
++            self._completed_since_ack.append((head.seq, entry, self._unit_end))
++
++    # ------------------------------------------------------------------ #
++    # Acknowledgements                                                   #
++    # ------------------------------------------------------------------ #
++
++    def _ack_event(self, ack: PendingAck, *, first_index: int | None = None, teardown: bool = False) -> InputProcessed:
++        """The acknowledgement of ``ack``: it reports the settled units created up to its input, no later ones.
++
++        Units of later inputs that settled already (inputs sent ahead, or
++        several units settled by one timeout check) wait for the
++        acknowledgement of the input that created them, so ``unit_end_ms``
++        never runs ahead of the acknowledged input. A teardown acknowledgement
++        reports every settled unit.
++        """
++        units: list[dict[str, object]] = []
++        pending = self._completed_since_ack
++        while pending and (teardown or ack.watermark is None or pending[0][0] <= ack.watermark):
++            _, entry, self._reported_unit_end = pending.popleft()
++            units.append(entry)
++        return InputProcessed(
++            audio_end_ms=ack.audio_end_us // 1000,
++            unit_end_ms=math.floor(self._reported_unit_end) // 1000,
++            input_index=ack.index,
++            first_input_index=first_index,
++            trigger=ack.trigger,
++            units=tuple(units),
++            # A teardown acknowledgement covers several inputs: it has no single decision.
++            decision="rejected" if ack.refused is not None and first_index is None else None,
++            reason=ack.refused if first_index is None else None,
++        )
++
++    def flush(self) -> None:
++        if self._closed:
++            return
++        events: list[DuplexEvent] = []
++        while self._acks:
++            ack = self._acks[0]
++            if ack.watermark is None or self._units_completed < ack.watermark:
++                break
++            self._acks.popleft()
++            events.append(self._ack_event(ack))
++        if events:
++            self._emit(events)
++
++    def has_open_units(self) -> bool:
++        return bool(self._units)
++
++    def timeout_due(self, units: Collection[InputClockUnit]) -> bool:
++        """Whether ``expire`` would settle one of ``units`` now, or one is a stalled re-submission (no side effects).
++
++        A deferred turn re-submitted into its already-settled slot is no
++        longer open, so ``expire`` never looks at it; its submission still
++        gets the maximum unit age as a deadline here, so a command waiting
++        for it is bounded too.
++        """
++        now = self._clock()
++        if any(
++            unit.complete and unit.ordinal is None and now - unit.started_at >= self.unit_max_age_s for unit in units
++        ):
++            return True
++        return any(unit in units for unit, _ in self._due(now))
++
++    def _due(self, now: float) -> list[tuple[InputClockUnit, str]]:
++        if self._closed or not self._units:
++            return []
++        expired: list[tuple[InputClockUnit, str]] = []
++        if now - self.last_progress >= self.unit_timeout_s:
++            expired.append((self._units[0], REASON_NO_PROGRESS))
++        for unit in self._units:
++            if not unit.placeholder and not unit.complete and now - unit.started_at >= self.unit_max_age_s:
++                if all(unit is not seen for seen, _ in expired):
++                    expired.append((unit, REASON_MAX_AGE))
++        return expired
++
++    def expire(self) -> bool:
++        """Timeouts: settle units the pipeline will evidently not complete (``timed_out``).
++
++        * Liveness valve: the session's pipeline produced nothing for
++          ``unit_timeout_s`` while units were open -- the oldest open unit is
++          settled (``no_progress``) and the window restarts.
++        * Maximum unit age: a submitted unit still open ``unit_max_age_s``
++          after its submission -- e.g. a model that keeps streaming but never
++          marks the unit complete -- is settled (``max_age``).
++
++        A model that breaks the unit contract degrades into slow
++        acknowledgements instead of a client that waits forever.
++        """
++        now = self._clock()
++        expired = self._due(now)
++        if not expired:
++            return False
++        for unit, reason in expired:
++            if unit in self._speaking:
++                self._warn(
++                    "input clock: speaking unit %s settled after a timeout (%s). It keeps its place for its"
++                    " final-stage output: if that never comes, the speaking units after it in this epoch are"
++                    " acknowledged through their own timeouts (output stays correctly attributed)",
++                    unit.seq,
++                    reason,
++                )
++            else:
++                self._warn(
++                    "input clock: settling unit %s (decision=%s) after a timeout (%s)", unit.seq, unit.decision, reason
++                )
++            self._settle(unit, DECISION_TIMED_OUT, reason)
++        self.last_progress = now
++        self.flush()
++        return True
++
++
++__all__ = [
++    "ACKNOWLEDGED_INPUTS",
++    "DECISION_ABORTED",
++    "DECISION_CANCELLED",
++    "DECISION_DROPPED",
++    "DECISION_SPEAK",
++    "DECISION_TIMED_OUT",
++    "DEFAULT_UNIT_MAX_AGE_S",
++    "DEFAULT_UNIT_TIMEOUT_S",
++    "InputClock",
++    "InputClockUnit",
++    "PendingAck",
++    "StageProgress",
++    "check_input_clock_supported",
++    "check_input_clock_unchanged",
++    "input_clocked",
++    "unit_max_age_s",
++    "unit_timeout_s",
++]
+diff --git a/vllm_omni/engine/duplex/session/manager.py b/vllm_omni/engine/duplex/session/manager.py
+index 8e54341a..8fc0687c 100644
+--- a/vllm_omni/engine/duplex/session/manager.py
++++ b/vllm_omni/engine/duplex/session/manager.py
+@@ -21,7 +21,7 @@ from __future__ import annotations
+ import asyncio
+ import concurrent.futures
+ import time
+-from collections.abc import Awaitable, Callable, Iterable
++from collections.abc import Awaitable, Callable, Iterable, Mapping
+ from dataclasses import dataclass, replace
+ from typing import TYPE_CHECKING
+ 
+@@ -57,6 +57,7 @@ from vllm_omni.engine.duplex.messages import (
+ )
+ from vllm_omni.engine.duplex.plugin import DuplexModelPlugin, DuplexRuntimeConfigError, validate_duplex_plugin_sampling
+ from vllm_omni.engine.duplex.session.engine_session import DuplexEngineSession, DuplexFenceMismatchError
++from vllm_omni.engine.duplex.session.input_clock import check_input_clock_supported
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity, DuplexLeaseConfig, DuplexLeaseState
+ from vllm_omni.engine.duplex.turn_detection import SileroVADBackendProvider
+ 
+@@ -276,6 +277,11 @@ class DuplexSessionManager:
+         command (the runner then re-reserves the decoded size around its PCM
+         reservation), so the mailbox never holds more bytes than the session
+         limit even while the worker is busy.
++
++        A command refused here is answered with an ``error``. The modality and
++        backpressure refusals also call ``runner.input_refused``, which gives
++        an input-clocked session's refused input its acknowledgement in input
++        order; a refusal because the session is closing does not.
+         """
+         runner = self.runners.get(message.session_id)
+         command = message.command
+@@ -301,6 +307,9 @@ class DuplexSessionManager:
+                     )
+                 ],
+             )
++            # Not ``input_refused``: an input-clocked session acknowledges only
++            # inputs that arrived before it began closing (its teardown
++            # acknowledgement covers them).
+             return
+         if isinstance(command, AppendAudio):
+             has_audio = bool(command.audio)
+@@ -311,6 +320,7 @@ class DuplexSessionManager:
+                     session,
+                     [self._error_event("invalid_input_modality", modality_error, command=command)],
+                 )
++                runner.input_refused(command, "invalid_input_modality")
+                 return
+             limit = int(self.runtime_config.max_pending_input_bytes_per_session)
+             pending_bytes = len(command.audio) + sum(len(frame) for frame in command.video_frames)
+@@ -325,6 +335,7 @@ class DuplexSessionManager:
+                         )
+                     ],
+                 )
++                runner.input_refused(command, "input_backpressure")
+                 return
+         elif isinstance(command, Commit):
+             if not session.reserve_pending_turn(limit=int(self.runtime_config.max_pending_turns_per_session)):
+@@ -338,6 +349,7 @@ class DuplexSessionManager:
+                         )
+                     ],
+                 )
++                runner.input_refused(command, "input_backpressure")
+                 return
+         runner.submit(command)
+ 
+@@ -435,6 +447,7 @@ class DuplexSessionManager:
+         ok: bool,
+         session: DuplexEngineSession | None = None,
+         error: BaseException | None = None,
++        public_extra: Mapping[str, object] | None = None,
+     ) -> None:
+         error_code, error_message, error_retryable = (
+             self._control_error(error) if error is not None else (None, None, False)
+@@ -446,7 +459,9 @@ class DuplexSessionManager:
+             ok=ok,
+             lease_generation=session.lease_generation if session is not None else None,
+             capabilities=session.capabilities if session is not None and ok else None,
+-            public_session=session.as_public_dict() if session is not None and ok else None,
++            public_session=(
++                {**session.as_public_dict(), **(public_extra or {})} if session is not None and ok else None
++            ),
+             error_code=error_code,
+             error_message=error_message,
+             error_retryable=error_retryable,
+@@ -560,6 +575,7 @@ class DuplexSessionManager:
+             holds_admission_slot = True
+             config = message.session_config
+             self.plugin.validate_client_extra_body(config.extra_body)
++            check_input_clock_supported(self.plugin, config.extra_body)
+             try:
+                 runtime_config = await self.plugin.prepare_runtime_config(config, model_config=self.model_config)
+             except DuplexRuntimeConfigError:
+@@ -795,7 +811,17 @@ class DuplexSessionManager:
+                 )
+             except ValueError as exc:
+                 raise DuplexSessionError(str(exc), code="session_resume_conflict") from exc
+-            await self._put_result(message, operation="resume", ok=True, session=session)
++            # An input-clocked client learns how many of its inputs reached the
++            # session (``input_index`` of the latest), so it can resend exactly
++            # those lost with the old connection.
++            admitted = runner.admitted_inputs
++            await self._put_result(
++                message,
++                operation="resume",
++                ok=True,
++                session=session,
++                public_extra={"input_index": admitted} if admitted is not None else None,
++            )
+         except Exception as exc:
+             logger.exception("resume_duplex_session failed: %s", exc)
+             await self._put_result(message, operation="resume", ok=False, session=session, error=exc)
+diff --git a/vllm_omni/engine/duplex/session/runner.py b/vllm_omni/engine/duplex/session/runner.py
+index 81c89ac7..e50e9c19 100644
+--- a/vllm_omni/engine/duplex/session/runner.py
++++ b/vllm_omni/engine/duplex/session/runner.py
+@@ -25,6 +25,7 @@ import time
+ import uuid
+ from collections.abc import Awaitable, Callable, Mapping
+ from dataclasses import dataclass, field
++from fractions import Fraction
+ from typing import TYPE_CHECKING, TypeVar
+ 
+ from vllm.logger import init_logger
+@@ -97,6 +98,18 @@ from vllm_omni.engine.duplex.session.context import (
+ from vllm_omni.engine.duplex.session.control import SessionControl
+ from vllm_omni.engine.duplex.session.emitter import SessionEmitter
+ from vllm_omni.engine.duplex.session.engine_session import DuplexEngineSession
++from vllm_omni.engine.duplex.session.input_clock import (
++    ACKNOWLEDGED_INPUTS,
++    DECISION_CANCELLED,
++    DECISION_TIMED_OUT,
++    InputClock,
++    InputClockUnit,
++    PendingAck,
++    StageProgress,
++    input_clocked,
++    unit_max_age_s,
++    unit_timeout_s,
++)
+ from vllm_omni.engine.duplex.session.lease import DuplexLeaseActivity
+ from vllm_omni.engine.duplex.session.model_channel import ModelChannel
+ from vllm_omni.engine.duplex.turn_detection import (
+@@ -124,7 +137,22 @@ class _Internal:
+     payload: dict[str, object] = field(default_factory=dict)
+ 
+ 
++@dataclass(frozen=True, slots=True)
++class _ClockedInput:
++    """An acknowledged client input of an input-clocked session, with the acknowledgement it was admitted with.
++
++    ``command`` is ``None`` for an input the manager refused at admission
++    (``input_refused``): only its acknowledgement travels, in input order; its
++    payload is not kept.
++    """
++
++    command: DuplexCommand | None
++    ack: PendingAck
++
++
+ _CANCEL_EVENTS = frozenset({"input.cancel", "response.cancel", "barge_in", "output_audio_buffer.clear"})
++#: How often an input-clocked session checks its unit timeouts while units are in flight.
++_INPUT_CLOCK_CHECK_INTERVAL_S = 1.0
+ 
+ 
+ def compute_silence_continuation_deadline(
+@@ -180,7 +208,9 @@ class DuplexSessionRunner:
+             session.model_state = plugin.create_session_state()
+         self.model_state: DuplexModelSessionState = session.model_state
+         self.tasks = DuplexSessionTasks()
+-        self._mailbox: asyncio.Queue[DuplexCommand | StageOutput | _Internal] = asyncio.Queue()
++        self._mailbox: asyncio.Queue[DuplexCommand | StageOutput | StageProgress | _ClockedInput | _Internal] = (
++            asyncio.Queue()
++        )
+         self._worker: asyncio.Task[None] | None = None
+         self._worker_stopped = False
+         self._loop: asyncio.AbstractEventLoop | None = None
+@@ -211,6 +241,25 @@ class DuplexSessionRunner:
+             self.model,
+             wait_for_append_tail=self._wait_for_append_tail,
+         )
++        #: Unit tracking of an input-clocked session (``extra_body.clock == "input"``,
++        #: fixed at session creation); ``None`` for every other session.
++        self._input_clock: InputClock | None = None
++        if input_clocked(session.config.extra_body):
++            self._input_clock = InputClock(
++                emit=self._emit_events,
++                plugin=plugin,
++                runtime_config=self._input_clock_runtime_config,
++                unit_timeout_s=unit_timeout_s(session.config.extra_body),
++                unit_max_age_s=unit_max_age_s(session.config.extra_body),
++            )
++        #: Acknowledgement owed for the client input being handled right now.
++        self._current_input_ack: PendingAck | None = None
++        #: The unit each append task in flight carries, until its outcome is settled.
++        self._input_clock_appends: dict[asyncio.Task[bool], InputClockUnit] = {}
++        #: Timeout-check timer, armed while the input clock has units in flight.
++        self._input_clock_timer: asyncio.TimerHandle | None = None
++        self._input_clock_expire_queued = False
++        self._input_clock_config: tuple[int, Mapping[str, object]] | None = None
+ 
+     # ------------------------------------------------------------------ #
+     # Public interface                                                   #
+@@ -235,8 +284,28 @@ class DuplexSessionRunner:
+         self.emit({"type": "session.created", "session": session.as_public_dict()})
+ 
+     def submit(self, command: DuplexCommand) -> None:
++        clock = self._input_clock
++        if clock is not None and command.wire_type in ACKNOWLEDGED_INPUTS:
++            # Indexed on admission, in wire order: a teardown before the worker
++            # reaches it still acknowledges it.
++            self._mailbox.put_nowait(_ClockedInput(command, clock.admit_input(command.wire_type)))
++            return
+         self._mailbox.put_nowait(command)
+ 
++    def input_refused(self, command: DuplexCommand, code: str) -> None:
++        """The manager refused ``command`` at admission and answered it with error ``code``.
++
++        An input-clocked session still owes an append / commit /
++        ``response.create`` its acknowledgement, in input order, as
++        ``decision: "rejected"`` with ``reason`` = ``code``: only a marker joins
++        the mailbox (the payload is not kept), and the acknowledgement follows
++        those of the inputs before it. A no-op without the clock.
++        """
++        clock = self._input_clock
++        if clock is None or command.wire_type not in ACKNOWLEDGED_INPUTS:
++            return
++        self._mailbox.put_nowait(_ClockedInput(None, clock.admit_input(command.wire_type, refused=code)))
++
+     def on_stage_output(
+         self,
+         stage_id: int,
+@@ -254,10 +323,16 @@ class DuplexSessionRunner:
+             # Optional mid-pipeline projection: client sees this stage; TTS still runs.
+             if decision is None:
+                 project = self.model.project_intermediate_output(stage_id, output, context)
+-        if self.session.capabilities.supports_concurrent_turn_requests and self.model.release_concurrent_turn_requests(
+-            stage_id, output, context
++        if (
++            self._input_clock is None
++            and self.session.capabilities.supports_concurrent_turn_requests
++            and self.model.release_concurrent_turn_requests(stage_id, output, context)
+         ):
++            # An input-clocked session never overlaps turns: the clock credits
++            # progress to units in order, so a commit during a response waits
++            # for it (the deferred-turn path).
+             self.run.concurrent_turn_requests_released = True
++        progress = self._input_clock_progress(stage_id, output, decision, context)
+         consume = decision is not None or stage_id >= context.final_stage_id
+         project_intermediate = self.plugin.projects_intermediate_outputs and stage_id == 0
+         if not consume and not project and not project_intermediate:
+@@ -268,6 +343,9 @@ class DuplexSessionRunner:
+             # take. Hand them to the session instead of dropping them, on the
+             # mailbox so they stay ordered with this session's other work.
+             self._stash_stage_metrics(stage_id, metrics, output)
++            if progress is not None and not self.run.closing and self.session.state != DuplexSessionState.CLOSED:
++                # Behind everything this output put on the mailbox.
++                self._mailbox.put_nowait(progress)
+             return False
+         if project and not consume:
+             # Stage1 thinker text is projected to the client, but that event
+@@ -287,9 +365,202 @@ class DuplexSessionRunner:
+                 decision=decision,
+             )
+         )
++        if progress is not None:
++            # Behind the output it describes: the unit is only accounted for
++            # once that output's events have been emitted.
++            self._mailbox.put_nowait(progress)
+         # Projection-only must still forward to the next stage (return False).
+         return consume
+ 
++    # ------------------------------------------------------------------ #
++    # Input clock (``extra_body.clock == "input"``)                       #
++    # ------------------------------------------------------------------ #
++
++    @property
++    def input_clocked(self) -> bool:
++        """Whether model time advances only with client input (see ``input_clock``)."""
++        return self._input_clock is not None
++
++    @property
++    def admitted_inputs(self) -> int | None:
++        """Input-clocked sessions: inputs admitted so far (the latest ``input_index``); ``None`` otherwise."""
++        return self._input_clock.input_count if self._input_clock is not None else None
++
++    def _input_clock_runtime_config(self) -> Mapping[str, object]:
++        # ``session.runtime_config`` copies; take a new copy only after a session.update replaced it.
++        generation = self.session.config_generation
++        cached = self._input_clock_config
++        if cached is None or cached[0] != generation:
++            cached = (generation, self.session.runtime_config)
++            self._input_clock_config = cached
++        return cached[1]
++
++    def _arm_input_clock_timer(self) -> None:
++        """Check the unit timeouts once a second while units are in flight (a timer, not a task)."""
++        if self._input_clock_timer is not None or self._worker_stopped:
++            return
++        loop = self._loop or asyncio.get_running_loop()
++        self._input_clock_timer = loop.call_later(_INPUT_CLOCK_CHECK_INTERVAL_S, self._on_input_clock_timer)
++
++    def _on_input_clock_timer(self) -> None:
++        self._input_clock_timer = None
++        self._queue_input_clock_expire()
++
++    def _queue_input_clock_expire(self) -> None:
++        # Checked on the mailbox, behind the outputs already queued: a timeout
++        # never overtakes an output (or its acknowledgement) that arrived first.
++        if self._input_clock_expire_queued or self.run.closing or self.session.state == DuplexSessionState.CLOSED:
++            return
++        self._input_clock_expire_queued = True
++        self._mailbox.put_nowait(_Internal("input_clock_expire"))
++
++    def _on_input_clock_expire(self) -> None:
++        self._input_clock_expire_queued = False
++        clock = self._input_clock
++        if clock is None or self.run.closing or self.session.state == DuplexSessionState.CLOSED:
++            return
++        clock.expire()
++        if clock.has_open_units():
++            self._arm_input_clock_timer()
++
++    async def _on_clocked_input(self, item: _ClockedInput) -> None:
++        """Run one acknowledged input of an input-clocked session; it is acknowledged once its outputs are out.
++
++        Every such input gets its acknowledgement, including one the handler
++        rejects with an error and one refused at admission (no command): it
++        then caused nothing.
++        """
++        clock = self._input_clock
++        assert clock is not None, "only an input-clocked session queues these"
++        ack = item.ack
++        clock.begin_input(ack)
++        if item.command is None:
++            clock.end_input(ack)
++            return
++        self._current_input_ack = ack
++        try:
++            await self._on_command(item.command)
++        except asyncio.CancelledError:
++            raise
++        except Exception as exc:
++            # Reported before the acknowledgement, which then follows it.
++            logger.exception("Duplex session %s failed handling %r: %s", self.session.session_id, item.command, exc)
++            self._emit_error("internal_error", str(exc))
++        finally:
++            self._current_input_ack = None
++            clock.end_input(ack)
++
++    def _track_input_clock_append(self, task: asyncio.Task[bool], unit: InputClockUnit) -> None:
++        self._input_clock_appends[task] = unit
++
++        def _append_done(done: asyncio.Task[bool]) -> None:
++            # Settled on the mailbox, behind the outputs already queued, so the
++            # acknowledgement it may release cannot overtake them.
++            self._mailbox.put_nowait(_Internal("input_clock_settle", {"task": done}))
++
++        task.add_done_callback(_append_done)
++
++    def _on_input_clock_settle(self, task: asyncio.Task[bool]) -> None:
++        """An append task ended: settle its unit if it never reached Stage 0."""
++        unit = self._input_clock_appends.pop(task, None)
++        clock = self._input_clock
++        if unit is None or clock is None:
++            return
++        if task.cancelled():
++            # Cancelled by a cancel / barge-in (which settled the unit with its
++            # reason) or a teardown (which settles every unit).
++            return
++        clock.append_finished(unit)
++
++    def _settle_cancelled_units(self, reason: str) -> None:
++        """After a cancel: settle the appends it called off, the cancelled epochs' units, a dropped deferred turn."""
++        clock = self._input_clock
++        if clock is None:
++            return
++        for task, unit in list(self._input_clock_appends.items()):
++            if task.cancelled() or self.tasks.cancelled_by_runner(task):
++                # Called off by this cancel, whether or not it advanced the epoch.
++                del self._input_clock_appends[task]
++                clock.settle_unit(unit, DECISION_CANCELLED, reason=reason)
++        clock.cancel_open(reason, before_epoch=self.session.epoch)
++        # A deferred turn is submitted by the end of the response it waits for,
++        # and a cancelled response does not submit it: its slot is released
++        # even when the cancel kept its audio (``output_audio_buffer.clear``,
++        # an overlap barge-in). That audio is then submitted by the next
++        # commit or ``response.create``, as that input's own unit.
++        self._release_dropped_deferred_turn(reason, response_cancelled=True)
++
++    def _release_dropped_deferred_turn(self, reason: str, *, response_cancelled: bool = False) -> None:
++        """Release the reserved slot of a deferred turn whose audio is gone or whose response was cancelled."""
++        clock = self._input_clock
++        if clock is None:
++            return
++        model_state = self.model_state
++        live_turn = (
++            model_state.committed_audio_operation_id if model_state.committed_audio_payload is not None else None
++        )
++        for turn in clock.placeholder_turns():
++            if response_cancelled or turn is None or turn != live_turn:
++                clock.release_placeholder(turn, reason)
++
++    def _close_input_clock(self, reason: str) -> None:
++        """Teardown: acknowledge every owed input (``aborted`` units) before the terminal event."""
++        clock = self._input_clock
++        if clock is not None:
++            clock.close(reason)
++
++    async def _on_stage_progress(self, progress: StageProgress) -> None:
++        clock = self._input_clock
++        if clock is None:
++            return
++        # The output's handler may have spawned the response continuation,
++        # which can end the response (``response.done``) on its first step;
++        # let it finish first, so the acknowledgement follows those events too.
++        # In a clocked session it never suspends (no silence continuation), so
++        # awaiting it cannot stall the worker.
++        continuations = [
++            task for task in self._background_tasks if task.get_name() == "duplex-continue" and not task.done()
++        ]
++        if continuations:
++            for result in await asyncio.gather(*continuations, return_exceptions=True):
++                if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
++                    logger.warning(
++                        "Duplex session %s response continuation failed: %r", self.session.session_id, result
++                    )
++        clock.on_stage_progress(progress)
++
++    def _input_clock_progress(
++        self,
++        stage_id: int,
++        output: RequestOutput,
++        decision: DuplexOutputDecision | None,
++        context: DuplexOutputContext,
++    ) -> StageProgress | None:
++        """The unit-progress record a stage output owes the input clock, or None."""
++        clock = self._input_clock
++        if clock is None:
++            return None
++        clock.note_progress()
++        final_stage_id = context.final_stage_id
++        final = stage_id >= final_stage_id
++        if not (context.segment_finished or final or decision is not None):
++            return None
++        # A decision, or a segment end of a stage before the final one: the plugin may classify it.
++        classified = decision is not None or (context.segment_finished and not final)
++        return StageProgress(
++            stage_id=stage_id,
++            final_stage_id=final_stage_id,
++            epoch=context.identity.fence.epoch,
++            segment_finished=context.segment_finished,
++            decision=(
++                clock.unit_decision(stage_id=stage_id, decision=decision, output=output, context=context)
++                if classified
++                else None
++            ),
++            output=output if final else None,
++            context=context if final else None,
++        )
++
+     def _stash_stage_metrics(self, stage_id: int, metrics: StageRequestStats | None, output: object) -> None:
+         snapshot = self.model.stage_metrics_snapshot(stage_id, metrics, output)
+         if snapshot is None or self.run.closing or self.session.state == DuplexSessionState.CLOSED:
+@@ -383,6 +654,7 @@ class DuplexSessionRunner:
+             await self._stop_worker()
+             return
+         self._begin_close(reason)
++        self._close_input_clock(reason)
+         self.model_state.audio_buffer.clear()
+         session.release_all_input_bytes()
+         self.model_state.input_since_commit = False
+@@ -411,6 +683,7 @@ class DuplexSessionRunner:
+         """
+         session = self.session
+         self._begin_close(reason)
++        self._close_input_clock(reason)
+         if not self.run.closed_emitted:
+             if emit_expired:
+                 # Also when the event was deferred: the manager only emits a
+@@ -469,6 +742,9 @@ class DuplexSessionRunner:
+         # runs inside it): its loop exits after the current item instead of
+         # parking on the mailbox forever.
+         self._worker_stopped = True
++        if self._input_clock_timer is not None:
++            self._input_clock_timer.cancel()
++            self._input_clock_timer = None
+         for task in list(self._background_tasks):
+             task.cancel()
+         if self._background_tasks:
+@@ -490,24 +766,46 @@ class DuplexSessionRunner:
+             return await loop.run_in_executor(self.manager.executor, lambda: fn(*args, **kwargs))
+         return await loop.run_in_executor(self.manager.executor, fn, *args)
+ 
+-    async def _handle_item(self, item: DuplexCommand | StageOutput | _Internal) -> None:
++    async def _handle_item(self, item: DuplexCommand | StageOutput | StageProgress | _ClockedInput | _Internal) -> None:
+         session = self.session
+         if isinstance(item, StageOutput):
+             await self.model.on_stage_output_item(item)
+             return
++        if isinstance(item, StageProgress):
++            await self._on_stage_progress(item)
++            return
+         if isinstance(item, _Internal):
+             await self._on_internal(item)
+             return
++        if isinstance(item, _ClockedInput):
++            if self.run.closing or session.state == DuplexSessionState.CLOSED:
++                # Its acknowledgement went out with the teardown.
++                if item.command is not None:
++                    self._release_admission(item.command)
++                return
++            await self._on_clocked_input(item)
++            return
+         if self.run.closing or session.state == DuplexSessionState.CLOSED:
+-            if isinstance(item, Commit):
+-                session.release_pending_turn()
+-            elif isinstance(item, AppendAudio):
+-                admission = len(item.audio) + sum(len(frame) for frame in item.video_frames)
+-                session.release_input_bytes(admission)
++            self._release_admission(item)
+             return
+         await self._on_command(item)
+ 
++    def _release_admission(self, command: DuplexCommand) -> None:
++        """A command dropped unhandled (the session is closing) gives back what admission reserved for it."""
++        if isinstance(command, Commit):
++            self.session.release_pending_turn()
++        elif isinstance(command, AppendAudio):
++            self.session.release_input_bytes(len(command.audio) + sum(len(frame) for frame in command.video_frames))
++
+     async def _on_internal(self, item: _Internal) -> None:
++        if item.kind == "input_clock_settle":
++            task = item.payload.get("task")
++            if isinstance(task, asyncio.Task):
++                self._on_input_clock_settle(task)
++            return
++        if item.kind == "input_clock_expire":
++            self._on_input_clock_expire()
++            return
+         if item.kind == "stage_metrics":
+             stage_metrics = item.payload.get("stage_metrics")
+             if isinstance(stage_metrics, Mapping):
+@@ -677,6 +975,7 @@ class DuplexSessionRunner:
+ 
+             clear_input_buffer(projector)
+         self._emit_events([InputCleared()])
++        self._release_dropped_deferred_turn("input_cleared")
+ 
+     # ------------------------------------------------------------------ #
+     # Emission (delegated to SessionEmitter)                             #
+@@ -699,6 +998,19 @@ class DuplexSessionRunner:
+     ) -> None:
+         self.out.emit_error(code, message, event_id=event_id, retryable=retryable)
+ 
++    def _refuse_append(self, code: str, message: str, event: Mapping[str, object]) -> None:
++        """Reject an append before any of its audio reached the model.
++
++        The error carries the client's ``event_id``. In an input-clocked
++        session the append is acknowledged as ``decision: "rejected"`` with
++        ``reason`` = ``code``, like an input the manager refused at admission.
++        """
++        self._emit_error(code, message, event_id=event.get("realtime_event_id"))
++        ack = self._current_input_ack
++        if self._input_clock is not None and ack is not None:
++            # Rejected, and its audio no longer counts in ``audio_end_ms``.
++            self._input_clock.refuse_input(ack, code)
++
+     def _require_projector(self) -> RealtimeProjectionState:
+         return self.out.require_projector()
+ 
+@@ -752,7 +1064,7 @@ class DuplexSessionRunner:
+         session.reset_overlap_speech()
+         model_state.input_since_commit = False
+         model_state.speech_since_commit = False
+-        await self.tasks.cancel_append_tasks()
++        had_append = await self.tasks.cancel_append_tasks()
+         had_stream = self.run.stream_request_id is not None
+         cancel_reason = str(decision.get("cancel_reason") or "barge_in")
+         cancelled = await self._cancel_active_response(
+@@ -760,7 +1072,11 @@ class DuplexSessionRunner:
+             reason=cancel_reason,
+         )
+         had_stream = self.model.cancel_data_plane_stream() or had_stream
+-        if not cancelled and had_stream:
++        # Input-clocked sessions: an append called off mid-submission may already
++        # have reached Stage 0; a new epoch drops its output, as in ``_on_cancel``.
++        # (With client playback still active, the playback branch below does it.)
++        clocked_append = had_append and self._input_clock is not None and not playback_was_active
++        if not cancelled and (had_stream or clocked_append):
+             old_epoch = session.epoch
+             old_response_id = session.active_response_id
+             committed_ms = session.playback.committed_ms
+@@ -797,6 +1113,7 @@ class DuplexSessionRunner:
+                 }
+             )
+             cancelled = True
++        self._settle_cancelled_units(cancel_reason)
+         if session.epoch > cancelled_fence.epoch:
+             if not await self.model.signal_cancel_fence(cancelled_fence):
+                 return False
+@@ -818,7 +1135,7 @@ class DuplexSessionRunner:
+         has_video = bool(video_frames)
+         modality_error = session.capabilities.validate_append_modalities(has_audio=has_audio, has_video=has_video)
+         if modality_error is not None:
+-            self._emit_error("invalid_input_modality", modality_error)
++            self._refuse_append("invalid_input_modality", modality_error, event)
+             return
+         video_only = has_video and not has_audio
+         if not session.capabilities.supports_barge_in and overlap_policy.event_requests_barge_in(event):
+@@ -853,17 +1170,25 @@ class DuplexSessionRunner:
+                     sample_rate_hz=sample_rate_hz,
+                 )
+             except ValueError as exc:
+-                self._emit_error("bad_event", str(exc))
++                self._refuse_append("bad_event", str(exc), event)
+                 return
+             audio, fmt, converted_rate = converted
+             if converted_rate is not None:
+                 sample_rate_hz = converted_rate
+             if isinstance(fmt, str) and fmt.lower() in {"pcm16", "pcm_s16le", "s16le"}:
+-                self._emit_error("bad_audio", "input_audio_buffer.append pcm16 audio could not be decoded")
++                self._refuse_append("bad_audio", "input_audio_buffer.append pcm16 audio could not be decoded", event)
+                 return
+             event["audio"] = audio
+             event["format"] = fmt
+             event["sample_rate_hz"] = sample_rate_hz
++            clock = self._input_clock
++            ack = self._current_input_ack
++            if clock is not None and ack is not None and isinstance(sample_rate_hz, int | float):
++                clock.note_input_audio(
++                    ack,
++                    samples=helpers.base64_payload_size_bytes(event) // helpers.pcm_bytes_per_sample(fmt),
++                    sample_rate_hz=int(sample_rate_hz),
++                )
+             vad_result = await self.control.run_turn_detection(event)
+             if (
+                 vad_result is not None
+@@ -974,7 +1299,7 @@ class DuplexSessionRunner:
+                 raw_audio_bytes,
+                 limit=int(self.manager.runtime_config.max_pending_input_bytes_per_session),
+             ):
+-                self._emit_error("input_backpressure", "Duplex session pending input exceeds server limit")
++                self._refuse_append("input_backpressure", "Duplex session pending input exceeds server limit", event)
+                 return
+             # Full-duplex: emit each ~chunk_period of audio so the model runs
+             # per-chunk generation without an explicit response.create.
+@@ -987,7 +1312,7 @@ class DuplexSessionRunner:
+             )
+         except ValueError as exc:
+             session.release_input_bytes(raw_audio_bytes)
+-            self._emit_error("bad_event", str(exc))
++            self._refuse_append("bad_event", str(exc), event)
+             return
+         if pcm_reservation is None:
+             # Commit-only buffers (AURA) accumulate in place and return None.
+@@ -999,7 +1324,12 @@ class DuplexSessionRunner:
+                 pending_delta,
+                 limit=int(self.manager.runtime_config.max_pending_input_bytes_per_session),
+             ):
+-                self._emit_error("input_backpressure", "Duplex session pending input exceeds server limit")
++                # The audio is already in the commit buffer: an error, not a refusal.
++                self._emit_error(
++                    "input_backpressure",
++                    "Duplex session pending input exceeds server limit",
++                    event_id=event.get("realtime_event_id"),
++                )
+                 return
+             if pending_delta < 0:
+                 session.release_input_bytes(-pending_delta)
+@@ -1012,8 +1342,33 @@ class DuplexSessionRunner:
+             self._maybe_schedule_vad_commit(vad_result)
+             return
+         await self._start_append(append_payload, final=False, pcm_reservation=pcm_reservation)
++        if self._input_clock is not None and allow_emit:
++            # Input-clocked sessions: submit every whole unit this append
++            # completed, so its acknowledgement covers all of them.
++            while (
++                self._append_chain_healthy()
++                and (
++                    backlog := model_state.audio_buffer.prepare_backlog(
++                        operation_id=uuid.uuid4().hex, chunk_period_ms=session.capabilities.chunk_period_ms or 1000
++                    )
++                )
++                is not None
++            ):
++                if backlog.payload is None:
++                    backlog.rollback()
++                    break
++                await self._start_append(backlog.payload, final=False, pcm_reservation=backlog)
+         self._maybe_schedule_vad_commit(vad_result)
+ 
++    def _append_chain_healthy(self) -> bool:
++        """Whether more of the buffered audio may be submitted: the session is open and no append in it failed."""
++        if self.run.closing or self.session.state != DuplexSessionState.OPEN:
++            return False
++        tail = self.tasks.append_tail
++        if tail is None or not tail.done():
++            return True
++        return not tail.cancelled() and tail.exception() is None and tail.result() is not False
++
+     def _maybe_schedule_vad_commit(self, vad_result: TurnDetectionResult | None) -> None:
+         """Server VAD ended the user turn: run the same commit the old translator synthesized."""
+         if vad_result is None or not vad_result.should_commit:
+@@ -1035,6 +1390,19 @@ class DuplexSessionRunner:
+         if resolved.payload is not None:
+             self._mailbox.put_nowait(_Internal("commit", resolved.payload))
+ 
++    def _silence_continuation_enabled(self) -> bool:
++        """Whether the runner may feed the model silence units the client never sent.
++
++        A client that streams its microphone continuously (silence and
++        background noise included) turns this off with
++        ``extra_body.silence_continuation: false``, so the model only ever
++        hears audio the client actually sent.
++        """
++        if self._input_clock is not None:
++            # Input-clocked sessions: the model hears only what the client sends.
++            return False
++        return self.session.config.extra_body.get("silence_continuation") is not False
++
+     def _clear_completed_pending_silence(self) -> None:
+         task = self.model_state.pending_silence_task
+         if task is not None and task.done():
+@@ -1081,6 +1449,18 @@ class DuplexSessionRunner:
+                     model_state.silence_deadline_monotonic = None
+ 
+                 on_append_accepted = _reanchor_chain
++        clock = self._input_clock
++        clock_unit: InputClockUnit | None = None
++        if clock is not None:
++            inner_accepted = on_append_accepted
++
++            def _accepted_by_runtime(submit_time: float) -> None:
++                if clock_unit is not None:
++                    clock.unit_submitted(clock_unit)
++                if inner_accepted is not None:
++                    inner_accepted(submit_time)
++
++            on_append_accepted = _accepted_by_runtime
+         append_epoch = session.epoch
+         append_fence = helpers.append_fence(session, payload, epoch=append_epoch)
+         append_turn_id = append_fence.turn_id
+@@ -1132,8 +1512,22 @@ class DuplexSessionRunner:
+                 # Appends queued behind a failed predecessor stop; a later
+                 # command is an explicit retry and starts a new chain.
+                 predecessor = None
++        if clock is not None:
++            # One Stage-0 submission is one model unit, whatever its length; a
++            # deferred committed turn claims the slot reserved for it. Created
++            # only now, right before the task that settles it exists.
++            clock_unit = clock.new_unit(
++                input_us=self._unit_input_us(payload, pcm_reservation, retained_committed_payload),
++                epoch=append_epoch,
++                turn=operation_id if final else None,
++                # A deferred turn the end of a response submits belongs to no client input.
++                from_input=self._current_input_ack is not None,
++            )
+         task = asyncio.create_task(attempt.run_in_wire_order(predecessor))
+         task.add_done_callback(attempt.release_on_failure)
++        if clock_unit is not None:
++            self._track_input_clock_append(task, clock_unit)
++            self._arm_input_clock_timer()
+         self.tasks.append_tail = task
+         self.tasks.track_append_task(
+             task,
+@@ -1148,6 +1542,29 @@ class DuplexSessionRunner:
+         await asyncio.sleep(0)
+         return task
+ 
++    def _unit_input_us(
++        self,
++        payload: Mapping[str, object],
++        pcm_reservation: PcmAppendReservation | None,
++        retained_committed_payload: Mapping[str, object] | None,
++    ) -> Fraction:
++        """Client input one submission consumes, in microseconds.
++
++        An input-clocked session never submits silence of its own.
++        """
++        sample_rate = payload.get("sample_rate_hz")
++        if not isinstance(sample_rate, int | float) or int(sample_rate) <= 0:
++            return Fraction(0)
++        model_state = self.model_state
++        if pcm_reservation is not None:
++            byte_count = pcm_reservation.byte_count
++        elif retained_committed_payload is not None and model_state.committed_audio_reserved_bytes > 0:
++            # The committed payload is padded to a whole unit; count the client's audio only.
++            byte_count = model_state.committed_audio_reserved_bytes
++        else:
++            byte_count = helpers.base64_payload_size_bytes(retained_committed_payload or payload)
++        return Fraction(byte_count // helpers.pcm_bytes_per_sample(payload.get("format")) * 1_000_000, int(sample_rate))
++
+     def _fail_session_from_append(self, reason: str) -> None:
+         """An append task died: mark the session closing now, close it out next."""
+         self._begin_close(reason)
+@@ -1158,6 +1575,9 @@ class DuplexSessionRunner:
+         if predecessor is None:
+             return True
+         try:
++            clock = self._input_clock
++            if clock is not None and not await self._input_clock_wait_for_append(clock, predecessor):
++                return False
+             return await predecessor
+         except asyncio.CancelledError:
+             if helpers.task_is_cancelling(asyncio.current_task()):
+@@ -1166,6 +1586,33 @@ class DuplexSessionRunner:
+         except Exception:
+             return False
+ 
++    async def _input_clock_wait_for_append(self, clock: InputClock, append: asyncio.Task[bool]) -> bool:
++        """Wait for ``append`` from a command, but not for a submission the input clock has timed out.
++
++        The command blocks the session's single mailbox worker, so the timeout
++        check queued behind it could never run, and a stalled submission would
++        hold every acknowledgement back. The wait therefore watches the units
++        of the appends still running (``append`` and the ones it is queued
++        behind) and gives up -- the caller rejects its command as for a failed
++        append -- once one of them was settled by a timeout or a timeout is
++        due for it. A timeout due for any other unit does not abort the
++        command; it is settled once the worker is free. The settling itself
++        happens on the mailbox (queued here if the timer has not queued it
++        yet), after the outputs that arrived first, so output-before-
++        acknowledgement order is unchanged. Returns whether ``append`` finished.
++        """
++        while not append.done():
++            running = [unit for task, unit in self._input_clock_appends.items() if not task.done()]
++            if any(unit.decision == DECISION_TIMED_OUT for unit in running) or clock.timeout_due(running):
++                logger.warning(
++                    "Duplex session %s: a command stopped waiting for an append the input clock timed out",
++                    self.session.session_id,
++                )
++                self._queue_input_clock_expire()
++                return False
++            await asyncio.wait({append}, timeout=_INPUT_CLOCK_CHECK_INTERVAL_S)
++        return True
++
+     async def _schedule_silence_continuation(
+         self,
+         payload: object,
+@@ -1179,6 +1626,8 @@ class DuplexSessionRunner:
+     ) -> bool:
+         session = self.session
+         model_state = self.model_state
++        if not self._silence_continuation_enabled():
++            return False
+         self._clear_completed_pending_silence()
+         pending_silence = model_state.pending_silence_task
+         if pending_silence is not None and not pending_silence.done():
+@@ -1218,7 +1667,9 @@ class DuplexSessionRunner:
+         if delay_s > 0:
+             await asyncio.sleep(delay_s)
+         if (
+-            self.tasks.append_tail is not append_tail
++            # A session.update may have turned continuation off while this one waited.
++            not self._silence_continuation_enabled()
++            or self.tasks.append_tail is not append_tail
+             or ((append_tail is None or append_tail.done()) and self._real_input_waiting())
+             or self.model.silence_continuation_is_stale(
+                 request_id=request_id,
+@@ -1232,9 +1683,12 @@ class DuplexSessionRunner:
+ 
+         def _still_valid() -> bool:
+             return (
++                # Still allowed: a session.update may have turned continuation off
++                # while this unit waited behind the append in flight.
++                self._silence_continuation_enabled()
+                 # The anchor changed (a real append was accepted) after this
+                 # continuation was planned; the unit is outdated.
+-                model_state.last_native_submit_monotonic == anchor
++                and model_state.last_native_submit_monotonic == anchor
+                 and not self._real_input_waiting()
+                 and not self.model.silence_continuation_is_stale(
+                     request_id=request_id,
+@@ -1277,6 +1731,7 @@ class DuplexSessionRunner:
+             return
+         self.run.runtime_closed = True
+         self._begin_close(reason)
++        self._close_input_clock(reason)
+         self._cleanup_duplex_session_state()
+         # ``closed_deferred`` means a manager-driven close already promised the
+         # terminal after its stage cleanup. Emitting here too would give the
+@@ -1425,6 +1880,7 @@ class DuplexSessionRunner:
+             return
+         if not cancelled:
+             self._cancel_pending_input(reason="barge_in")
++        self._settle_cancelled_units(cancel_reason)
+         if not await self.model.signal_cancel_fence(cancelled_fence):
+             return
+         self.tasks.active_response_task = None
+@@ -1645,6 +2101,9 @@ class DuplexSessionRunner:
+         reserved_bytes = (
+             commit_reservation.byte_count if commit_reservation is not None else flushed_buffer_reserved_bytes
+         )
++        if self._input_clock is not None and model_state.committed_audio_payload is not None:
++            # A deferred turn merged into this commit is submitted with it.
++            self._input_clock.rekey_placeholder(model_state.committed_audio_operation_id, operation_id)
+         model_state.retain_committed_audio(flushed, operation_id=operation_id, reserved_bytes=reserved_bytes)
+         if should_create_response:
+             await self._start_append(
+@@ -1658,7 +2117,7 @@ class DuplexSessionRunner:
+             model_state.deferred_response_create = False
+         return True
+ 
+-    async def _start_response_from_committed_audio(self) -> None:
++    async def _start_response_from_committed_audio(self, *, event_id: object = None) -> None:
+         """Answer a client ``response.create``.
+ 
+         A turn starts from committed input. Audio is the usual kind, but the
+@@ -1670,7 +2129,8 @@ class DuplexSessionRunner:
+         anything this layer invents.
+ 
+         Refused only when nothing is waiting, or a response is already running,
+-        rather than silently producing an empty turn.
++        rather than silently producing an empty turn; the error carries the
++        ``event_id`` of the client's ``response.create``.
+         """
+         session = self.session
+         model_state = self.model_state
+@@ -1686,7 +2146,9 @@ class DuplexSessionRunner:
+             ):
+                 return
+             self._emit_error(
+-                "response_already_active", "response.create cannot start while another response is active."
++                "response_already_active",
++                "response.create cannot start while another response is active.",
++                event_id=event_id,
+             )
+             session.discard_response_options()
+             return
+@@ -1722,6 +2184,7 @@ class DuplexSessionRunner:
+                 "initial_user_text to ask it in text."
+                 if session.capabilities.supports_chat_completions
+                 else "This duplex model answers speech input only.",
++                event_id=event_id,
+             )
+             session.reset_unanswered_user_items()
+             session.discard_response_options()
+@@ -1729,6 +2192,7 @@ class DuplexSessionRunner:
+         self._emit_error(
+             "response_create_without_input",
+             "Duplex response.create requires committed audio to answer.",
++            event_id=event_id,
+         )
+         session.discard_response_options()
+ 
+@@ -1760,6 +2224,8 @@ class DuplexSessionRunner:
+             }
+         )
+         session.reset_overlap_speech()
++        # The cleared committed audio may have been a turn deferred behind the response.
++        self._release_dropped_deferred_turn("short_overlap_discarded")
+         session.discard_response_options()
+ 
+     def _defer_commit_behind_active_response(
+@@ -1822,6 +2288,12 @@ class DuplexSessionRunner:
+         committed_payload["overlap_deferred"] = True
+         committed_payload["response_create_deferred"] = should_create_response
+         self.emit(committed_payload)
++        clock = self._input_clock
++        if clock is not None and should_create_response:
++            # The turn is submitted once the active response ends; its
++            # acknowledgement still waits for it.
++            clock.reserve_unit(model_state.committed_audio_operation_id)
++            self._arm_input_clock_timer()
+         return True
+ 
+     async def _commit_and_start_auto_response(self, event: dict[str, object], *, realtime_item_id: object) -> None:
+@@ -1999,7 +2471,7 @@ class DuplexSessionRunner:
+                 await self._commit_and_start_auto_response(event, realtime_item_id=realtime_item_id)
+                 return
+         if event_type == "response.create":
+-            await self._start_response_from_committed_audio()
++            await self._start_response_from_committed_audio(event_id=event.get("realtime_event_id"))
+             return
+         if helpers.next_commit_allowed(
+             self.session,
+diff --git a/vllm_omni/protocol/duplex/errors.py b/vllm_omni/protocol/duplex/errors.py
+index 6175758b..214fe07c 100644
+--- a/vllm_omni/protocol/duplex/errors.py
++++ b/vllm_omni/protocol/duplex/errors.py
+@@ -38,6 +38,8 @@ REALTIME_ERROR_TYPES_BY_CODE: dict[str, str] = {
+     "unknown_session": "invalid_request_error",
+     "invalid_duplex_runtime_config": "invalid_request_error",
+     "instructions_update_unsupported": "invalid_request_error",
++    "input_clock_unsupported": "invalid_request_error",
++    "input_clock_update_unsupported": "invalid_request_error",
+     "persona_update_unsupported": "invalid_request_error",
+     "voice_update_unsupported": "invalid_request_error",
+     "unsupported_nemotron_duplex_mode": "invalid_request_error",
+diff --git a/vllm_omni/protocol/duplex/events.py b/vllm_omni/protocol/duplex/events.py
+index cd170548..3b83d1a8 100644
+--- a/vllm_omni/protocol/duplex/events.py
++++ b/vllm_omni/protocol/duplex/events.py
+@@ -330,6 +330,44 @@ class PlaybackAcknowledged(RealtimeEvent):
+         return {"event": wire_value(self.details)}
+ 
+ 
++@dataclass(frozen=True, slots=True, kw_only=True)
++class InputProcessed(RealtimeEvent):
++    """Input-clocked sessions: the acknowledgement of a client input, in input order.
++
++    Sent once for every ``input_audio_buffer.append``,
++    ``input_audio_buffer.commit`` and ``response.create`` that reaches a
++    session with ``extra_body.clock == "input"``, only after every output that
++    input caused has been sent. ``audio_end_ms`` is the input audio handled up
++    to and including this input (refused inputs not counted), ``unit_end_ms``
++    the input covered by the finished model units (completed by the model, or
++    settled) created up to this input, and ``units`` those units that no
++    earlier acknowledgement reported, oldest first:
++    ``{"end_ms", "decision"}``, plus ``"reason"`` for a unit settled as
++    ``cancelled``, ``aborted`` or ``timed_out`` (a ``dropped`` unit has no
++    reason). The acknowledgement of an input the session refused before any of
++    it reached the model carries ``decision: "rejected"`` and ``reason`` (the
++    code of its ``error``). A session teardown acknowledges all inputs still
++    owed with one event that also carries ``first_input_index``.
++    """
++
++    wire_type = "input_audio_buffer.processed"
++    optional_wire_fields = frozenset({"first_input_index", "decision", "reason"})
++
++    audio_end_ms: int = 0
++    unit_end_ms: int = 0
++    #: 1-based position of the acknowledged input among this session's acknowledged inputs.
++    input_index: int = 0
++    #: Teardown only: the first of the inputs (``first_input_index`` .. ``input_index``) this event acknowledges.
++    first_input_index: int | None = None
++    #: Client event type acknowledged (``input_audio_buffer.append`` / ``.commit`` / ``response.create``).
++    trigger: str = ""
++    units: tuple[Mapping[str, object], ...] = ()
++    #: ``"rejected"`` only for an input the session refused at admission (otherwise omitted).
++    decision: str | None = None
++    #: With ``decision``: the code of the ``error`` the input was refused with, e.g. ``input_backpressure``.
++    reason: str | None = None
++
++
+ @dataclass(frozen=True, slots=True, kw_only=True)
+ class DuplexRawEvent(RealtimeEvent):
+     """A session-internal event with no dedicated Realtime type (``duplex.<internal type>``)."""
+@@ -366,7 +404,7 @@ def error_event(
+ 
+ 
+ #: The complete event vocabulary a duplex client may receive: 21 Tier 1
+-#: classes re-exported unchanged, the 9 Tier 2 ones defined above, and 12
++#: classes re-exported unchanged, the 9 Tier 2 ones defined above, and 13
+ #: Tier 3 ones. A duplex consumer imports from here and never reaches past
+ #: this module into ``vllm_omni.protocol.realtime``.
+ __all__ = [
+@@ -404,6 +442,7 @@ __all__ = [
+     "TranscriptDelta",
+     # Tier 3 --- vLLM-Omni only.
+     "DuplexRawEvent",
++    "InputProcessed",
+     "Listen",
+     "OverlapDecision",
+     "PlaybackAcknowledged",

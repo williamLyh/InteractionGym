@@ -69,7 +69,7 @@ IG_AGENT_URL='ws://localhost:8010/v1/realtime?duplex=1' IG_MODEL_DIR=/path/to/mo
 
 Notes:
 - **MiniCPM-o output.** By default MiniCPM-o runs Thinker-only, with text output timed at speaking rate; `--audio-out` gives real speech.
-- **vLLM-Omni patches.** Lockstep and the token trace need our vLLM-Omni patches ([vllm-omni#8485](https://github.com/vllm-project/vllm-omni/pull/8485)).
+- **vLLM-Omni patch.** Lockstep, the token trace and the Thinker-only MiniCPM-o layout need features that are not upstream yet: install `vllm-omni==0.31.0rc1` (with `vllm==0.31.0`), then apply [`patches/vllm-omni/vllm_omni-0.31.0rc1-interactiongym.patch`](patches/vllm-omni/) with `python scripts/apply_vllm_omni_patch.py --python <env>/bin/python` (upstream PRs [vllm-omni#8485](https://github.com/vllm-project/vllm-omni/pull/8485), [#8638](https://github.com/vllm-project/vllm-omni/pull/8638)).
 - **Serving.** A reference deployment for one 8-GPU host is in [examples/serving/](examples/serving/), and the details are in [docs/agent_server.md](docs/agent_server.md).
 
 ## Benchmarks and GPU tuner

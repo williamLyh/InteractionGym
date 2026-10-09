@@ -169,5 +169,5 @@ if __name__ == "__main__":
     ap.add_argument("--voice", default="ryan")
     ap.add_argument("--tail-s", type=float, default=14.0)
     ap.add_argument("--first", type=int, default=6)
-    ap.add_argument("--no-lockstep", action="store_true", help="trace a real-time paced session without clock=input")
+    ap.add_argument("--no-lockstep", action="store_true", help="trace a real-time paced session without clock=input (prototype builds only: the patched server refuses it)")
     sys.exit(0 if asyncio.run(main(ap.parse_args())) else 1)

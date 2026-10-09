@@ -1,5 +1,5 @@
 # MiniCPM-o 4.5 Thinker-only layout: one GPU, text-only duplex sessions (the default agent layout of this deployment).
-# Needs patches/minicpmo_thinker_only.patch: `pipeline: minicpmo_4_5_thinker` is the stock pipeline cut to Stage 0,
+# Needs the patched vLLM-Omni (patches/vllm-omni/ in the repository, part 06): `pipeline: minicpmo_4_5_thinker` is the stock pipeline cut to Stage 0,
 # so no Talker / Code2Wav process is started and no memory is reserved for them. Every session ends at Stage 0: text
 # deltas, token trace and input-clock acknowledgements as with the full pipeline. Clients must ask for text only
 # (`modalities: ["text"]`, VllmOmniDuplexAgent(audio_out=False)); audio sessions get no output here.

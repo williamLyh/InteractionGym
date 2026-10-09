@@ -2,7 +2,7 @@
 # MiniCPM-o 4.5 full duplex (vLLM-Omni DuplexOmni runtime). WebSocket: ws://$IG_BIND_HOST:<port>/v1/realtime?duplex=1
 # (alias /v1/duplex). Two layouts (AGENT_LAYOUT, default from serving.env):
 #   thinker  one GPU, Stage 0 only, text-only sessions (configs/minicpmo_4_5_thinker_1gpu.yaml; needs
-#            patches/minicpmo_thinker_only.patch in the vLLM-Omni install or overlay); GPUS=a
+#            the repository's patches/vllm-omni/ patch in the vLLM-Omni install or overlay); GPUS=a
 #   audio    Thinker on the first GPU, Talker + Code2Wav on the second (configs/minicpmo_4_5_2gpu.yaml); GPUS=a,b
 # Env: GPUS PORT (default: the first entry of $AGENT_SERVERS); MAX_SESSIONS=n (duplex_session.max_sessions and
 #   every stage's max_num_seqs; default $AGENT_MAX_SESSIONS); DEPLOY=<yaml> (overrides the layout's config);
