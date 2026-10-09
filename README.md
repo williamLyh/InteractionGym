@@ -39,6 +39,21 @@ while not done:
 save([episode(env, "ep-0")], "runs/episodes.json")      # view: python -m interaction_gym.viewer runs/*.json -o viewer.html
 ```
 
+## Output data
+
+Each episode is one JSON record (trajectory schema v1). A run is a JSONL file with one episode per line, and audio is kept in a shared, content-addressed media store that the episodes reference.
+
+| | |
+|---|---|
+| [docs/FORMAT.md](docs/FORMAT.md) | field reference: `meta` (task, env context, user simulation, agent), `background`, `turns`, `tool_calls`, media references, `eval` (scores, reward) |
+| [docs/trajectory.schema.json](docs/trajectory.schema.json) | JSON Schema for one episode; [docs/format_example.json](docs/format_example.json) is an example |
+| [docs/AGENT_TRACE.md](docs/AGENT_TRACE.md), [docs/agent_trace.schema.json](docs/agent_trace.schema.json) | optional companion `agent_traces.jsonl`: the agent server's per-unit tokens |
+
+```python
+from interaction_gym.traj import load
+episodes = load("runs/episodes.json")          # list of dicts, as in the schema
+```
+
 ## With real models
 
 The user simulator needs OpenAI-compatible servers: a chat LLM, a TTS, and a voice-clone TTS (later user turns are cloned from the first). A full-duplex agent also needs a vLLM-Omni duplex server.
@@ -73,7 +88,7 @@ The repository ships loaders only, no benchmark data, and several datasets are n
 |---|---|
 | [GETTING_STARTED](docs/GETTING_STARTED.md) | install, extras, first episodes, real models, τ²-bench / AutomationBench |
 | [DESIGN](docs/DESIGN.md) | architecture and concepts |
-| [FORMAT](docs/FORMAT.md) | trajectory format and scoring ([schema](docs/trajectory.schema.json)) |
+| [FORMAT](docs/FORMAT.md) | output data: trajectory format, scoring ([schema](docs/trajectory.schema.json)) |
 | [BENCHMARKS](docs/BENCHMARKS.md) | benchmark loaders, open vs closed loop, metrics |
 | [agent_server](docs/agent_server.md), [AGENT_TRACE](docs/AGENT_TRACE.md) | agent-server protocol, token trace |
 | [GPU_TUNER](docs/GPU_TUNER.md) | serving-layout tuner |
