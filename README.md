@@ -4,9 +4,9 @@ InteractionGym is a set of closed-loop environments for **training and evaluatin
 
 - **Virtual-time simulation.** Episodes are exact and reproducible, and can run faster than real time, including input-clocked lockstep with full-duplex models served by [vLLM-Omni](https://github.com/vllm-project/vllm-omni).
 - **LLM + TTS simulated users.** Model-decided backchannels, barge-ins and pauses come from a structured persona. Every user behaviour is a labelled, scored turn.
-- **Built-in pieces.** A trajectory format with a JSON Schema, one rule-based score per user turn (usable as metric and reward), an HTML viewer, benchmark loaders run open and closed loop, tool environments, and a GPU tuner for serving layouts.
+- **Built-in pieces.** A trajectory format with a JSON Schema, one rule-based score per user turn (usable as metric and reward), an HTML viewer, benchmark loaders run open and closed loop, [pluggable tool environments](#adding-your-own-tool-environment), and a GPU tuner for serving layouts.
 
-Status: research code, version 0.1.0; APIs may still change. **Demo:** https://yinhongliu.com/interaction-gym-demo/
+Status: research code, version 0.1.0; APIs may still change. **Demo:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
 
 ## Install
 
@@ -86,6 +86,85 @@ Notes:
 - **vLLM-Omni patch.** The agent server must run the patched vLLM-Omni from [Install](#agent-server-vllm-omni--our-patch-required-for-full-duplex-agents).
 - **Serving.** A reference deployment for one 8-GPU host is in [examples/serving/](examples/serving/), and the details are in [docs/agent_server.md](docs/agent_server.md).
 
+## Adding your own tool environment
+
+Tools are one more node in the env. A `ToolWorld` node runs the calls, delivers each result after a simulated latency, and forks its state with the episode. A tool environment plugs into it through a `ToolBackend` adapter. The agent calls on the `policy.tool_call` stream and hears results on `tool.result`, at the simulated time they arrive, so it can keep talking (or be interrupted) while a call is pending.
+
+**1. Plain Python functions.** The schema comes from the signature and docstring. A `state` argument is the episode's own copy of the world: changes stay inside the episode, and every fork gets its own copy. An exception becomes an error result for the agent, not a crash.
+
+```python
+from interaction_gym import AgentSpec, Env, Task
+from interaction_gym.tools import RESULT, FunctionBackend, ToolWorld, tool_log
+
+def find_order(state: dict, order_id: str) -> dict:
+    """Look up an order by its id."""
+    return state["orders"][order_id]
+
+def cancel_order(state: dict, order_id: str, reason: str = "") -> dict:
+    """Cancel an order that has not shipped yet."""
+    order = state["orders"][order_id]
+    if order["status"] == "shipped":
+        raise ValueError("already shipped")
+    order["status"] = "cancelled"
+    return order
+
+shop = FunctionBackend({"find_order": find_order, "cancel_order": cancel_order},
+                       instructions="Confirm with the user before cancelling.", name="shop")
+tools = ToolWorld(shop, latency_ms=lambda call: 1500 if call.name == "find_order" else 300)
+task = Task(id="cancel-1", initial_state={"orders": {"A7": {"status": "processing"}}})
+spec = AgentSpec(chunk_ms=200, obs=("user.speech", RESULT["agent"]))   # the agent must observe tool results
+env = Env({"user": user, "tools": tools}, spec, max_ms=120_000)
+```
+
+At `reset` the agent receives a `Session` on the `session` stream, with the instructions and tool schemas. `CascadedAgent` passes them to its LLM as OpenAI tools.
+
+**2. Score the episode.** `tool_log(env.log)` returns `(time, caller, call, result)` for every call. Turn it into a reward and pass it to `episode(env, ..., reward={"total": r, "parts": {...}})`:
+
+```python
+calls = [(c.name, c.arguments, r) for _, caller, c, r in tool_log(env.log) if caller == "agent"]
+r = float(any(name == "cancel_order" and args.get("order_id") == "A7" and res and not res.error
+              for name, args, res in calls))
+```
+
+**3. Any other system** (an MCP server, a REST API, an existing benchmark): subclass `ToolBackend`.
+
+```python
+import json
+from interaction_gym.tools import ToolBackend, ToolResult, ToolSpec
+
+class CRMBackend(ToolBackend):
+    name, description = "crm", "Customer records"
+
+    def tools(self, caller="agent"):          # the schemas this caller may use ("agent" or "user")
+        return [ToolSpec("get_customer", "Look up a customer.",
+                         {"type": "object", "properties": {"email": {"type": "string"}}, "required": ["email"]})]
+
+    def reset(self, task, rng):               # per-episode state; keep everything mutable in it
+        return {"customers": dict(task.initial_state["customers"])}
+
+    async def call(self, state, caller, call):
+        c = state["customers"].get(call.arguments.get("email"))
+        return ToolResult(call.id, call.name, json.dumps(c) if c else "not found", error=c is None)
+```
+
+Optional hooks:
+- `instructions(caller)`: a policy text for the prompt.
+- `context(caller, state)`: what the agent may know up front, such as an account overview. Anything it should have to look up stays out.
+- `fork(state, n)`: how to copy the state. The default is a deep copy.
+- `evaluate(task, log)`: the backend's own outcome reward.
+
+**Options.**
+- **Several services.** `ToolWorld({"shop": shop, "crm": crm})` exposes their tools as `shop__find_order`, `crm__get_customer`, and so on. Backends with the same `state_group` share one world.
+- **`mode="discover"`.** The agent starts with only a list of the services and three meta-tools (`list_services`, `search_tools`, `load_tools`), and loads a service before calling its tools. This is the realistic setting when there are many tools.
+- **User-side tools.** `tools(caller="user")` lets the simulated user call tools too, on `user.tool_call`.
+
+**Agent support.** `CascadedAgent` (ASR → tool-calling LLM → TTS) and your own agents call tools. The vLLM-Omni duplex agent does not, because the duplex server takes no tool schemas.
+
+**Worked examples.**
+- [examples/tools_demo.py](examples/tools_demo.py): slow tools with filler speech, a user talking while a call is pending, error and retry, discover mode. It needs no GPU.
+- Full adapters: [integrations/tau.py](src/interaction_gym/integrations/tau.py) (τ²-bench, with its official evaluator) and [integrations/automationbench.py](src/interaction_gym/integrations/automationbench.py) (47 simulated SaaS apps sharing one world).
+- Design notes: [docs/DESIGN.md §2.5](docs/DESIGN.md#25-tool-calls-one-interface--adapters-toolspy-implemented).
+
 ## GPU tuner: run it before any large run
 
 A run serves several models at once (the duplex agent, the user LLM, TTS and clone TTS), and **how the GPUs and session caps are split between them decides throughput far more than any single server setting**. A hand-written split typically leaves some services idle while the agent is the bottleneck. The tuner runs real episodes on the current layout, measures GPU util, queues and per-service wait time, and moves GPUs and session caps toward the measured load.
@@ -140,7 +219,7 @@ download). See [THIRD_PARTY.md](THIRD_PARTY.md) and [docs/FORMAT.md §4.2](docs/
 
 ## License
 
-Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)), except the third-party material in [THIRD_PARTY.md](THIRD_PARTY.md). `extras/fdbench/` is a separate CC BY-NC 4.0 distribution and is not part of the `interaction-gym` package.
+Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)), except the third-party material in [THIRD_PARTY.md](THIRD_PARTY.md). `extras/fdbench/` is a separate CC BY-NC 4.0 distribution and is not part of the `interaction-gym` package. The demo page in `demo/` carries third-party audio under its own licences ([demo/README.md](demo/README.md)).
 
 ## Citation
 
