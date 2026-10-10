@@ -80,7 +80,7 @@ def export_run(episodes: list[dict], out_dir: str | Path, notes: dict[str, str] 
         cells = [f'<a href="env.html#{html.escape(eid)}">{html.escape(eid)}</a>', f'{ep["meta"]["duration_ms"] / 1000:.1f}s',
                  str(len(ep["turns"])), str(len(ep["eval"]["duplex"])), html.escape(str(a.get("clock", "—"))),
                  html.escape(str(a.get("output", "audio"))), html.escape(who or "—"),
-                 f'<a href="{page}">tokens</a>' if page else "—", html.escape((notes or {}).get(eid, ""))]
+                 f'<a href="{page}">token trace →</a>' if page else "—", html.escape((notes or {}).get(eid, ""))]
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     export_html(episodes, out / "env.html", back="index.html", traces=list(by_id.values()), agent_pages=pages)
     head = "".join(f"<th>{h}</th>" for h in ("episode", "duration", "turns", "duplex events", "clock", "output", "user", "agent trace", "notes"))

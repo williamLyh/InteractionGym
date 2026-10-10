@@ -58,7 +58,7 @@ def nav(active: str, root: str) -> str:
 
 def put_nav(page: Path, active: str, root: str) -> None:
     s = page.read_text()
-    s = re.sub(re.escape(START) + r".*?" + re.escape(END) + r"\n?", "", s, flags=re.S)
+    s = re.sub(r"\n?" + re.escape(START) + r".*?" + re.escape(END) + r"\n?", "", s, flags=re.S)
     bar = nav(active, root)
     m = re.search(r"<body[^>]*>\n?", s)
     if m:
