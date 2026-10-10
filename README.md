@@ -6,7 +6,7 @@ InteractionGym is a set of closed-loop environments for **training and evaluatin
 - **LLM + TTS simulated users.** Model-decided backchannels, barge-ins and pauses come from a structured persona. Every user behaviour is a labelled, scored turn.
 - **Built-in pieces.** A trajectory format with a JSON Schema, one rule-based score per user turn (usable as metric and reward), an HTML viewer, benchmark loaders run open and closed loop, [pluggable tool environments](#adding-your-own-tool-environment), and a GPU tuner for serving layouts.
 
-Status: research code, version 0.1.0; APIs may still change. **Demo:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
+Status: research code, version 0.1.0; APIs may still change. **Demo and example episodes:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
 
 ## Install
 

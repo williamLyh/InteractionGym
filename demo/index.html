@@ -143,6 +143,26 @@ button svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentC
 .credits { margin: 18px 0 8px; font-size: 0.78rem; line-height: 1.5; color: var(--muted); max-width: 980px; }
 .credits b { color: var(--ink); font-weight: 600; }
 </style>
+<!-- site-nav -->
+<style>
+.site-nav { --sn-bg: #ffffff; --sn-ink: #1d1d1f; --sn-muted: #6b6b70; --sn-line: #e3e3e0; --sn-on: #2f6fd6;
+  display: flex; align-items: center; gap: 4px; height: 38px; box-sizing: border-box; padding: 0 16px;
+  background: var(--sn-bg); border-bottom: 1px solid var(--sn-line); overflow-x: auto; white-space: nowrap;
+  font: 500 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-nav {
+  --sn-bg: #1e1e21; --sn-ink: #ececef; --sn-muted: #9a9aa2; --sn-line: #333338; --sn-on: #6ea0ff; } }
+:root[data-theme="dark"] .site-nav { --sn-bg: #1e1e21; --sn-ink: #ececef; --sn-muted: #9a9aa2; --sn-line: #333338; --sn-on: #6ea0ff; }
+.site-nav b { color: var(--sn-ink); margin-right: 12px; font-weight: 600; }
+.site-nav a { color: var(--sn-muted); text-decoration: none; padding: 11px 10px; border-bottom: 2px solid transparent; }
+.site-nav a:hover { color: var(--sn-ink); }
+.site-nav a[aria-current] { color: var(--sn-ink); border-bottom-color: var(--sn-on); }
+.site-nav .gh { margin-left: auto; }
+@media (min-width: 761px) { .app { height: calc(100vh - 38px); } }  /* the trajectory viewer fills the window below the bar */
+</style>
+<nav class="site-nav"><b>InteractionGym</b><a href="index.html" aria-current="page">Demo</a><a href="examples/index.html">Example episodes</a><a class="gh" href="https://github.com/williamLyh/InteractionGym">GitHub</a></nav>
+<!-- /site-nav -->
+
+
 
 <div class="wrap">
   <header class="masthead">
