@@ -19,8 +19,8 @@ Optional extras:
 | extra | for | install |
 |---|---|---|
 | `vllm-omni` | the vLLM-Omni duplex agent adapter (WebSocket client) | `uv sync --extra vllm-omni` |
-| `tau` | τ²-bench tasks (Sierra's tau2-bench, pinned git commit) | see [τ²-bench and AutomationBench](#τ²-bench-and-automationbench) |
-| `automationbench` | AutomationBench tasks | see [τ²-bench and AutomationBench](#τ²-bench-and-automationbench) |
+| `tau` | τ²-bench tasks (Sierra's tau2-bench, pinned git commit) | see [τ²-bench and AutomationBench](#τ²-bench-automationbench-and-sopbench) |
+| `automationbench` | AutomationBench tasks | see [τ²-bench and AutomationBench](#τ²-bench-automationbench-and-sopbench) |
 | `fdbench` | Full-Duplex-Bench v1 / v1.5 / v2 / v3 loaders: the separate component `interaction-gym-fdbench` in `extras/fdbench`, **CC BY-NC 4.0 (non-commercial only)** | `uv sync --extra fdbench` (the dev group includes it) |
 
 With pip: `pip install -e ".[vllm-omni]"`; `pip install ./extras/fdbench` for the Full-Duplex-Bench component.
@@ -147,7 +147,7 @@ Served model names default to the reference deployment's; override them with `IG
 voice (`MiniCPM-o-4_5/assets/system_ref_audio.wav`; or set `IG_AGENT_REF_AUDIO`). An example deployment for one
 8-GPU host is in [examples/serving/](../examples/serving/).
 
-## τ²-bench and AutomationBench
+## τ²-bench, AutomationBench and SOPBench
 
 τ²-bench (Sierra's tau2-bench, MIT; not the unrelated `tau2` package on PyPI) is installed from git at a pinned
 commit (`5bfa7e3`); its domain data is read from a checkout:
@@ -167,6 +167,19 @@ git clone --depth 1 https://github.com/zapier/AutomationBench third_party/automa
 uv sync --extra automationbench
 uv run python examples/automationbench_demo.py --html runs/automationbench_demo.html
 ```
+
+SOPBench ([Li et al. 2025](https://arxiv.org/abs/2503.08669); code MIT, data CC BY 4.0): seven customer-service domains
+whose SOPs say what to verify, with which functions and in which order, before a service action may run (830 cases,
+about two thirds to decline). Loaded from a checkout; it needs no extra packages and no API key (tested at `8790ed7`):
+
+```bash
+git clone --depth 1 https://github.com/Leezekun/SOPBench third_party/sopbench   # or set SOPBENCH_PATH
+IG_LLM_URL=http://localhost:8000/v1 uv run python examples/sopbench_demo.py --domains bank hotel --n 20   # text level
+```
+
+`--format structured | list | structured+order` sets how the SOP is written in the agent's prompt. Report the cases to
+carry out and the cases to decline separately (the demo prints both): an agent that makes no call at all passes every
+case to decline under SOPBench's verifier.
 
 ## Next
 

@@ -222,6 +222,7 @@ interaction_gym/
 │   └── integrations/
 │       ├── tau.py              # τ-bench adapter: task loading, TauBackend, official evaluation, OracleAgent (layer 1)
 │       ├── automationbench.py  # AutomationBench: tasks, four tool sets, shared world, official rubric
+│       ├── sopbench.py         # SOPBench: per-case SOP prompt (3 formats) and domain functions, directed-graph verifier
 │       ├── rlinf.py            # planned: env worker adapter
 │       └── serving/            # planned: local streaming policy inference (HF reference implementation), PolicyNode (wraps cloud APIs)
 ├── examples/

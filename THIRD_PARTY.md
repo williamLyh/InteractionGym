@@ -41,6 +41,7 @@ CC BY-NC 4.0 (non-commercial only).** Nothing else in the package uses it.
 |---|---|---|
 | tau2-bench (Python package `tau2`) | MIT | Optional extra `tau`, installed from its git repository at a pinned commit; domain data read from your checkout (`third_party/tau2-bench` or `$TAU2_DATA_DIR`) |
 | [AutomationBench](https://github.com/zapier/AutomationBench) (Zapier) | MIT | Imported from your checkout (`third_party/automationbench` or `$AUTOMATIONBENCH_PATH`); tasks, simulator and rubric are not copied. `HANDWRITTEN_SOLUTIONS` are our own |
+| [SOPBench](https://github.com/Leezekun/SOPBench) (Li et al.) | code MIT, data CC BY 4.0 | Imported from your checkout (`third_party/sopbench` or `$SOPBENCH_PATH`): its `env` package (domain systems, prompt and SOP rendering, the directed-graph evaluator) and `data/`; nothing copied. The phone-call note in the agent prompt and the user's goal text are ours |
 | Full-Duplex-Bench v1.5 behaviour-judge instruction (`behavior.txt`) and `icc_gt_distribution.json` | CC BY-NC 4.0 | Read from your checkout of the official repository (`--repo`, `--gt`) |
 | vLLM-Omni | Apache-2.0 | The agent / TTS server you run; `examples/serving/reference/scripts/make_minicpmo_overlay.py` patches a copy of your installed package locally |
 | Optional Python packages: `websockets` (BSD-3-Clause), `pydantic` (MIT), `numpy` (BSD-3-Clause); `pyarrow`, `soundfile` for `audiomc.extract` | permissive | Dependencies, not vendored |
@@ -58,6 +59,7 @@ CC BY-NC 4.0 (non-commercial only).** Nothing else in the package uses it.
 | Audio MultiChallenge | MIT | `benchmarks.audiomc` |
 | tau2-bench domains | MIT | `integrations.tau` |
 | AutomationBench public tasks | MIT | `integrations.automationbench` |
+| SOPBench test cases | CC BY 4.0 | `integrations.sopbench` |
 
 ## Noise datasets (downloaded on your machine; never redistributed)
 

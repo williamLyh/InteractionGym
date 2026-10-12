@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Procedures: SOPBench.** `integrations.sopbench` runs SOPBench (Li et al. 2025; code MIT, data CC BY 4.0) as a spoken
+  task: the user holds the case's goal and information and gives each item only when asked; the agent gets SOPBench's
+  assistant prompt with the SOP in one of `FORMATS` (`structured`, `list`, `structured+order`) plus a phone-call note,
+  and the domain's functions as tools (one backend per case: the SOP depends on it). `evaluate` is SOPBench's
+  directed-graph verifier on the episode's calls and final database. Function responses keep the `(success, value)`
+  tuple, as in SOPBench's released trajectories, which its evaluator needs; replaying those GPT-4o runs gives the same
+  verdict on 586 of 593 cases (the rest changed in SOPBench's code since). Read from a checkout
+  (`third_party/sopbench` or `SOPBENCH_PATH`), not shipped. `examples/sopbench_demo.py`.
 - **Computer use: BrowserGym.** `integrations.browsergym` wraps a BrowserGym task (e.g. MiniWoB++) as a tool backend:
   `read_page`, `click`, `fill`, `select_option`, `press`, `scroll` act on a real Chromium page and return its
   accessibility tree; the page's instruction is what the simulated user says; `evaluate` returns the benchmark's
