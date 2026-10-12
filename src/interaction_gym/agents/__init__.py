@@ -2,6 +2,7 @@
 
 - ``CannedAgent``: scripted replies (no model), for tests and demos.
 - ``VllmOmniDuplexAgent`` (``agents.vllm_omni``): a full-duplex model served by vLLM-Omni.
+- ``TranscriptToolAgent`` (``agents.transcript``): an LLM with tools that hears the transcript and speaks via a TTS.
 
 An agent has ``act(t, obs) -> frames`` (async for server adapters); one adapter per server protocol.
 """

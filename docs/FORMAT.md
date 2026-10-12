@@ -266,6 +266,7 @@ Only the **simulation node** that produces a sound (user simulator, a simulator 
 | `result_time` | integer | no | Instant the result is delivered; omitted when there is no result |
 | `content` | string | no | Returned content (JSON text for structured results) |
 | `error` | boolean | no | Whether the call failed, default `false` |
+| `images` | array | no | Images the result also showed (e.g. a screenshot after a computer-use action): media references with `kind: "image"` (§5); written only when the episode is saved with a media store |
 
 **Which turn it is attached to**: the caller's turn (same `role`). If the caller is speaking at call time, it is attached to the utterance in progress; if not, to the caller's next utterance. If the caller never speaks again, a turn with empty `text` and `start_time = end_time = call_time` is created to hold it.
 

@@ -223,9 +223,46 @@ def headlines(ep: dict, agent: str = "agent") -> list[dict]:
     return out
 
 
+def _byte_decoder() -> dict[str, int]:
+    """The inverse of GPT-2's ``bytes_to_unicode``: the printable stand-in character of each byte -> the byte."""
+    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    cs, n = list(bs), 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b); cs.append(256 + n); n += 1
+    return {chr(c): b for b, c in zip(bs, cs)}
+
+
+_BYTES = _byte_decoder()
+
+
 def _detok(piece: str) -> str:
     """Byte-level BPE pieces as text (Ġ = space, Ċ = newline)."""
     return piece.replace("Ġ", " ").replace("Ċ", "\n")
+
+
+def decode_pieces(tokens: list) -> list:
+    """``[[id, piece], ...]`` with byte-level BPE pieces turned into text. A character split over several
+    tokens (UTF-8 bytes of a CJK character, say) becomes one entry ``[[id, id, ...], char]``, so that the
+    text reads as the model's output rather than as the tokenizer's byte stand-ins (``æľĪäº®`` for 月亮)."""
+    out, pend_ids, pend = [], [], b""
+    def flush(strict: bool):
+        nonlocal pend_ids, pend
+        if pend_ids:
+            out.append([pend_ids[0] if len(pend_ids) == 1 else pend_ids, pend.decode("utf-8", "strict" if strict else "replace")])
+        pend_ids, pend = [], b""
+    for tok_id, piece in tokens:
+        if not isinstance(piece, str) or not piece or any(ch not in _BYTES for ch in piece):
+            flush(False); out.append([tok_id, piece])  # not a byte-level piece (special token, empty): as is
+            continue
+        pend_ids.append(tok_id); pend += bytes(_BYTES[ch] for ch in piece)
+        try:
+            pend.decode("utf-8"); flush(True)
+        except UnicodeDecodeError as e:
+            if e.reason != "unexpected end of data" or len(pend) > 4:  # broken, not just incomplete
+                flush(False)
+    flush(False)
+    return out
 
 
 def units(trace: dict | None) -> dict | None:
@@ -244,7 +281,7 @@ def units(trace: dict | None) -> dict | None:
         for st in u.get("stages") or []:
             if st.get("stage") not in (None, "thinker"):
                 continue
-            for tok_id, piece in st.get("output") or []:
+            for tok_id, piece in decode_pieces(st.get("output") or []):
                 if tok_id in special:
                     marks.append(piece)
                 else:

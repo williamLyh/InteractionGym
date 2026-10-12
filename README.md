@@ -163,6 +163,8 @@ Optional hooks:
 **Worked examples.**
 - [examples/tools_demo.py](examples/tools_demo.py): slow tools with filler speech, a user talking while a call is pending, error and retry, discover mode. It needs no GPU.
 - Full adapters: [integrations/tau.py](src/interaction_gym/integrations/tau.py) (τ²-bench, with its official evaluator) and [integrations/automationbench.py](src/interaction_gym/integrations/automationbench.py) (47 simulated SaaS apps sharing one world).
+- Computer use: [integrations/browsergym.py](src/interaction_gym/integrations/browsergym.py) drives a real Chromium page through BrowserGym (MiniWoB++ and other BrowserGym benchmarks): the caller says the task, the agent clicks and types, the benchmark's reward scores it. Every result carries a screenshot (`ToolResult.images`), saved with the trajectory and shown by the viewer. Example: [examples/browsergym_demo.py](examples/browsergym_demo.py).
+- Collaborative coding: [integrations/colbench.py](src/interaction_gym/integrations/colbench.py) is ColBench Backend Programming, spoken: the caller holds the hidden reference function and answers questions with ColBench's own simulator prompt, the agent hands in the code with `submit_code` (never spoken), the hidden tests score it after the call. ColBench's code, prompts and data are CC BY-NC and are not part of this package (see the module). Example: [examples/colbench_demo.py](examples/colbench_demo.py).
 - Design notes: [docs/DESIGN.md §2.5](docs/DESIGN.md#25-tool-calls-one-interface--adapters-toolspy-implemented).
 
 ## GPU tuner: run it before any large run

@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- **Computer use: BrowserGym.** `integrations.browsergym` wraps a BrowserGym task (e.g. MiniWoB++) as a tool backend:
+  `read_page`, `click`, `fill`, `select_option`, `press`, `scroll` act on a real Chromium page and return its
+  accessibility tree; the page's instruction is what the simulated user says; `evaluate` returns the benchmark's
+  reward. Browsers cannot be copied, so these episodes do not fork. `examples/browsergym_demo.py`.
+- **Images in tool results.** `ToolResult.images` (PNG bytes, e.g. a screenshot) are stored by the media store
+  (`MediaStore.put_image`) and referenced from the call (`tool_calls[].images`, docs/FORMAT.md §4.5); the viewer's state
+  panel shows the newest screenshot at the cursor, and `scripts/build_site.py` copies them.
+- **Collaborative coding: ColBench.** `integrations.colbench` runs ColBench Backend Programming (SWEET-RL) as a spoken
+  task: the user says the description and answers from the hidden reference code with ColBench's simulator prompt;
+  the agent sees the signature, asks, and hands in the function with `submit_code`; the 10 hidden tests run after the
+  episode in a separate process. Original setting: the agent cannot run code. ColBench's prompts and data
+  (CC BY-NC) are read from a checkout and a download, not shipped. `examples/colbench_demo.py`.
+- **`agents.TranscriptToolAgent`.** An LLM with tools that hears the user's transcript (no ASR) and speaks through a
+  TTS: it waits while the user talks, stops speaking when talked over, and sends a round's tool calls as its words start.
 - **Recorded background ambience by default.** `Soundscape()`, the `UserSim` default, now uses a sound bank in a
   user cache: `$IG_SOUNDBANK`, else `~/.cache/interaction_gym/soundbank`. If the bank has no ambience yet, the env
   fetches the DEMAND part once (about 80 MB, CC BY-SA 3.0), printing one log line. The new `interaction_gym.noisebank`

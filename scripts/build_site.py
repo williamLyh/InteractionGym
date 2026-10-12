@@ -11,7 +11,8 @@ The site has two tabs, shown as one bar at the top of every page:
   ``media/``), e.g. from ``examples/minicpmo_suite.py``.
 
 With ``--examples`` the run's pages are copied, its WAV media are transcoded to MP3 (mono, ``--bitrate``) so
-the repository stays small, and absolute sound-bank paths are shortened to ``soundbank/...``. Needs ffmpeg.
+the repository stays small (PNG screenshots are copied as they are), and absolute sound-bank paths are shortened
+to ``soundbank/...``. Needs ffmpeg.
 Standard library only. ``.github/workflows/pages.yml`` publishes ``demo/`` on push.
 """
 
@@ -78,14 +79,31 @@ def copy_examples(run: Path, bitrate: str) -> None:
         s = page.read_text()
         s = re.sub(r"(media/[0-9a-f]{2}/[0-9a-f]{64})\.wav", r"\1.mp3", s)
         s = re.sub(r"/[^\"'\s<>]*/((?:ambience|events)/[^\"'\s<>]+)", r"soundbank/\1", s)
+        s = re.sub(r'("media_root":\s*)"[^"]*"', r'\1"media"', s)  # the recording host's path is not the page's business
         (out / page.name).write_text(s)
     wavs = sorted((run / "media").rglob("*.wav"))
     for wav in wavs:
         mp3 = out / "media" / wav.relative_to(run / "media").with_suffix(".mp3")
         mp3.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(wav), "-ac", "1", "-b:a", bitrate, str(mp3)], check=True)
+    for f in sorted((run / "media").rglob("*.png")):  # screenshots (computer use) as they are
+        dst = out / "media" / f.relative_to(run / "media")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, dst)
+    check_media(out)
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"examples: {len(list(out.glob('*.html')))} pages, {len(wavs)} audio files, {size / 1e6:.1f} MB -> {out}")
+
+
+def check_media(out: Path) -> None:
+    """Every audio reference, resolved the way the viewer does (media base + uri), must be a file in the site."""
+    for page in out.glob("*.html"):
+        s = page.read_text()
+        m = re.search(r'id="media-base"[^>]*>([^<]*)<', s)
+        base = m.group(1).strip() if m else ""
+        bad = [u for u in set(re.findall(r'"uri": "([^"]+)"', s)) if not (out / base / u).exists()]
+        if bad:
+            raise SystemExit(f"{page.name}: {len(bad)} audio references do not resolve from media base {base!r}, e.g. {bad[0]}")
 
 
 def main() -> None:

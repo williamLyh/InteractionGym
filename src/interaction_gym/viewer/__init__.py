@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from .commentary import headlines, units, view_data  # noqa: F401  (re-exported)
+from .commentary import decode_pieces, headlines, units, view_data  # noqa: F401  (re-exported)
 
 TEMPLATE = Path(__file__).with_name("template.html")
 AGENT_TEMPLATE = Path(__file__).with_name("agent_trace.html")
@@ -52,6 +52,8 @@ def export_agent_trace_html(episode: dict, trace: dict, path: str | Path, back: 
     it is for monitoring and debugging."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    trace = dict(trace, units=[dict(u, stages=[dict(st, input=decode_pieces(st.get("input") or []), output=decode_pieces(st.get("output") or []))
+                                             for st in u.get("stages") or []]) for u in trace.get("units") or []])
     data = json.dumps({"episode": episode, "trace": trace}, ensure_ascii=False).replace("</", "<\\/")
     links = " ".join(x for x in (_back(back, "all runs"), _back(env_page, "environment view")) if x)
     path.write_text(AGENT_TEMPLATE.read_text().replace("__BACK_LINK__", links).replace("__DATA__", data))

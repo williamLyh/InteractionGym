@@ -77,7 +77,7 @@ def _turns(log: list[Frame], media: MediaStore | None, duration: int) -> list[di
     return turns
 
 
-def _attach_tool_calls(log: list[Frame], turns: list[dict]) -> None:
+def _attach_tool_calls(log: list[Frame], turns: list[dict], media: MediaStore | None = None) -> None:
     caller_of = {stream: caller for caller, stream in RESULT.items()}
     results = {(caller_of[f.stream], f.data.id): f for f in log if f.stream in caller_of and isinstance(f.data, ToolResult)}  # ids are per caller
     for f in log:
@@ -97,6 +97,8 @@ def _attach_tool_calls(log: list[Frame], turns: list[dict]) -> None:
             rec.update(result_time=res.t, content=res.data.content)
             if res.data.error:
                 rec["error"] = True
+            if res.data.images and media is not None:
+                rec["images"] = [media.image_ref(png) for png in res.data.images]
         host.setdefault("tool_calls", []).append(rec)
 
 
@@ -208,7 +210,7 @@ def episode(
     saved separately (docs/AGENT_TRACE.md)."""
     log = env.log
     turns = _turns(log, media, env.t)
-    _attach_tool_calls(log, turns)
+    _attach_tool_calls(log, turns, media)
     turns.sort(key=lambda t: t["start_time"])
     m: dict = {"episode_id": episode_id}
     if run_id:

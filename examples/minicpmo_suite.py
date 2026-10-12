@@ -5,6 +5,8 @@ Runs on the GPU host (user-sim LLM :8000, TTS :8001, clone TTS :8005, MiniCPM-o 
 
     PYTHONPATH=src:. python examples/minicpmo_suite.py --out runs/suite              # Thinker-only server, text output
     PYTHONPATH=src:. python examples/minicpmo_suite.py --out runs/suite --audio-out  # full audio deployment
+    PYTHONPATH=src:. python examples/minicpmo_suite.py --out runs/chat --audio-out --set chat --seeds 0 1 2 --chunk-ms 1000
+                                                 # casual chat + general knowledge, realistic users, 3 takes each
 
 Agent output: text only, timed at ``speech_cps``, against a Thinker-only server (the default), or with ``--audio-out``
 the talker's speech (Thinker + Talker + Code2Wav); the audio run adds ``booking-alex-text``, the same scenario
@@ -33,7 +35,7 @@ from interaction_gym.envvars import getenv
 from interaction_gym.media import MediaStore
 from interaction_gym.soundscape import Soundscape
 from interaction_gym.traj import episode, save
-from interaction_gym.user import QWEN3_TTS_VOICES, LLMInterrupt, LLMSource, ReplayUser, ResponseDelay, TurnTaking, Voice
+from interaction_gym.user import PERSONA, QWEN3_TTS_VOICES, LLMInterrupt, LLMSource, ReplayUser, ResponseDelay, TurnTaking, UserSim, Voice
 from interaction_gym.viewer import export_run
 
 LLM_URL = getenv("IG_LLM_URL", "http://localhost:8000/v1")
@@ -86,24 +88,161 @@ SCENARIOS = {
 }
 
 
+# --set chat: casual conversation and everyday general knowledge with a general assistant (not a service desk). These
+# users run with the env's realism on (``realistic``): persona-driven listening, pauses, random noise events and asides
+# from their surroundings, and the surroundings' recorded ambience (sound bank: $IG_SOUNDBANK, DEMAND + MUSAN). The
+# personas are written so that their manner shows in behaviour (profile levels: backchanneling, hesitancy, surroundings)
+# rather than in what the user says about themselves.
+ASSISTANT = ("You are a friendly, knowledgeable voice assistant having a relaxed spoken conversation. Chat naturally, share "
+             "opinions when asked, answer questions accurately and say so when you are not sure. If the user says something "
+             "that is not true, correct it gently. Keep replies short: one to three sentences, as in a real conversation.")
+ASSISTANT_ZH = ("你是一个友好、知识丰富的语音助手，正在和用户轻松地聊天。请全程只用普通话回答。自然地聊天，被问到时可以分享看法，"
+                "回答问题要准确，不确定时就直说。用户说了不对的事情时，礼貌地纠正。回答要简短，一到三句话，像真实的对话一样。")
+
+CHAT_SCENARIOS = {
+    "chat-hiking-sam": dict(
+        agent=ASSISTANT, realistic=True,
+        persona="You are chatting with a voice assistant at home on a Thursday evening.",
+        profile={"name": "Sam Rivera", "gender": "male", "age": 29, "language": "en", "occupation": "software tester",
+                 "speaking_style": "warm and chatty", "backchanneling": "frequent", "hesitancy": "normal", "surroundings": "home"},
+        goal=("You want to go on a day hike this Saturday near Seattle, where you live. Ask for a moderate trail of about 8 to 12 "
+              "kilometres, react to the suggestion and share a bit about your own past hikes, then ask what to bring. You already "
+              "own boots and a small backpack. Once you have a trail you like and a short packing list, thank the assistant and say bye."),
+        first_turn="Hey! So I'm thinking about going hiking this weekend."),
+    "chat-fridge-priya": dict(
+        agent=ASSISTANT, realistic=True,
+        persona="You are standing in your kitchen in the evening, talking to a voice assistant.",
+        profile={"name": "Priya Nair", "gender": "female", "age": 38, "language": "en", "occupation": "pharmacist",
+                 "speaking_style": "relaxed, practical", "backchanneling": "normal", "hesitancy": "normal", "surroundings": "home"},
+        goal=("You need a dinner idea for tonight that takes under 40 minutes. In your fridge and pantry: chicken thighs, half a bag "
+              "of spinach, a lemon, feta, garlic, rice. Mention what you have when it comes up, not all at once. You don't like very "
+              "spicy food. Settle on one dish and the rough steps, then thank the assistant and say bye."),
+        first_turn="Hi, I need a dinner idea. My fridge is kind of random tonight."),
+    "chat-novel-maya": dict(
+        agent=ASSISTANT, realistic=True, max_ms=180_000,  # opinions back and forth, then a recommendation: a longer talk
+        persona="You are at a cafe, talking to a voice assistant about a book you just finished.",
+        profile={"name": "Maya Lopez", "gender": "female", "age": 26, "language": "en", "occupation": "graduate student",
+                 "speaking_style": "enthusiastic, opinionated", "backchanneling": "normal", "hesitancy": "low", "surroundings": "cafe"},
+        goal=("You just finished 'Project Hail Mary' by Andy Weir. You loved the friendship between Ryland and Rocky and found the "
+              "ending bittersweet, but thought the middle dragged a little. Share your opinions, ask what the assistant thought, and "
+              "push back once if it says something you disagree with. Then ask for one similar book to read next. When you have a "
+              "recommendation you like, thank it and say bye."),
+        first_turn="Okay, I just finished Project Hail Mary and I need to talk about it."),
+    "chat-week-dan": dict(
+        agent=ASSISTANT, realistic=True,
+        persona="You are walking home from work and talking to a voice assistant through your earbuds.",
+        profile={"name": "Dan Whitaker", "gender": "male", "age": 41, "language": "en", "occupation": "project manager",
+                 "speaking_style": "low-key, short sentences", "backchanneling": "rare", "hesitancy": "normal", "surroundings": "street"},
+        goal=("You had a rough work week: a deadline was moved up two days, a meeting ran three hours, and you skipped the gym. You "
+              "want to vent a little, not be lectured. Say only a little at a time. If the assistant asks, accept one or two small "
+              "ideas for unwinding this weekend. When you feel a bit better, thank it and say bye."),
+        first_turn="Long week. Really long week."),
+    "know-sky-zoe": dict(
+        agent=ASSISTANT, realistic=True,
+        persona=("You are a curious teenager at home asking a voice assistant science questions. When an answer runs long, you cut "
+                 "in with your next question instead of waiting."),
+        profile={"name": "Zoe Park", "gender": "female", "age": 15, "language": "en", "occupation": "high-school student",
+                 "speaking_style": "quick, curious", "backchanneling": "normal", "hesitancy": "low", "surroundings": "home"},
+        goal=("You want to understand why the sky is blue. Then ask why sunsets are red or orange. If the answer mentions light "
+              "scattering, ask one follow-up: why the sky isn't violet, if violet light scatters even more. When you understand, "
+              "say thanks and bye."),
+        first_turn="Okay, random question. Why is the sky blue?"),
+    "know-myth-george": dict(
+        agent=ASSISTANT, realistic=True,
+        persona="You are at home in your armchair, chatting with a voice assistant in the afternoon.",
+        profile={"name": "George Miller", "gender": "male", "age": 74, "language": "en", "occupation": "retired mechanic",
+                 "speaking_style": "slow and deliberate", "backchanneling": "normal", "hesitancy": "high", "surroundings": "home"},
+        goal=("You believe that people only use ten percent of their brains, and you bring it up as a fact while chatting about "
+              "keeping your mind sharp in retirement. If the assistant corrects you, be a little surprised, ask how they know, and "
+              "accept a good explanation. Then ask for one simple daily habit that keeps the brain healthy. When you have it, thank "
+              "the assistant and say goodbye."),
+        first_turn="Afternoon. I've been reading about keeping the mind sharp at my age."),
+    "know-travel-nina": dict(
+        agent=ASSISTANT, realistic=True,
+        persona="You are at a cafe with a friend, playing a travel trivia game with a voice assistant.",
+        profile={"name": "Nina Okafor", "gender": "female", "age": 33, "language": "en", "occupation": "travel blogger",
+                 "speaking_style": "playful, quick", "backchanneling": "normal", "hesitancy": "low", "surroundings": "cafe"},
+        goal=("Ask three geography trivia questions, one at a time, and check the answers against what you know: the capital of "
+              "Australia is Canberra; the country with the most time zones is France (twelve, counting its overseas territories); "
+              "the longest river in Europe is the Volga. If the assistant gets one wrong, correct it, and see whether it accepts the "
+              "correction. After the third question, thank it and say bye."),
+        first_turn="Want to play a quick travel trivia game?"),
+    "zh-chat-weekend-lin": dict(
+        agent=ASSISTANT_ZH, realistic=True,
+        persona="你在家里，周五晚上，和一个语音助手闲聊周末的安排。",
+        voice="serena",
+        profile={"name": "林晓", "gender": "female", "age": 27, "language": "zh", "occupation": "平面设计师",
+                 "speaking_style": "轻松、爱聊", "backchanneling": "frequent", "hesitancy": "normal", "surroundings": "home"},
+        goal=("你住在杭州，想找个周末去处：不想太远，最好能走走路、拍拍照。听听助手的建议，聊聊你自己的想法（你去过西湖很多次了，想换个地方）。"
+              "顺便请它推荐一部周末在家可以追的电视剧。定下一个去处、拿到一个推荐后，道谢并说再见。全程说普通话，口语化，句子要短。"),
+        first_turn="哎，周末不知道去哪玩，你有什么想法吗？"),
+    "zh-know-moon-chen": dict(
+        agent=ASSISTANT_ZH, realistic=True,
+        persona="你在办公室里，下班前和一个语音助手聊天，问一个常识问题。",
+        voice="eric",
+        profile={"name": "陈志明", "gender": "male", "age": 45, "language": "zh", "occupation": "小学科学老师",
+                 "speaking_style": "平和、说话简短", "backchanneling": "rare", "hesitancy": "normal", "surroundings": "office"},
+        goal=("你明天要给学生讲月相，想听听简单的讲法。先问为什么月亮有阴晴圆缺；再问一个追问：月食和月相的变化是不是一回事。"
+              "如果助手把两者说混了，就指出来。听明白以后，道谢并说再见。全程说普通话，口语化，句子要短。"),
+        first_turn="问你个问题，月亮为什么会有阴晴圆缺啊？"),
+    "zh-chat-overtime-zhao": dict(
+        agent=ASSISTANT_ZH, realistic=True, voice="dylan",
+        persona="你刚加完班回到家，家里开着电视，你瘫在沙发上和一个语音助手聊天。",
+        profile={"name": "赵磊", "gender": "male", "age": 26, "language": "zh", "occupation": "互联网公司运营",
+                 "speaking_style": "有气无力、句子短", "backchanneling": "normal", "hesitancy": "normal", "surroundings": "home"},
+        goal=("你今天又加班到九点，通勤路上地铁挤了一个小时。想吐槽两句，不想听大道理。助手问起来再说细节。"
+              "如果助手给的放松建议靠谱，就接受一两个今晚就能做的。心情好一点后，道谢并说再见。全程说普通话，口语化，句子要短。"),
+        first_turn="唉，今天又加班到九点，累死了。"),
+    "zh-chat-flowers-wang": dict(
+        agent=ASSISTANT_ZH, realistic=True, voice="uncle_fu",
+        persona="你在自家阳台上，一边摆弄花草，一边和语音助手聊天。",
+        profile={"name": "王建国", "gender": "male", "age": 70, "language": "zh", "occupation": "退休工人",
+                 "speaking_style": "慢悠悠、话多", "backchanneling": "frequent", "hesitancy": "high", "surroundings": "home"},
+        goal=("你最近养的一盆茉莉叶子发黄，想问问是怎么回事。顺便聊聊你每天傍晚去跳广场舞的事，和助手唠两句。"
+              "你平时每天都给茉莉浇水，放在客厅的窗边。听到靠谱的建议后，道谢并说再见。全程说普通话，口语化。"),
+        first_turn="哎，你说我这盆茉莉，叶子怎么都黄了呢？"),
+    "zh-know-breath-xiaoyu": dict(
+        agent=ASSISTANT_ZH, realistic=True, voice="vivian",
+        persona="你在家里写完作业，好奇地问语音助手一些科学问题。回答太长的时候，你会直接插话问下一个问题。",
+        profile={"name": "李小雨", "gender": "female", "age": 14, "language": "zh", "occupation": "初中生",
+                 "speaking_style": "快、好奇", "backchanneling": "normal", "hesitancy": "low", "surroundings": "home"},
+        goal=("先问：为什么冬天呼出的气是白的？听完再追问：那夏天为什么看不到？如果助手提到水蒸气遇冷凝结，"
+              "再追问一句：那冬天戴眼镜进屋为什么会起雾，是不是一个道理？弄明白后，说谢谢、再见。全程说普通话，口语化，句子要短。"),
+        first_turn="问你个问题，为什么冬天呼出来的气是白的呀？"),
+    "zh-know-myth-liu": dict(
+        agent=ASSISTANT_ZH, realistic=True, voice="serena",
+        persona="你在单位午休，边吃饭边和语音助手聊天。",
+        profile={"name": "刘芳", "gender": "female", "age": 41, "language": "zh", "occupation": "会计",
+                 "speaking_style": "直爽", "backchanneling": "normal", "hesitancy": "normal", "surroundings": "office"},
+        goal=("你一直相信“隔夜菜都会致癌，一口都不能吃”，在聊到带饭的时候把它当成常识说出来。如果助手纠正你，有点意外，"
+              "追问一句为什么，听到合理解释就接受。然后问一句：那带饭怎么保存才安全？拿到建议后，道谢并说再见。全程说普通话，口语化，句子要短。"),
+        first_turn="我最近开始自己带饭了，你觉得带饭健康吗？"),
+}
+SETS = {"default": "SCENARIOS", "chat": "CHAT_SCENARIOS"}
+
+
 def cafe_noise(seconds: int = 120, sr: int = SR, seed: int = 0) -> Audio:
     rng = random.Random(seed)
     return Audio(array("h", (int(rng.gauss(0, 900)) for _ in range(seconds * sr))), sr)
 
 
-async def run(name: str, sc: dict, *, clock: str = "input", audio_out: bool = False):
+async def run(name: str, sc: dict, *, clock: str = "input", audio_out: bool = False, seed: int = 0, chunk_ms: int = 200):
     llm = OpenAIChat(LLM_URL, LLM_MODEL, max_tokens=80)
     voice = Voice(Cached(OpenAISpeech(TTS_URL, TTS_MODEL, sr=SR)), voices=QWEN3_TTS_VOICES, clone=OpenAISpeech(CLONE_URL, CLONE_MODEL, sr=SR))
     # an evaluation user: no background floor and no random noise events unless the scenario sets a background
     # itself (booking-mina-cafe's cafe noise is part of what that scenario tests)
-    user = benchmark_user(LLMSource(llm), voice=voice, interrupt=LLMInterrupt(llm), timing=TurnTaking(response_delay=ResponseDelay()),  # human-like reply gaps
-                          soundscape=Soundscape(background="background" in sc))
-    task = Task(id=name, scenario={k: sc[k] for k in ("persona", "profile", "first_turn", "turn_taking", "background") if k in sc} | {"instructions": sc["goal"]})
-    spec = AgentSpec(chunk_ms=200, audio="user.audio", sr=SR)
-    env = Env({"user": user}, spec, max_ms=120_000)  # the user lays the scenario's background, if it has one
+    if sc.get("realistic"):  # the env's realism: persona-driven events, asides and the surroundings' recorded ambience
+        user = UserSim(LLMSource(llm), voice, interrupt=LLMInterrupt(llm), timing=TurnTaking(response_delay=ResponseDelay()),
+                       behaviors=PERSONA, soundscape=Soundscape())
+    else:
+        user = benchmark_user(LLMSource(llm), voice=voice, interrupt=LLMInterrupt(llm), timing=TurnTaking(response_delay=ResponseDelay()),  # human-like reply gaps
+                              soundscape=Soundscape(background="background" in sc))
+    task = Task(id=name, scenario={k: sc[k] for k in ("persona", "profile", "first_turn", "turn_taking", "background", "voice") if k in sc} | {"instructions": sc["goal"]})
+    spec = AgentSpec(chunk_ms=chunk_ms, audio="user.audio", sr=SR)
+    env = Env({"user": user}, spec, max_ms=sc.get("max_ms", 120_000))  # the user lays the scenario's background, if it has one
     agent = VllmOmniDuplexAgent(spec, AGENT_URL, model=AGENT_MODEL, ref_audio=REF_AUDIO, clock=clock, audio_out=audio_out, trace_tokens=clock == "input",
                                 session={"instructions": sc["agent"]})
-    obs = await env.reset(task, seed=0)
+    obs = await env.reset(task, seed=seed)
     wall, done = time.monotonic(), False
     try:
         while not done:
@@ -113,7 +252,7 @@ async def run(name: str, sc: dict, *, clock: str = "input", audio_out: bool = Fa
     return env, agent, time.monotonic() - wall
 
 
-async def offline(media_root: Path, audio_out: bool = False):
+async def offline(media_root: Path, audio_out: bool = False, chunk_ms: int = 200):
     """The exactness case: pre-timed user turns with real TTS audio (a barge-in, a backchannel, a noise)."""
     tts = OpenAISpeech(TTS_URL, TTS_MODEL, sr=SR)
     sched = [(0, "Hi, I'd like to book a table for tonight.", None), (9000, "Around seven pm, for two people please.", None),
@@ -123,7 +262,7 @@ async def offline(media_root: Path, audio_out: bool = False):
     for t, text, kind in sched:
         audio = cafe_noise(1, seed=7)[: SR // 2] if kind == "noise" else await tts.synth(text, "serena")
         turns.append({"t": t, "text": text, "audio": audio, "kind": kind})
-    spec = AgentSpec(chunk_ms=200, audio="user.audio", sr=SR)
+    spec = AgentSpec(chunk_ms=chunk_ms, audio="user.audio", sr=SR)
     env = Env({"user": ReplayUser(turns, voice=Voice(tts, voice="serena", clone=False))}, spec, max_ms=60_000)
     agent = VllmOmniDuplexAgent(spec, AGENT_URL, model=AGENT_MODEL, ref_audio=REF_AUDIO, clock="input", audio_out=audio_out, trace_tokens=True,
                                 session={"instructions": RESTAURANT})
@@ -137,7 +276,7 @@ async def offline(media_root: Path, audio_out: bool = False):
     return env, agent, time.monotonic() - wall
 
 
-async def main(out: Path, audio_out: bool = False):
+async def main(out: Path, audio_out: bool = False, seeds: tuple = (0,), chunk_ms: int = 200, which: str = "default", only: tuple = ()):
     out.mkdir(parents=True, exist_ok=True)
     media = MediaStore(out)
     episodes, traces, notes = [], [], {}
@@ -149,18 +288,35 @@ async def main(out: Path, audio_out: bool = False):
         notes[eid] = f"{note} · {env.t / 1000:.1f}s in {wall:.1f}s wall"
         print(f"{eid:28s} {env.t / 1000:5.1f}s sim {wall:5.1f}s wall  duplex={list(ep['eval']['duplex'].values())}", flush=True)
 
-    for name, sc in SCENARIOS.items():
-        env, agent, wall = await run(name, sc, audio_out=audio_out)
-        u = episode(env, "x")["meta"]["user"]
-        record(name, env, agent, wall, f"{u['profile']['name']} ({u['profile']['gender']}, {u['profile']['age']}) · voice {u['voice']['speaker']}"
-               + (" · never yields" if sc.get("turn_taking") else "") + (f" · background {sc['background']} dB" if "background" in sc else ""))
-    env, agent, wall = await run("booking-alex", SCENARIOS["booking-alex"], clock="realtime", audio_out=audio_out)
-    record("booking-alex-realtime", env, agent, wall, "same as booking-alex, realtime clock")
-    if audio_out:  # an audio server also serves text-only sessions (a Thinker-only one serves only those)
-        env, agent, wall = await run("booking-alex", SCENARIOS["booking-alex"], audio_out=False)
-        record("booking-alex-text", env, agent, wall, "same as booking-alex, text-only output timed by speaking rate")
-    env, agent, wall = await offline(out, audio_out)
-    record("offline-replay", env, agent, wall, "pre-timed user turns with real TTS: barge-in at 15 s, backchannel, noise")
+    multi = len(seeds) > 1  # several takes per scenario: episode ids get a -s<seed> suffix
+    sfx = lambda s: f"-s{s}" if multi else ""  # noqa: E731
+    if which == "chat":  # the chat set only: one take per scenario per seed, all with the realistic user
+        for seed in seeds:
+            for name, sc in CHAT_SCENARIOS.items():
+                if only and name not in only:
+                    continue
+                env, agent, wall = await run(name, sc, audio_out=audio_out, seed=seed, chunk_ms=chunk_ms)
+                u = episode(env, "x")["meta"]["user"]
+                p = u["profile"]
+                record(name + sfx(seed), env, agent, wall, f"{p['name']} ({p['gender']}, {p['age']}) · voice {u['voice']['speaker']} · "
+                       f"{p.get('surroundings', '')} surroundings")
+        save(episodes, out / "episodes.jsonl")
+        save([t for t in traces if t], out / "agent_traces.jsonl")
+        print("->", export_run(episodes, out, notes, title="MiniCPM-o suite: chat", traces=traces))
+        return
+    for seed in seeds:
+        for name, sc in SCENARIOS.items():
+            env, agent, wall = await run(name, sc, audio_out=audio_out, seed=seed, chunk_ms=chunk_ms)
+            u = episode(env, "x")["meta"]["user"]
+            record(name + sfx(seed), env, agent, wall, f"{u['profile']['name']} ({u['profile']['gender']}, {u['profile']['age']}) · voice {u['voice']['speaker']}"
+                   + (" · never yields" if sc.get("turn_taking") else "") + (f" · background {sc['background']} dB" if "background" in sc else ""))
+        env, agent, wall = await run("booking-alex", SCENARIOS["booking-alex"], clock="realtime", audio_out=audio_out, seed=seed, chunk_ms=chunk_ms)
+        record("booking-alex-realtime" + sfx(seed), env, agent, wall, "same as booking-alex, realtime clock")
+        if audio_out:  # an audio server also serves text-only sessions (a Thinker-only one serves only those)
+            env, agent, wall = await run("booking-alex", SCENARIOS["booking-alex"], audio_out=False, seed=seed, chunk_ms=chunk_ms)
+            record("booking-alex-text" + sfx(seed), env, agent, wall, "same as booking-alex, text-only output timed by speaking rate")
+        env, agent, wall = await offline(out, audio_out, chunk_ms)
+        record("offline-replay" + sfx(seed), env, agent, wall, "pre-timed user turns with real TTS: barge-in at 15 s, backchannel, noise")
 
     save(episodes, out / "episodes.jsonl")
     save([t for t in traces if t], out / "agent_traces.jsonl")
@@ -172,5 +328,11 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="runs/suite")
     ap.add_argument("--audio-out", action="store_true", help="MiniCPM-o speaks (Thinker + Talker + Code2Wav server); "
                     "default: text-only output timed at speech_cps, Thinker-only server")
+    ap.add_argument("--seeds", type=int, nargs="+", default=[0], help="one take per scenario per seed (ids get -s<seed> with several)")
+    ap.add_argument("--chunk-ms", type=int, default=200, help="agent step; MiniCPM-o decides once per 1 s unit, so 200 or 1000")
+    ap.add_argument("--set", choices=sorted(SETS), default="default", dest="which",
+                    help="default: the service-call scenarios plus the clock / output / replay variants; chat: casual "
+                         "conversation and general knowledge (CHAT_SCENARIOS) with the env's realism on")
+    ap.add_argument("--only", nargs="+", default=[], help="--set chat: run only these scenarios")
     a = ap.parse_args()
-    asyncio.run(main(Path(a.out), a.audio_out))
+    asyncio.run(main(Path(a.out), a.audio_out, tuple(a.seeds), a.chunk_ms, a.which, tuple(a.only)))

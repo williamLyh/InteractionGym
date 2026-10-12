@@ -49,6 +49,7 @@ class ToolResult:
     name: str
     content: str  # what the caller reads (JSON text for structured results)
     error: bool = False
+    images: tuple = ()  # PNG bytes the result also shows, e.g. a screenshot after a computer-use action
 
 
 class ToolBackend:

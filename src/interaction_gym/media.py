@@ -1,6 +1,6 @@
 """Content-addressed media store shared by all episodes.
 
-Files live at ``<root>/media/<sha[:2]>/<sha>.wav``; identical audio is stored once.
+Files live at ``<root>/media/<sha[:2]>/<sha>.wav`` (images: ``.png``); identical content is stored once.
 Trajectories only hold references: ``{"kind", "uri", "sr", "start_ms", "end_ms"}``
 with ``uri`` relative to the root, so one file can back many (partial) references.
 """
@@ -26,6 +26,19 @@ class MediaStore:
             path.parent.mkdir(parents=True, exist_ok=True)
             audio.write_wav(path)
         return uri
+
+    def put_image(self, png: bytes) -> str:
+        """Store a PNG (if new) and return its uri."""
+        h = hashlib.sha256(png).hexdigest()
+        uri = f"media/{h[:2]}/{h}.png"
+        path = self.root / uri
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(png)
+        return uri
+
+    def image_ref(self, png: bytes) -> dict:
+        return {"kind": "image", "uri": self.put_image(png)}
 
     def ref(self, audio: Audio, start_ms: int = 0, end_ms: int | None = None) -> dict:
         return {"kind": "audio", "uri": self.put(audio), "sr": audio.sr, "start_ms": start_ms,

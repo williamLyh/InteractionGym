@@ -67,6 +67,7 @@ svg text { font-size: 11px; fill: var(--ink); }
 @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } .app { grid-template-columns: 200px 1fr; } }
 .state .row { padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .state .row:last-child { border-bottom: 0; }
+.state .screen img { display: block; max-width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 .who { display: inline-block; font-weight: 600; font-size: 11px; padding: 1px 7px; border-radius: 4px; margin-right: 6px; }
 .who.user { background: var(--user-soft); color: var(--user); } .who.agent { background: var(--agent-soft); color: var(--agent); } .who.other { background: var(--other-soft); color: var(--other); }
 .heard { } .unheard { color: var(--muted); opacity: .75; } .unsaid { color: var(--muted); text-decoration: line-through; }
@@ -192,7 +193,7 @@ function fromEpisode(ep) {
     (t.tool_calls || []).forEach(c => {
       const user = t.role === 'user';
       frames.push({stream: user ? 'user.tool_call' : 'policy.tool_call', t: c.call_time, src: srcOf(t.role), dur: 0, data: {id: c.id, name: c.name, arguments: c.arguments}});
-      if (c.result_time != null) frames.push({stream: user ? 'tool.user_result' : 'tool.result', t: c.result_time, src: 'tools', dur: 0, data: {id: c.id, name: c.name, content: c.content ?? '', error: !!c.error}});
+      if (c.result_time != null) frames.push({stream: user ? 'tool.user_result' : 'tool.result', t: c.result_time, src: 'tools', dur: 0, data: {id: c.id, name: c.name, content: c.content ?? '', error: !!c.error, images: c.images || []}});
     });
   });
   frames.push({stream: 'end', t: m.duration_ms, src: '', dur: 0, data: m.end_reason});
@@ -784,7 +785,7 @@ function showTip(e) {
   } else if (hit.dataset.tool) {
     const k = cur.tools[+hit.dataset.tool], a = k.call.data;
     h = `<b>${esc(a.name)}</b>  #${esc(a.id)}\ncalled   ${k.t0}ms\nresult   ${k.t1 == null ? 'never arrived' : k.t1 + 'ms  (latency ' + fmt(k.t1 - k.t0) + ')'}\n\narguments\n${esc(JSON.stringify(a.arguments, null, 2))}`
-      + (k.res ? `\n\n${k.res.data.error ? '<span class="no">error</span>' : 'result'}\n${esc(k.res.data.content)}` : '');
+      + (k.res ? `\n\n${k.res.data.error ? '<span class="no">error</span>' : 'result'}${(k.res.data.images || []).length ? '  (+ screenshot: see the state panel)' : ''}\n${esc(k.res.data.content)}` : '');
   } else if (hit.dataset.span) {
     const sp = cur.spans[+hit.dataset.span];
     h = sp.kind !== 'response' && sp.kind !== 'yield'
@@ -894,6 +895,12 @@ function renderState() {
       return `<div><span class="tag" style="margin:0">${done ? (k.res.data.error ? '<span class="no">error</span>' : 'returned') : 'waiting ' + fmt(t - k.t0)}</span> <b style="font-family:var(--mono);font-weight:500">${esc(a.name)}</b>${done ? ' → ' + esc(String(k.res.data.content).slice(0, 160)) : ''}</div>`;
     }).join('');
     h += `<div class="row"><span class="who other">tools</span><div style="margin-top:4px">${rows}</div></div>`;
+  }
+  // computer use: the screen as the agent last saw it (the newest screenshot returned by t)
+  const shots = (c.tools || []).filter(k => k.res && (k.res.data.images || []).length);
+  if (shots.length) {
+    const seen = shots.filter(k => k.t1 <= t), k = seen[seen.length - 1];
+    h += `<div class="row screen"><span class="who other">screen</span> ${k ? `<small style="color:var(--muted)">after <b style="font-family:var(--mono);font-weight:500">${esc(k.call.data.name)}</b> at ${k.t1}ms</small><img alt="screenshot" src="${esc(MEDIA_BASE + k.res.data.images[k.res.data.images.length - 1].uri)}">` : '<span class="unheard">(no screenshot yet)</span>'}</div>`;
   }
   const past = c.frames.filter(f => f.t <= t), rewardSoFar = past.filter(f => f.stream === 'reward').reduce((s, f) => s + (+f.data || 0), 0);
   const next = c.frames.find(f => f.t > t);
