@@ -81,6 +81,7 @@ svg text { font-size: 11px; fill: var(--ink); }
 .evsub + .hint, .evdesc { margin-bottom: 8px; }
 .evblock + .evblock { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 .policy-target { border-left: 3px solid var(--mid); padding: 2px 0 2px 10px; margin: 6px 0 10px; }
+.policy-mark { background: color-mix(in srgb, var(--mid) 22%, transparent); color: inherit; border-radius: 2px; }
 .tag.cut { color: var(--bad); } .tag.barge { color: var(--cursor); }
 .tr { display: grid; grid-template-columns: 118px 1fr; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .tr:hover { background: var(--soft); }
@@ -602,12 +603,16 @@ function caseHtml(p) {
 function policyHtml(c) {
   const p = ((c.episode || {}).meta || {}).policy;
   if (!p) return '';
-  const chips = [p.format && `<span class="chip">format <b>${esc(p.format)}</b></span>`, p.target_action && `<span class="chip">requested action <b>${esc(p.target_action)}</b></span>`].filter(Boolean).join('');
+  // how many actions the agent's SOP covers (the source tree, else SOPBench's "* action:" headers), and where the excerpt sits in it
+  const nact = p.source && p.source.actions ? Object.keys(p.source.actions).length : ((p.text || '').match(/^\* \w+:/gm) || []).length;
+  const at = p.target && p.text ? p.text.indexOf(p.target) : -1;
+  const full = at >= 0 ? esc(p.text.slice(0, at)) + '<mark class="policy-mark">' + esc(p.target) + '</mark>' + esc(p.text.slice(at + p.target.length)) : esc(p.text || '');
+  const chips = [p.format && `<span class="chip">format <b>${esc(p.format)}</b></span>`].filter(Boolean).join('');
   return `<section class="card"><h3>SOP policy <span class="hint">meta.policy — the procedure the agent must follow before it acts${p.name ? ' · ' + esc(p.name) : ''}</span></h3><div class="body">
     ${chips ? `<div class="chips" style="margin:0 0 6px">${chips}</div>` : ''}
-    ${p.target ? `<div class="hint">conditions for the requested action</div><pre class="policy-target">${esc(p.target)}</pre>` : ''}
+    ${p.target ? `<div class="hint">this case's action${p.target_action ? ': <b class="mono">' + esc(p.target_action) + '</b>' : ''} — its conditions, excerpted from the full SOP below${nact > 1 ? ' (the agent is not told which action the caller wants)' : ''}</div><pre class="policy-target">${esc(p.target)}</pre>` : ''}
     ${caseHtml(p)}
-    ${p.text ? `<details${p.target ? '' : ' open'}><summary class="hint">the full SOP as given to the agent (${p.text.length} chars)</summary><pre style="max-height:420px">${esc(p.text)}</pre></details>` : ''}
+    ${p.text ? `<details${p.target ? '' : ' open'} ontoggle="const m = this.querySelector('mark'); if (this.open && m) m.parentElement.scrollTop = m.offsetTop - 24"><summary class="hint">the full SOP the agent got${nact ? ' — ' + nact + ' action' + (nact > 1 ? 's' : '') : ''} · ${p.text.length} chars${at >= 0 ? ' · this case\'s action highlighted' : ''}</summary><pre style="max-height:420px;position:relative">${full}</pre></details>` : ''}
     ${p.note ? `<div class="hint" style="margin-top:6px">${esc(p.note)}</div>` : ''}</div></section>`;
 }
 

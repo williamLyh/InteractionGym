@@ -99,7 +99,7 @@ the SOP tree then score three parts, and the reward is 1 only if all hold:
 | `procedure_followed` | every `ask` condition it needed was established before it committed (`chain` in order); `look_up` ones are on its screen | a failing condition that rules it out was established and given as the reason |
 | `details_correct` | what it confirmed matches `expect` (an LLM compares meanings) | it offered the SOP's alternative, where there is one |
 
-The viewer shows the SOP (the requested action first), the agent's screen and the ground truth in the "SOP policy"
+The viewer shows the SOP (this case's action excerpted first, then the full SOP the agent got, folded, with the excerpt highlighted), the agent's screen and the ground truth in the "SOP policy"
 card, and the judge's report with the three parts under Evaluation → Content.
 
 ## 4. Not yet
