@@ -217,6 +217,8 @@ interaction_gym/
 │   ├── eval.py                 # evaluate(log, task, world): outcome / timing / LLM judge
 │   ├── linearize.py            # planned: overlapping speech -> sequential text (for the user simulator and judge)
 │   ├── traj.py                 # standard output format schema v1 (FORMAT.md): episode / save / load / to_frames / agent_view
+│   ├── sop.py                  # SOP source format (all / any / chain conditions), its logic, pluggable formats (docs/SOP.md)
+│   ├── sop_task.py             # spoken SOP tasks for agents without tools; judge = LLM report + rules on the SOP tree
 │   ├── media.py                # unified content-addressed media store
 │   ├── viewer/                 # self-contained HTML trajectory viewer: per-case timeline, state at the cursor, transcript, frame table
 │   └── integrations/

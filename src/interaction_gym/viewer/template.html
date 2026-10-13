@@ -182,7 +182,7 @@ svg text.ut { font: 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
 <script id="media-base" type="text/plain">__MEDIA_BASE__</script>
 <script>
 const MEDIA_BASE = document.getElementById('media-base').textContent.trim();
-const STD_META = new Set(['episode_id', 'run_id', 'seed', 'media_root', 'task', 'env', 'user', 'agent', 'duration_ms', 'end_reason', 'categories', 'policy']);
+const STD_META = new Set(['episode_id', 'run_id', 'seed', 'media_root', 'task', 'env', 'user', 'agent', 'duration_ms', 'end_reason', 'categories', 'policy', 'sop_judge']);
 const CATEGORIES = {chitchat: 'chitchat', sop: 'SOP', tool_call: 'tool call'};
 // meta.categories (docs/FORMAT.md §4.1); episodes written before it existed: inferred the same way as traj.categories
 function catsOf(ep) {
@@ -584,6 +584,20 @@ function envHtml(c) {
     </div>`;
 }
 
+// meta.policy.case (spoken SOP tasks, sop_task.py): what the agent could see, and the ground truth of each condition
+function caseHtml(p) {
+  const k = p.case, src = p.source;
+  if (!k || !src) return '';
+  const tree = ((src.actions || {})[k.action] || {}).requires, conds = [];
+  const walk = n => { if (!n) return; if ('check' in n) conds.push(n); else ['all', 'any', 'chain'].forEach(x => (n[x] || []).forEach(walk)); };
+  walk(tree);
+  const rows = conds.map(c => { const v = (k.truth || {})[c.check];
+    return `<tr><td class="mono">${esc(c.check)}</td><td class="num ${v ? 'ok' : 'no'}" style="font-weight:600">${v ? '✓' : '✗'}</td><td class="hint">${esc(c.by || 'look_up')}</td><td style="white-space:normal">${esc(c.text)}</td></tr>`; }).join('');
+  return `<div class="grid2" style="gap:18px;margin:4px 0 10px"><div><div class="hint">what the agent sees (its screen)</div><pre>${esc(k.facts || '')}</pre></div>
+    <div><div class="hint">ground truth for this caller — decides whether the action should be done${k.expect ? ' · a correct outcome: ' + esc(JSON.stringify(k.expect)) : ''}</div>
+    <div class="tablewrap"><table><thead><tr><th>condition</th><th style="text-align:right">holds</th><th>by</th><th>text</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+}
+
 // meta.policy: the procedure (SOP) the agent had to follow; the requested action's own entry first, then the whole text
 function policyHtml(c) {
   const p = ((c.episode || {}).meta || {}).policy;
@@ -592,8 +606,19 @@ function policyHtml(c) {
   return `<section class="card"><h3>SOP policy <span class="hint">meta.policy — the procedure the agent must follow before it acts${p.name ? ' · ' + esc(p.name) : ''}</span></h3><div class="body">
     ${chips ? `<div class="chips" style="margin:0 0 6px">${chips}</div>` : ''}
     ${p.target ? `<div class="hint">conditions for the requested action</div><pre class="policy-target">${esc(p.target)}</pre>` : ''}
+    ${caseHtml(p)}
     ${p.text ? `<details${p.target ? '' : ' open'}><summary class="hint">the full SOP as given to the agent (${p.text.length} chars)</summary><pre style="max-height:420px">${esc(p.text)}</pre></details>` : ''}
     ${p.note ? `<div class="hint" style="margin-top:6px">${esc(p.note)}</div>` : ''}</div></section>`;
+}
+
+// meta.sop_judge (sop_task.judge): what the LLM reported, which the rules scored
+function judgeHtml(ep) {
+  const j = (ep.meta || {}).sop_judge;
+  if (!j) return '';
+  if (j.error) return `<div class="no" style="margin-bottom:8px">judge failed: ${esc(j.error)}</div>`;
+  const r = j.report || {};
+  return `<div class="chips" style="margin:0 0 8px"><span class="chip">should <b>${j.should_do ? 'do it' : 'decline'}</b></span><span class="chip">decision <b class="${(r.decision === 'done') === j.should_do && r.decision !== 'unfinished' ? 'ok' : 'no'}">${esc(r.decision || '—')}</b>${r.decision_turn ? ` <span class="hint">at ${esc(r.decision_turn)}</span>` : ''}</span>
+    <span class="chip">established before it <b>${(j.established || []).map(esc).join(' → ') || '—'}</b></span>${r.decline_reason ? `<span class="chip">reason given <b>${esc(r.decline_reason)}</b></span>` : ''}${(j.failing || []).length ? `<span class="chip">failing <b>${j.failing.map(esc).join(', ')}</b></span>` : ''}</div>`;
 }
 
 function renderEval() {
@@ -606,6 +631,7 @@ function renderEval() {
   const content = r.total == null && !vf && !partRows ? '<div class="hint">No content evaluation for this task: it defines no reward and no verifier (open conversation); only the duplex timing below is scored.</div>'
     : `<div class="chips" style="margin:0 0 8px"><span class="chip">reward <b class="${r.total == null ? '' : r.total > 0 ? 'ok' : 'no'}">${r.total ?? '— (not computed)'}</b></span>${vf && vf.name ? `<span class="chip">verifier <b>${esc(vf.name)}</b></span>` : ''}</div>
       ${vf && vf.description ? `<div class="hint evdesc" style="white-space:normal">${esc(vf.description)}</div>` : ''}
+      ${judgeHtml(ep)}
       ${partRows ? `<div class="tablewrap"><table><thead><tr><th>check</th><th style="text-align:right">result</th><th>what it checks</th></tr></thead><tbody>${partRows}</tbody></table></div>` : ''}`;
   const group = (keys) => { const xs = dup.filter(([, d]) => keys.includes(d.behavior)); return [xs.filter(([id, d]) => verdict(ep, id, d)).length, xs.length]; };
   const [by, bn] = group(['barge_in']), [ry, rn] = group(['backchannel', 'aside', 'noise', 'away']), ai = dup.filter(([, d]) => d.behavior === 'agent_interrupt').length;

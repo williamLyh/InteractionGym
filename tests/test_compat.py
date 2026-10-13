@@ -19,7 +19,7 @@ def run(coro):
 
 
 def chat_reply(monkeypatch, message):
-    monkeypatch.setattr(C, "_post", lambda url, payload, key: json.dumps({"choices": [{"message": message}]}).encode())
+    monkeypatch.setattr(C, "_post", lambda url, payload, key, *_: json.dumps({"choices": [{"message": message}]}).encode())
     return run(OpenAIChat("http://x/v1", "m").chat([{"role": "user", "content": "hi"}]))
 
 

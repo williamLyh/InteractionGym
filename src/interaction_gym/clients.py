@@ -35,22 +35,23 @@ class Speech(Protocol):
                     seed: int | None = None) -> Audio: ...
 
 
-def _post(url: str, payload: dict, api_key: str | None) -> bytes:
+def _post(url: str, payload: dict, api_key: str | None, timeout: float = 120) -> bytes:
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, json.dumps(payload).encode(), headers)
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
 
 class OpenAIChat:
     """Chat completions against an OpenAI-compatible endpoint (e.g. a vLLM server)."""
 
-    def __init__(self, base_url: str, model: str, api_key_env: str | None = None, **defaults):
+    def __init__(self, base_url: str, model: str, api_key_env: str | None = None, timeout: float = 120, **defaults):
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model
         self.api_key = os.environ.get(api_key_env) if api_key_env else None
+        self.timeout = timeout
         self.defaults = defaults
 
     async def chat(self, messages: Messages, **kw) -> str:
@@ -59,7 +60,7 @@ class OpenAIChat:
         servers without one leave ``<think>…</think>`` in the text — an unterminated one was cut off
         mid-thought and says nothing."""
         payload = {"model": self.model, "messages": messages, **self.defaults, **kw}
-        raw = await asyncio.to_thread(_post, self.url, payload, self.api_key)
+        raw = await asyncio.to_thread(_post, self.url, payload, self.api_key, self.timeout)
         text = json.loads(raw)["choices"][0]["message"].get("content") or ""
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
         return text.split("<think>")[0].strip()

@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- **SOPs: one source format, pluggable presentation.** `interaction_gym.sop`: an SOP as data (actions whose conditions
+  combine with `all` / `any` / `chain`, each `ask` or `look_up`, with `on_fail` alternatives), the logic to check an
+  agent against it (`holds`, `witnessed`, `refuted`), and formats as plugins: `structured`, `list` (keeps the logic,
+  unlike SOPBench's flat list), `code`, `mermaid`, plus `@register_format` and the `interaction_gym.sop_formats` entry
+  point. `interaction_gym.sop_task`: spoken SOP tasks for agents without tools (what they would look up is "their
+  screen"), judged by an LLM report of what happened plus rules on the SOP tree (`decision_correct`,
+  `procedure_followed`, `details_correct`). `examples/sop_calls.py` turns the old service calls (restaurant, clinic,
+  shop) into SOP tasks, two to be done and two to be declined, with MiniCPM-o 4.5. The viewer's SOP card also shows the
+  agent's screen and the ground truth, and Evaluation shows the judge's report. `OpenAIChat(timeout=)`. docs/SOP.md.
 - **Task categories, SOP policy and verifier in the trajectory and viewer.** `meta.categories` tags a task as `chitchat`,
   `sop` and/or `tool_call` (several allowed; from `task.scenario["categories"]`, else inferred by `traj.categories`);
   `meta.policy` holds the procedure the agent had to follow (`sopbench.policy(task)`); `eval.verifier` describes the
