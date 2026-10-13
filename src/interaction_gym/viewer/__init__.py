@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 
+from ..traj import categories
 from .commentary import decode_pieces, headlines, units, view_data  # noqa: F401  (re-exported)
 
 TEMPLATE = Path(__file__).with_name("template.html")
 AGENT_TEMPLATE = Path(__file__).with_name("agent_trace.html")
+CATEGORY_NAMES = {"chitchat": "chitchat", "sop": "SOP", "tool_call": "tool call"}
 
 
 def _back(href: str | None, label: str) -> str:
@@ -79,13 +81,14 @@ def export_run(episodes: list[dict], out_dir: str | Path, notes: dict[str, str] 
             pages[eid] = page
         a, u = ep["meta"].get("agent", {}), ep["meta"].get("user", {})
         who = ", ".join(str(x) for x in (u.get("profile", {}).get("name"), u.get("profile", {}).get("gender"), u.get("profile", {}).get("age")) if x)
-        cells = [f'<a href="env.html#{html.escape(eid)}">{html.escape(eid)}</a>', f'{ep["meta"]["duration_ms"] / 1000:.1f}s',
+        cats = " ".join(f'<span class="cat {html.escape(k)}">{html.escape(CATEGORY_NAMES.get(k, k))}</span>' for k in categories(ep["meta"]))
+        cells = [f'<a href="env.html#{html.escape(eid)}">{html.escape(eid)}</a>', cats, f'{ep["meta"]["duration_ms"] / 1000:.1f}s',
                  str(len(ep["turns"])), str(len(ep["eval"]["duplex"])), html.escape(str(a.get("clock", "—"))),
                  html.escape(str(a.get("output", "audio"))), html.escape(who or "—"),
                  f'<a href="{page}">token trace →</a>' if page else "—", html.escape((notes or {}).get(eid, ""))]
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     export_html(episodes, out / "env.html", back="index.html", traces=list(by_id.values()), agent_pages=pages)
-    head = "".join(f"<th>{h}</th>" for h in ("episode", "duration", "turns", "duplex events", "clock", "output", "user", "agent trace", "notes"))
+    head = "".join(f"<th>{h}</th>" for h in ("episode", "category", "duration", "turns", "duplex events", "clock", "output", "user", "agent trace", "notes"))
     (out / "index.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title><style>
 :root{{--bg:#f7f7f5;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e3e0;--link:#2f6fd6}}
@@ -95,6 +98,8 @@ main{{max-width:1300px;margin:0 auto;padding:20px 16px}} h1{{font-size:18px;marg
 .wrap{{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}}
 table{{width:100%;border-collapse:collapse}} th,td{{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}}
 td:last-child{{white-space:normal;color:var(--muted);min-width:240px}} th{{color:var(--muted);font-weight:500}}
+.cat{{display:inline-block;font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;border:1px solid currentColor;margin-right:3px}}
+.cat.chitchat{{color:var(--muted)}} .cat.sop{{color:#b07d10}} .cat.tool_call{{color:var(--link)}}
 </style></head><body><main><h1>{html.escape(title)}</h1><p>{len(episodes)} episodes · click a name for the environment view (all episodes are in its sidebar), "tokens" for the agent server trace.</p>
 <div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div></main></body></html>""")
     return out / "index.html"

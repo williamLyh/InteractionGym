@@ -201,3 +201,22 @@ def test_eval_tells_a_naive_agent_from_one_that_listens():
     assert by_kind(listening)["noise"] == "continued" and by_kind(listening)["backchannel"] == "continued"
     assert by_kind(listening)["aside"] == "stopped"  # word counts cannot tell talking-to-someone-else apart
     assert all(v["reaction"] == "yielded" for v in listening.values() if v["behavior"] == "barge_in")
+
+
+def test_categories_policy_and_verifier():
+    from interaction_gym.traj import categories
+    assert categories({"env": {}}) == ["chitchat"]
+    assert categories({"env": {"tools": [{"name": "x"}]}}) == ["tool_call"]
+    assert categories({"env": {"tools": [{"name": "x"}]}, "policy": {"text": "..."}}) == ["sop", "tool_call"]
+    assert categories({"env": {}, "task": {"scenario": {"categories": ["sop"]}}}) == ["sop"]
+    env = Env({"user": ReplayUser([])}, AgentSpec(chunk_ms=100))
+
+    async def go():
+        await env.reset(Task(id="t", scenario={"categories": ["sop", "tool_call"]}))
+        for _ in range(3):
+            await env.step([])
+    asyncio.run(go())
+    vf = {"name": "v", "description": "d", "checks": {"ok": "it is ok"}}
+    ep = episode(env, "e", reward={"total": 1.0, "parts": {"ok": 1.0}}, meta={"policy": {"text": "verify first"}}, verifier=vf)
+    assert ep["meta"]["categories"] == ["sop", "tool_call"] and ep["eval"]["verifier"] == vf
+    VALIDATOR.validate(ep)

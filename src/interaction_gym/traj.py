@@ -201,11 +201,15 @@ def episode(
     reward: dict | None = None,
     meta: dict | None = None,
     agent=None,
+    verifier: dict | None = None,
 ) -> dict:
     """The episode in schema v1. Audio is written to ``media`` (if given) and referenced.
     ``reward`` defaults to the sum of the episode's ``reward`` stream; pass a task-specific
     ``{"total", "parts"}`` (e.g. τ-bench's breakdown) to override. ``meta`` adds fields to ``meta``.
     ``agent`` (an agent with ``describe()``, or a dict) is recorded as ``meta.agent``: which agent the episode ran.
+    ``verifier`` (``{"name", "description", "checks": {part: what it checks}}``) is recorded as ``eval.verifier``: how
+    the task's own checker computed ``reward``. ``meta.categories`` is the task's ``scenario["categories"]``, or else
+    inferred (``categories``); a ``meta["policy"]`` (the SOP the agent must follow) adds ``"sop"``.
     Chunk-/unit-level internals of the agent are not part of the trajectory; an adapter's trace is
     saved separately (docs/AGENT_TRACE.md)."""
     log = env.log
@@ -231,6 +235,7 @@ def episode(
     if agent is not None:
         m["agent"] = describe_agent(agent)
     m.update(meta or {})
+    m["categories"] = categories(m)
     ep: dict = {"schema": SCHEMA, "meta": m}
     bg = _background(env, media, env.t)
     if bg:
@@ -240,7 +245,26 @@ def episode(
         rewarded = any(f.stream == REWARD for f in log)
         reward = {"total": env.sim.reward if rewarded else None, "parts": {}}
     ep["eval"] = {"reward": reward, "duplex": duplex(turns, end_ms=env.t), "scores": scores(turns, end_ms=env.t)}
+    if verifier:
+        ep["eval"]["verifier"] = verifier
     return ep
+
+
+CATEGORIES = ("chitchat", "sop", "tool_call")
+
+
+def categories(meta: dict) -> list[str]:
+    """The task's category tags (``CATEGORIES``; a task may have several): ``meta["categories"]`` or the task's
+    ``scenario["categories"]`` if set; otherwise ``tool_call`` when tools were offered, ``sop`` when a policy was given
+    (``meta["policy"]``), ``chitchat`` when neither."""
+    given = meta.get("categories") or ((meta.get("task") or {}).get("scenario") or {}).get("categories")
+    if given:
+        return list(given)
+    env = meta.get("env") or {}
+    out = ["sop"] if meta.get("policy") else []
+    if env.get("tools") or env.get("tool_services") or env.get("tool_updates"):
+        out.append("tool_call")
+    return out or ["chitchat"]
 
 
 # ---------------------------------------------------------------- io

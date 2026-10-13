@@ -94,8 +94,9 @@ async def record(out: Path, llm: ToolChat, llm_ms: int) -> None:
         try:
             await play(env, agent, task)
             res = bg.evaluate(env)
-            reward = {"total": res["reward"], "parts": {"benchmark_reward": res["reward"], "page_ended_task": res["terminated"]}}
-            episodes.append(episode(env, eid, media=media, agent=agent, reward=reward, meta={"benchmark": f"miniwob.{name}", "goal": task.scenario["goal"]}))
+            reward = {"total": res["reward"], "parts": {"benchmark_reward": res["reward"], "page_ended_task": float(res["terminated"])}}
+            episodes.append(episode(env, eid, media=media, agent=agent, reward=reward, meta={"benchmark": f"miniwob.{name}", "goal": task.scenario["goal"]},
+                                    verifier=bg.VERIFIER))
             notes[eid] = f"{note} · reward {res['reward']:.2f}"
             print(eid, res)
         finally:

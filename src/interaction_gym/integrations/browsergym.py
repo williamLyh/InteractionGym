@@ -205,6 +205,17 @@ def browser_state(env, node: str = "tools") -> dict[str, Any]:
     return sim.states[node]["services"][BrowserGymBackend.name]
 
 
+VERIFIER = {
+    "name": "MiniWoB task reward (BrowserGym)",
+    "description": ("The web page itself checks the task: a MiniWoB page knows the goal and, when the agent's actions end the task, "
+                    "gives a reward (positive when it was done right). Read from the browser after the episode."),
+    "checks": {
+        "benchmark_reward": "the reward the MiniWoB page gave when the task ended (0 if it never ended)",
+        "page_ended_task": "the page reported the task as ended",
+    },
+}
+
+
 def evaluate(env, node: str = "tools") -> dict:
     """The benchmark's reward for the episode: ``{"reward", "success", "terminated", "steps"}``."""
     st = browser_state(env, node)

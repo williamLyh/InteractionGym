@@ -21,7 +21,8 @@ Here it is spoken:
   its flat ``list`` text, or ``structured+order``, which also spells out the verification order from the case's
   action graph (SOPBench's ``--action_order`` ablation).
 - **Scoring** (``evaluate``) is SOPBench's ``evaluator_function_directed_graph`` on the episode's calls and final
-  database; ``reward`` = its ``success``.
+  database; ``reward`` = its ``success``. ``VERIFIER`` describes it and ``policy(task)`` is the SOP as given to the
+  agent, for the episode's ``eval.verifier`` and ``meta.policy`` (the viewer shows both).
 
 Like SOPBench's default ``prompt`` mode, the environment does not enforce the SOP: an action whose conditions do not
 hold still runs, and the verifier catches it.
@@ -55,6 +56,22 @@ SPOKEN_NOTE = (
     "details yet: ask for what you need, one or two items at a time. Function calls are not spoken. When the request "
     "is done, or you have to decline it, tell the user in one or two sentences."
 )
+
+
+VERIFIER = {
+    "name": "SOPBench directed-graph verifier",
+    "description": ("SOPBench's evaluator_function_directed_graph, run after the call on the agent's function calls and the final "
+                    "database. It replays the calls on a strict copy of the domain system, which refuses any action whose SOP "
+                    "conditions do not hold, and compares. The case passes (reward 1) only if all five checks pass. Doing nothing "
+                    "passes every case whose request should be declined (about two thirds of SOPBench)."),
+    "checks": {
+        "no_tool_call_error": "no function call raised an error (unknown function, wrong arguments)",
+        "constraint_not_violated": "every response equals the strict system's: no action ran although its SOP conditions did not hold",
+        "database_match": "the final database equals the one the oracle procedure leaves",
+        "action_called_correctly": "the requested (target) action ran successfully exactly when the case says it should, and not otherwise",
+        "dirgraph_satisfied": "every action was preceded by the verifications its SOP action graph requires, in the required order",
+    },
+}
 
 
 def path() -> Path:
@@ -118,6 +135,7 @@ def to_task(domain: str, goal: str, i: int, rec: dict, sop_format: str = "struct
         scenario={
             "persona": f"A customer calling the {domain.replace('_', ' ')} service line.",
             "instructions": goal_text,
+            "categories": ["sop", "tool_call"],
             "sopbench": {"domain": domain, "user_goal": goal, "index": i, "sop_format": sop_format,
                          "action_should_succeed": rec["action_should_succeed"]},
         },
@@ -187,6 +205,25 @@ class SOPBenchBackend(ToolBackend):
         content = str(raw)
         state["calls"].append({"tool_name": call.name, "arguments": dict(call.arguments), "content": _literal(content)})
         return ToolResult(call.id, call.name, content)
+
+
+def policy(task: Task, backend: SOPBenchBackend | None = None) -> dict:
+    """The SOP as the agent got it, for ``meta.policy``: ``text`` (SOPBench's prompt from the constraint conventions on:
+    every action's conditions and the verification functions), ``target`` (the requested action's own entry) and
+    ``format``."""
+    sc = task.scenario["sopbench"]
+    prompt = (backend or SOPBenchBackend(task)).prompt[: -len(SPOKEN_NOTE)]
+    core = prompt.find("### Core Operating Principles")
+    start = prompt.find("\n\n\n", core) + 3 if core >= 0 and prompt.find("\n\n\n", core) >= 0 else max(prompt.find("### Actions with Constraints"), 0)
+    head = f"* {sc['user_goal']}:"
+    i = prompt.find(head, start)
+    target = ""
+    if i >= 0:
+        ends = [j for j in (prompt.find("\n\n* ", i), prompt.find("\n\n###", i)) if j >= 0]
+        target = prompt[i: min(ends) if ends else len(prompt)].strip()
+    return {"name": f"SOPBench {sc['domain'].replace('_', ' ')} SOP", "format": sc["sop_format"], "target_action": sc["user_goal"],
+            "target": target, "text": prompt[start:].strip(),
+            "note": "Part of the agent's instructions (meta.env.instructions); the environment does not enforce it, the verifier checks it."}
 
 
 def tool_world(task: Task, latency_ms: int = 300) -> ToolWorld:

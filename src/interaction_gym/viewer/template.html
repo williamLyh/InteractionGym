@@ -72,6 +72,15 @@ svg text { font-size: 11px; fill: var(--ink); }
 .who.user { background: var(--user-soft); color: var(--user); } .who.agent { background: var(--agent-soft); color: var(--agent); } .who.other { background: var(--other-soft); color: var(--other); }
 .heard { } .unheard { color: var(--muted); opacity: .75; } .unsaid { color: var(--muted); text-decoration: line-through; }
 .tag { font-size: 11px; color: var(--muted); margin-left: 6px; }
+.cat { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.cat.chitchat { color: var(--other); } .cat.sop { color: var(--mid); } .cat.tool_call { color: var(--user); }
+.cats { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.cats button.cat { background: none; cursor: pointer; font: inherit; font-size: 11px; opacity: .45; }
+.cats button.cat.on { opacity: 1; font-weight: 600; }
+.evsub { font-size: 12px; font-weight: 600; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; }
+.evsub + .hint, .evdesc { margin-bottom: 8px; }
+.evblock + .evblock { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.policy-target { border-left: 3px solid var(--mid); padding: 2px 0 2px 10px; margin: 6px 0 10px; }
 .tag.cut { color: var(--bad); } .tag.barge { color: var(--cursor); }
 .tr { display: grid; grid-template-columns: 118px 1fr; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .tr:hover { background: var(--soft); }
@@ -161,6 +170,7 @@ svg text.ut { font: 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
       __BACK_LINK__
       <h1>InteractionGym · trajectories</h1>
       <input type="search" id="q" placeholder="Filter cases…">
+      <div class="cats" id="catf" title="show only tasks with this category"></div>
     </header>
     <div class="cases" id="cases"></div>
   </aside>
@@ -172,7 +182,18 @@ svg text.ut { font: 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
 <script id="media-base" type="text/plain">__MEDIA_BASE__</script>
 <script>
 const MEDIA_BASE = document.getElementById('media-base').textContent.trim();
-const STD_META = new Set(['episode_id', 'run_id', 'seed', 'media_root', 'task', 'env', 'user', 'agent', 'duration_ms', 'end_reason']);
+const STD_META = new Set(['episode_id', 'run_id', 'seed', 'media_root', 'task', 'env', 'user', 'agent', 'duration_ms', 'end_reason', 'categories', 'policy']);
+const CATEGORIES = {chitchat: 'chitchat', sop: 'SOP', tool_call: 'tool call'};
+// meta.categories (docs/FORMAT.md §4.1); episodes written before it existed: inferred the same way as traj.categories
+function catsOf(ep) {
+  const m = (ep && ep.meta) || {}, sc = ((m.task || {}).scenario) || {}, e = m.env || {};
+  if ((m.categories || []).length) return m.categories;
+  if ((sc.categories || []).length) return sc.categories;
+  const out = m.policy ? ['sop'] : [];
+  if ((e.tools || []).length || (e.tool_services || []).length || (e.tool_updates || []).length) out.push('tool_call');
+  return out.length ? out : ['chitchat'];
+}
+function catHtml(k) { return `<span class="cat ${esc(k)}">${esc(CATEGORIES[k] || k)}</span>`; }
 
 // Schema-v1 episode (docs/FORMAT.md) -> the viewer's internal model (a frame log + latency spans).
 function fromEpisode(ep) {
@@ -222,8 +243,8 @@ function fromEpisode(ep) {
     else spans.push({kind: d.behavior, t0: t.start_time, t1: null, ms: null, reaction: d.reaction, on: id, target: d.target});
   });
   const r = (ep.eval || {}).reward || {}, meta = envc.tool_schema_mode ? {tool_schema_mode: envc.tool_schema_mode} : {};
-  Object.entries(r.parts || {}).forEach(([k, v]) => meta['reward.' + k] = v);
-  Object.entries(m).forEach(([k, v]) => { if (!STD_META.has(k)) meta[k] = v; });
+  if (!(ep.eval || {}).verifier) Object.entries(r.parts || {}).forEach(([k, v]) => meta['reward.' + k] = v);   // else in the Evaluation card
+  Object.entries(m).forEach(([k, v]) => { if (!STD_META.has(k) && !(v && typeof v === 'object' && JSON.stringify(v).length > 160)) meta[k] = v; });   // big records: see the trajectory
   return {case_id: m.episode_id, task: m.task || {}, meta, speakers: {user: 'user.speech', agent: 'policy.speech'},
           t_end: m.duration_ms, agent: m.agent || null, reward: r.total, endReason: m.end_reason, frames, spans, envTools, episode: ep};
 }
@@ -389,16 +410,24 @@ function selectCase(i) {
 
 function linkHash() { history.replaceState(null, '', '#' + encodeURIComponent(cur.case_id) + (cursor ? '@' + cursor : '')); }
 
+let catFilter = null;
+function renderCatFilter() {
+  const present = [...new Set(CASES.flatMap(c => catsOf(c.episode)))];
+  const keys = Object.keys(CATEGORIES).filter(k => present.includes(k)).concat(present.filter(k => !(k in CATEGORIES)));
+  $('#catf').innerHTML = keys.length > 1 ? keys.map(k => `<button class="cat ${esc(k)} ${catFilter === k ? 'on' : catFilter ? '' : 'on'}" data-cat="${esc(k)}">${esc(CATEGORIES[k] || k)} ${CASES.filter(c => catsOf(c.episode).includes(k)).length}</button>`).join('') : '';
+  document.querySelectorAll('#catf button').forEach(b => b.onclick = () => { catFilter = catFilter === b.dataset.cat ? null : b.dataset.cat; renderCatFilter(); renderSidebar(); });
+}
 function renderSidebar() {
   const q = $('#q').value.toLowerCase();
   $('#cases').innerHTML = CASES.map((c, i) => {
     prep(c);
     const hay = (c.case_id + ' ' + JSON.stringify(c.meta) + ' ' + JSON.stringify(c.task)).toLowerCase();
     if (q && !hay.includes(q)) return '';
+    if (catFilter && !catsOf(c.episode).includes(catFilter)) return '';
     const cuts = c.turns.filter(t => t.cut).length;
     return `<div class="case ${c === cur ? 'sel' : ''}" data-i="${i}">
       <div class="id">${esc(c.case_id)}</div>
-      <div class="sub">${c.reward == null ? '' : `<span class="${c.reward > 0 ? 'ok' : 'no'}">R ${c.reward}</span>`}<span>${fmt(c.t_end)}</span>
+      <div class="sub">${catsOf(c.episode).map(catHtml).join('')}${c.reward == null ? '' : `<span class="${c.reward > 0 ? 'ok' : 'no'}">R ${c.reward}</span>`}<span>${fmt(c.t_end)}</span>
       <span>${c.turns.length} turns</span>${cuts ? `<span class="no">${cuts} cut</span>` : ''}${c.endReason === 'max_duration' ? '<span class="no">truncated</span>' : ''}${duplexScore(c)}</div></div>`;
   }).join('');
 }
@@ -417,7 +446,7 @@ function renderMain() {
   const resp = c.spans.filter(s => s.kind === 'response'), yld = c.spans.filter(s => s.kind === 'yield');
   const metaChips = Object.entries(c.meta || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</b></span>`).join('');
   $('#main').innerHTML = `
-    <div class="title"><h2>${esc(c.case_id)}</h2><span class="hint">task ${esc(c.task.id || '—')}</span>${agentHtml(c.agent)}${c.view.agent_page ? `<a class="tracebtn" href="${esc(c.view.agent_page)}" title="the agent server's input and output tokens for every unit">Agent token trace →</a>` : ''}</div>
+    <div class="title"><h2>${esc(c.case_id)}</h2>${catsOf(c.episode).map(catHtml).join(' ')}<span class="hint">task ${esc(c.task.id || '—')}</span>${agentHtml(c.agent)}${c.view.agent_page ? `<a class="tracebtn" href="${esc(c.view.agent_page)}" title="the agent server's input and output tokens for every unit">Agent token trace →</a>` : ''}</div>
     <div class="chips">
       <span class="chip">end <b class="${c.endReason === 'max_duration' ? 'no' : 'ok'}">${c.endReason}</b></span>
       <span class="chip">duration <b>${fmt(c.t_end)}</b></span>
@@ -444,7 +473,8 @@ function renderMain() {
       <section class="card"><h3>Transcript <span class="hint">spoken · <span class="unsaid">planned but cut</span> · follows playback</span></h3><div class="body" id="transcript" style="max-height:480px;overflow:auto"></div></section>
     </div>
     <section class="card"><h3>State at cursor <span class="hint" id="curT"></span></h3><div class="body state" id="state"></div></section>
-    <section class="card" id="evalwrap"><h3>Evaluation <span class="hint">reward, and every special duplex behaviour: what the agent should have done vs. what it did</span></h3><div class="body" id="evalcard"></div></section>
+    ${policyHtml(c)}
+    <section class="card" id="evalwrap"><h3>Evaluation <span class="hint">content: did the task get done right (the task's own verifier) · duplex: was the timing right</span></h3><div class="body" id="evalcard"></div></section>
     <section class="card"><h3>Environment context <span class="hint">meta.env — components, and what the environment gave the agent (tool schemas, instructions, context); never world state</span></h3><div class="body">${envHtml(c)}</div></section>
     <section class="card"><h3>User simulation <span class="hint">meta.user — who the simulated user is (persona, goal, voice) and how it was produced (models, barge-in, turn-taking)</span></h3><div class="body">${userHtml(c)}</div></section>
     <section class="card"><h3>Frames <span class="sp"></span><input type="search" id="ff" placeholder="filter stream / src / data" style="width:240px"></h3>
@@ -554,11 +584,29 @@ function envHtml(c) {
     </div>`;
 }
 
+// meta.policy: the procedure (SOP) the agent had to follow; the requested action's own entry first, then the whole text
+function policyHtml(c) {
+  const p = ((c.episode || {}).meta || {}).policy;
+  if (!p) return '';
+  const chips = [p.format && `<span class="chip">format <b>${esc(p.format)}</b></span>`, p.target_action && `<span class="chip">requested action <b>${esc(p.target_action)}</b></span>`].filter(Boolean).join('');
+  return `<section class="card"><h3>SOP policy <span class="hint">meta.policy — the procedure the agent must follow before it acts${p.name ? ' · ' + esc(p.name) : ''}</span></h3><div class="body">
+    ${chips ? `<div class="chips" style="margin:0 0 6px">${chips}</div>` : ''}
+    ${p.target ? `<div class="hint">conditions for the requested action</div><pre class="policy-target">${esc(p.target)}</pre>` : ''}
+    ${p.text ? `<details${p.target ? '' : ' open'}><summary class="hint">the full SOP as given to the agent (${p.text.length} chars)</summary><pre style="max-height:420px">${esc(p.text)}</pre></details>` : ''}
+    ${p.note ? `<div class="hint" style="margin-top:6px">${esc(p.note)}</div>` : ''}</div></section>`;
+}
+
 function renderEval() {
   const ep = cur.episode, wrap = $('#evalwrap');
   if (!ep || !ep.eval) { wrap.hidden = true; return; }
   const r = ep.eval.reward || {}, dup = Object.entries(ep.eval.duplex || {}), byId = Object.fromEntries(ep.turns.map(t => [t.id, t]));
-  const parts = Object.entries(r.parts || {}).map(([k, v]) => `<span class="chip">${esc(k)} <b>${v}</b></span>`).join('');
+  const vf = ep.eval.verifier || null, checks = (vf && vf.checks) || {};
+  const partCls = v => v === true || v === 1 ? 'ok' : v === false || v === 0 ? 'no' : '';
+  const partRows = Object.entries(r.parts || {}).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td class="num ${partCls(v)}" style="font-weight:600">${v === true ? '✓' : v === false ? '✗' : esc(typeof v === 'number' ? +v.toFixed(3) : v)}</td><td class="hint" style="white-space:normal">${esc(checks[k] || '')}</td></tr>`).join('');
+  const content = r.total == null && !vf && !partRows ? '<div class="hint">No content evaluation for this task: it defines no reward and no verifier (open conversation); only the duplex timing below is scored.</div>'
+    : `<div class="chips" style="margin:0 0 8px"><span class="chip">reward <b class="${r.total == null ? '' : r.total > 0 ? 'ok' : 'no'}">${r.total ?? '— (not computed)'}</b></span>${vf && vf.name ? `<span class="chip">verifier <b>${esc(vf.name)}</b></span>` : ''}</div>
+      ${vf && vf.description ? `<div class="hint evdesc" style="white-space:normal">${esc(vf.description)}</div>` : ''}
+      ${partRows ? `<div class="tablewrap"><table><thead><tr><th>check</th><th style="text-align:right">result</th><th>what it checks</th></tr></thead><tbody>${partRows}</tbody></table></div>` : ''}`;
   const group = (keys) => { const xs = dup.filter(([, d]) => keys.includes(d.behavior)); return [xs.filter(([id, d]) => verdict(ep, id, d)).length, xs.length]; };
   const [by, bn] = group(['barge_in']), [ry, rn] = group(['backchannel', 'aside', 'noise', 'away']), ai = dup.filter(([, d]) => d.behavior === 'agent_interrupt').length;
   const stat = (label, y, n) => n ? `<span class="chip">${label} <b class="${y === n ? 'ok' : 'no'}">${y}/${n}</b></span>` : '';
@@ -580,16 +628,17 @@ function renderEval() {
       <td>${esc((t.text || '').slice(0, 42))}</td><td>${esc(e.outcome)}</td><td class="mono">${esc(e.target || '')}${e.reply ? ` → ${esc(e.reply)}` : ''}</td><td class="num">${e.latency_ms != null ? e.latency_ms + 'ms' : ''}</td>
       <td class="num ${scoreCls(e.score)}" style="font-weight:600">${e.score != null ? e.score.toFixed(2) : '<span class="sc na" title="left out of the means">not scored</span>'}</td></tr>`; }).join('') : '';
   $('#evalcard').innerHTML = `
+    <div class="evblock"><div class="evsub">Content <span class="hint" style="font-weight:400">eval.reward · eval.verifier — the task's own check of what was done</span></div>${content}</div>
+    <div class="evblock"><div class="evsub">Duplex timing <span class="hint" style="font-weight:400">eval.scores · eval.duplex — rule-based, from the timeline</span></div>
     ${sc ? `<div class="hint" style="margin-bottom:4px">scores — one per user turn: did the agent do what the user expected, and how fast when it took over (rule-based, 0–1; eval.scores; total = mean over the turns)</div>
     <div class="chips" style="margin:0 0 8px">${scoreChips}</div>
     ${sc.events.length ? `<div class="tablewrap" style="max-height:260px;margin-bottom:12px"><table><thead><tr><th>user turn</th><th>user expects</th><th>at</th><th>what the user said</th><th>outcome</th><th>agent turn</th><th style="text-align:right">latency</th><th style="text-align:right">score</th></tr></thead><tbody>${scoreRows}</tbody></table></div>` : ''}
     <div class="hint" style="margin-bottom:4px">special duplex behaviours (eval.duplex)</div>` : ''}
     <div class="chips" style="margin:0 0 10px">
-      <span class="chip">reward <b class="${r.total == null ? '' : r.total > 0 ? 'ok' : 'no'}">${r.total ?? '— (no reward defined)'}</b></span>${parts}
       ${stat('barge-in handled', by, bn)}${stat('rejection correct', ry, rn)}${ai ? `<span class="chip">agent interruptions <b class="no">${ai}</b></span>` : ''}
     </div>
     ${dup.length ? `<div class="tablewrap" style="max-height:260px"><table><thead><tr><th>turn</th><th>behaviour</th><th>at</th><th>what the user did</th><th>expected</th><th>agent turn affected</th><th>reaction</th><th style="text-align:right">latency</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : '<div class="hint">No special duplex behaviour in this episode (only normal turn-taking).</div>'}`;
+      : '<div class="hint">No special duplex behaviour in this episode (only normal turn-taking).</div>'}</div>`;
   document.querySelectorAll('#evalcard tbody tr').forEach(el => el.onclick = () => { const t = +el.dataset.t; setCursor(t); scrollTo(t); });
   wrap.hidden = false;
 }
@@ -1111,6 +1160,7 @@ function syncLive(t, force) {
 
 // ---------- boot ----------
 $('#q').oninput = renderSidebar;
+renderCatFilter();
 $('#cases').onclick = e => { const el = e.target.closest('.case'); if (el) selectCase(+el.dataset.i); };
 document.addEventListener('keydown', e => {
   if (!cur || e.target.tagName === 'INPUT') return;

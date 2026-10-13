@@ -6,7 +6,7 @@ The **standard trajectory format** the env writes after an episode. The machine-
 
 | Function | Location |
 |---|---|
-| Build an episode from an Env | `interaction_gym.traj.episode(env, episode_id, run_id=, media=, reward=, meta=)` |
+| Build an episode from an Env | `interaction_gym.traj.episode(env, episode_id, run_id=, media=, reward=, meta=, agent=, verifier=)` |
 | Read / write (one JSONL file per run) | `traj.save(episodes, path, append=False)` / `traj.load(path)` |
 | Restore the runtime event log | `traj.to_frames(ep, media=None)` |
 | Derive the agent's view | `traj.agent_view(ep, chunk_ms)` |
@@ -74,6 +74,8 @@ Per-step agent observations are not saved separately: given the agent's `chunk_m
 | `env` | object | yes | Environment context: which components the environment consists of, and what the environment gives the agent (tool schemas, instructions, context); see §4.1.1 |
 | `user` | object | when there is a user simulator | Details of the user simulation: persona, goal, voice, models used, barge-in and turn-taking policy; see §4.1.2 |
 | `agent` | object | no (filled by runners) | The agent the episode ran: `{name, model, kind, server, ...}`. `kind`: `full-duplex` (one model that listens and speaks at once, e.g. MiniCPM-o 4.5 on vLLM-Omni) / `cascaded` (ASR → LLM → TTS) / `text` (a scripted or LLM text agent timed by a speaking rate). Agents describe themselves (`describe()`: `VllmOmniDuplexAgent` adds `clock`, `audio_out`; `CascadedAgent` its ASR / LLM / TTS) and runners pass them as `traj.episode(..., agent=agent)`; extra keys are agent-specific settings (e.g. sampling). The viewer shows it in the episode header |
+| `categories` | array of strings | yes (filled by `traj.episode`) | The task's category tags; a task may have several. `chitchat`: open conversation, no tools and no procedure; `sop`: the agent must follow a procedure (`policy`); `tool_call`: the agent calls tools. Taken from `task.scenario["categories"]`; otherwise inferred (`traj.categories`): `tool_call` when tools were offered, `sop` when there is a `policy`, `chitchat` when neither. The viewer shows them as tags and filters by them |
+| `policy` | object | no | The procedure (SOP) the agent must follow, as it was given to it (it is also inside `env.instructions`): `name`, `format` (how it is written, e.g. SOPBench's `structured` / `list`), `target_action` and `target` (the requested action's own entry), `text` (the whole procedure), `note`. The viewer shows it in its own card |
 | `duration_ms` | integer | yes | Total length of the timeline |
 | `end_reason` | string | yes | How the episode ended: `idle` (natural end, see below) / `max_duration` (maximum duration reached; speech still in progress is cut at that instant) |
 
@@ -316,12 +318,16 @@ The trajectory records only environment-level facts (who said what when, tool ca
 }
 ```
 
+`eval` has two kinds of evaluation. **Content**: was the task done right, by the task's own checker (`reward`, described by `verifier`); absent (`reward.total` null, no `verifier`) for open conversation. **Duplex timing**: `duplex` and `scores`, rule-based from `turns`, for every episode.
+
 ### 6.1 `reward`
 
 | Field | Type | Meaning |
 |---|---|---|
 | `total` | number or `null` | Total reward; `null` when some part cannot be computed (e.g. it needs an LLM judge that was not run) |
 | `parts` | object | Per-part rewards; names depend on the task source (e.g. τ-bench's `DB`, `ENV_ASSERTION`, `ACTION`, `COMMUNICATE`; AutomationBench's `task_completed_correctly`, `partial_credit`) |
+
+`eval.verifier` (optional) describes the checker behind `reward`, for readers of the trajectory: `name`, `description` (what it runs, on what, and when the reward is 1) and `checks` (`{part: what it checks}`, one per key of `parts`). Integrations export theirs as `VERIFIER` (`sopbench`, `colbench`, `browsergym`); pass it as `traj.episode(..., verifier=)`.
 
 ### 6.2 `duplex`: special duplex behaviors
 

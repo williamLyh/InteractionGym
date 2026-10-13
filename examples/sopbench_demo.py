@@ -88,10 +88,11 @@ async def main():
             if env.truncated or not res["calls"]:
                 print("   skipped (needs: a natural end, at least one function call)")
                 continue
-            reward = {"total": res["reward"], "parts": {c: res[c] for c in CHECKS}}
+            reward = {"total": res["reward"], "parts": {c: float(res[c]) for c in CHECKS}}
             sc = task.scenario["sopbench"]
             ep = episode(env, task.id, media=media, agent=agent, reward=reward,
-                         meta={"benchmark": f"SOPBench {sc['domain']} (SOP format: {sc['sop_format']})", "sopbench": res})
+                         meta={"benchmark": f"SOPBench {sc['domain']} (SOP format: {sc['sop_format']})", "sopbench": res,
+                               "policy": sb.policy(task)}, verifier=sb.VERIFIER)
             episodes.append(ep)
             notes[task.id] = (f"SOPBench {sc['domain'].replace('_', ' ')} · {sc['user_goal'].replace('_', ' ')}: the caller gives their details only "
                               f"when asked; the agent must verify the SOP's conditions with function calls before acting · "

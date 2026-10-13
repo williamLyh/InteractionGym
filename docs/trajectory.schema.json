@@ -79,6 +79,37 @@
             }
           }
         },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The task's category tags; a task may have several: chitchat (open conversation, no tools, no procedure), sop (a procedure the agent must follow: meta.policy), tool_call (the agent calls tools). From task.scenario.categories, else inferred (traj.categories)."
+        },
+        "policy": {
+          "type": "object",
+          "description": "The procedure (SOP) the agent must follow, as given to it (it is also part of meta.env.instructions): name, format, target_action, target (the requested action's own entry), text (the whole procedure), note.",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string"
+            },
+            "target_action": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
         "agent": {
           "type": "object",
           "description": "The agent the episode ran, as the runner records it (agents describe themselves: describe()): name, model, kind, server, and agent-specific settings.",
@@ -719,6 +750,24 @@
     "eval": {
       "type": "object",
       "properties": {
+        "verifier": {
+          "type": "object",
+          "description": "How the task's own checker computed reward: name, description, and checks (reward part -> what it checks).",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "checks": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "reward": {
           "type": "object",
           "properties": {

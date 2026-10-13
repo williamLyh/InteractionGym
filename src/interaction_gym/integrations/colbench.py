@@ -226,6 +226,19 @@ def _strip_fences(code: str) -> str:
     return code
 
 
+VERIFIER = {
+    "name": "ColBench hidden tests",
+    "description": ("After the call, the first function handed in with submit_code is run on ColBench's 10 hidden test cases, in a "
+                    "separate Python process with a time limit per call; each test passes if the submission returns what the "
+                    "reference function returns. Reward 1 only if all tests pass. The agent never sees the tests or the reference."),
+    "checks": {
+        "tests_passed": "fraction of the hidden test cases on which the submission's output equals the reference function's",
+        "success": "all hidden test cases pass (the reward)",
+        "submitted": "a function was handed in with submit_code",
+    },
+}
+
+
 def run_tests(code: str | None, reference: str, test_cases: dict, timeout_s: float = 1.0) -> list[bool]:
     """Per test case: does ``code`` give the reference function's (non-None) output? Runs in a separate Python
     process (isolated mode, a per-call time limit); generated code is untrusted, so run this in a sandbox."""

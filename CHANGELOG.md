@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Task categories, SOP policy and verifier in the trajectory and viewer.** `meta.categories` tags a task as `chitchat`,
+  `sop` and/or `tool_call` (several allowed; from `task.scenario["categories"]`, else inferred by `traj.categories`);
+  `meta.policy` holds the procedure the agent had to follow (`sopbench.policy(task)`); `eval.verifier` describes the
+  task's own checker (`VERIFIER` in `sopbench`, `colbench`, `browsergym`; `traj.episode(..., verifier=)`). The viewer
+  shows category tags in the header, sidebar (with a filter) and run index, an "SOP policy" card (the requested
+  action's conditions, then the whole SOP), and splits Evaluation into Content (reward, verifier, each check and what
+  it checks; left empty for open conversation) and Duplex timing.
 - **Procedures: SOPBench.** `integrations.sopbench` runs SOPBench (Li et al. 2025; code MIT, data CC BY 4.0) as a spoken
   task: the user holds the case's goal and information and gives each item only when asked; the agent gets SOPBench's
   assistant prompt with the SOP in one of `FORMATS` (`structured`, `list`, `structured+order`) plus a phone-call note,

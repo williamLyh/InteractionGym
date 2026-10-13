@@ -80,9 +80,9 @@ async def main():
             if not (res["success"] and not env.truncated and asked):
                 print("   skipped (needs: success, a natural end, at least one question answered)")
                 continue
-            reward = {"total": res["reward"], "parts": {"tests_passed": res["tests_passed"], "success": res["success"], "submitted": res["submitted"]}}
+            reward = {"total": res["reward"], "parts": {"tests_passed": res["tests_passed"], "success": float(res["success"]), "submitted": float(res["submitted"])}}
             ep = episode(env, task.id, media=media, agent=agent, reward=reward,
-                         meta={"benchmark": "ColBench backend (test)", "submitted_code": cb.submitted_code(env)})
+                         meta={"benchmark": "ColBench backend (test)", "submitted_code": cb.submitted_code(env)}, verifier=cb.VERIFIER)
             episodes.append(ep)
             notes[task.id] = (f"ColBench backend programming (test #{i}): the caller explains the function, the agent asks, then "
                               f"submits the code (a tool call, never spoken) · hidden tests {sum(res['tests'])}/{len(res['tests'])}")
