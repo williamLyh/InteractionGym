@@ -23,7 +23,6 @@ from pathlib import Path
 
 from interaction_gym import AgentSpec, Env, Task
 from interaction_gym import sop_task as st
-from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent
 from interaction_gym.benchmarks import benchmark_user
 from interaction_gym.clients import Cached, OpenAIChat, OpenAISpeech
 from interaction_gym.envvars import getenv
@@ -172,6 +171,7 @@ def make_task(name: str, sc: dict) -> Task:
 
 
 async def run(name: str, sc: dict, fmt: str, *, audio_out: bool, seed: int, chunk_ms: int, clock: str = "input"):
+    from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent  # needs websockets (extra vllm-omni)
     llm = OpenAIChat(LLM_URL, LLM_MODEL, max_tokens=80)
     voice = Voice(Cached(OpenAISpeech(TTS_URL, TTS_MODEL, sr=SR)), voices=QWEN3_TTS_VOICES, clone=OpenAISpeech(CLONE_URL, CLONE_MODEL, sr=SR))
     user = benchmark_user(LLMSource(llm), voice=voice, interrupt=LLMInterrupt(llm), timing=TurnTaking(response_delay=ResponseDelay()),
