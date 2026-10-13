@@ -131,7 +131,7 @@ SCENARIOS = {
               "You cannot pay a deposit: the company only pays on the night. If they ask for a deposit, say so and do not agree. "
               "If they cannot book it, ask what you can do instead, note it, thank them and say goodbye."),
         first_turn="Hello, I would like to make a reservation for Saturday, please.",
-        background=-24),  # at -12 dB MiniCPM-o stops answering (3 takes of 3; it hears no end of turn)
+        background=-12),  # as the chat set's noisy cafe
     "clinic-frank": dict(  # should be done
         agent_role="You are the receptionist of Greenfield Medical Clinic.",
         sop=CLINIC_SOP,
