@@ -33,6 +33,15 @@ from .core import Task
 SPOKEN_NOTE = ("This is a phone call: what you write is spoken to the caller. Speak briefly and naturally, one or two short "
                "sentences at a time; no lists or markdown. Ask for what you need one or two items at a time.")
 
+# the agent's instructions around the SOP, by the SOP's "lang"
+FRAME = {
+    "en": {"follow": "Follow this standard operating procedure (SOP). Do an action only when its conditions hold; otherwise decline as it says.",
+           "screen": "Information you can see (your screen):", "note": SPOKEN_NOTE},
+    "zh": {"follow": "请按照下面的标准作业流程（SOP）办事：只有条件都满足时才办理；不满足时按流程说明婉拒。",
+           "screen": "你能看到的信息（你的屏幕）：",
+           "note": "这是一通电话：你写的内容会被读给来电者听。请全程只用普通话，说话简短自然，每次一两句；不要列表或格式符号。需要的信息一次只问一两项。"},
+}
+
 VERIFIER = {
     "name": "SOP transcript check (LLM extraction + rules)",
     "description": ("After the call, an LLM reads the transcript and reports what happened, without scoring it: the agent's "
@@ -64,12 +73,12 @@ def should_do(task: Task) -> bool:
 def agent_instructions(task: Task, fmt: str = "structured") -> str:
     sc = task.scenario
     facts = sc["sop_case"].get("facts", "")
+    f = FRAME.get(sc["sop"].get("lang", "en"), FRAME["en"])
     return "\n\n".join(x for x in (
         sc.get("agent_role", ""),
-        "Follow this standard operating procedure (SOP). Do an action only when its conditions hold; otherwise decline as it says.\n\n"
-        + S.render(sc["sop"], fmt),
-        f"Information you can see (your screen):\n{facts}" if facts else "",
-        SPOKEN_NOTE) if x)
+        f["follow"] + "\n\n" + S.render(sc["sop"], fmt),
+        f"{f['screen']}\n{facts}" if facts else "",
+        f["note"]) if x)
 
 
 def policy(task: Task, fmt: str = "structured") -> dict:

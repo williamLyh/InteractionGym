@@ -12,6 +12,9 @@
   `procedure_followed`, `details_correct`). `examples/sop_calls.py` turns the old service calls (restaurant, clinic,
   shop) into SOP tasks, two to be done and two to be declined, with MiniCPM-o 4.5. The viewer's SOP card also shows the
   agent's screen and the ground truth, and Evaluation shows the judge's report. `OpenAIChat(timeout=)`. docs/SOP.md.
+- **Chinese SOPs.** An SOP's `lang` (`en`, `zh`) sets the language of the built-in formats' own words and of the agent's
+  frame in `sop_task`. `examples/sop_calls.py` adds four calls in Mandarin: a courier changing a parcel's address and a
+  hotel's late checkout, each with a caller to serve and one to decline.
 - **Task categories, SOP policy and verifier in the trajectory and viewer.** `meta.categories` tags a task as `chitchat`,
   `sop` and/or `tool_call` (several allowed; from `task.scenario["categories"]`, else inferred by `traj.categories`);
   `meta.policy` holds the procedure the agent had to follow (`sopbench.policy(task)`); `eval.verifier` describes the

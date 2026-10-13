@@ -4,6 +4,7 @@ An SOP is plain JSON-able data, so it lives in a task (``task.scenario["sop"]``)
 (``meta.policy["source"]``)::
 
     {"name": "Trattoria Roma table bookings",
+     "lang": "en",                                                # optional: "zh" writes the formats' own words in Chinese
      "rules": ["Keep replies short.", ...],                      # general conduct, always in force
      "actions": {
        "book_table": {
@@ -170,26 +171,44 @@ def render(sop: dict, fmt: str = "structured") -> str:
     return fs[fmt](sop).strip()
 
 
-def _cond(c: dict) -> str:
-    how = {"ask": "ask the caller", "look_up": "check your information"}.get(c.get("by", "look_up"))
-    out = f"{c['text']} ({how})"
-    return out + (f" If not: {c['on_fail']}" if c.get("on_fail") else "")
+# the built-in formats' own words, by the SOP's "lang" (the SOP's texts are written in that language)
+WORDS = {
+    "en": {"ask": "ask the caller", "look_up": "check your information", "if_not": " If not: ", "rules": "General rules:",
+           "all": "ALL of these must hold:", "any": "ANY ONE of these must hold:", "chain": "These steps, IN THIS ORDER:",
+           "actions": "Actions and their conditions:", "before": "Before doing it:", "none": "No conditions.", "then": "Then: ",
+           "otherwise": "Otherwise: ", "one_of": "At least one of: ", "or": " OR ", "and": "; and ", "check": "Before doing it, check ({}):",
+           "in_order": "in this order", "all_of": "all of them", "yes": "yes", "no": "no", "do": "do ", "decline": "decline", "how": " ({})"},
+    "zh": {"ask": "询问来电者", "look_up": "查看你的信息", "if_not": "不满足时：", "rules": "通用规则：",
+           "all": "以下条件全部满足：", "any": "以下条件满足其一即可：", "chain": "以下步骤，按顺序：",
+           "actions": "业务及其条件：", "before": "办理前：", "none": "无条件。", "then": "然后：",
+           "otherwise": "否则：", "one_of": "至少满足其一：", "or": " 或 ", "and": "；并且", "check": "办理前核实（{}）：",
+           "in_order": "按顺序", "all_of": "全部", "yes": "是", "no": "否", "do": "办理", "decline": "拒绝", "how": "（{}）"},
+}
+
+
+def words(sop: dict) -> dict:
+    return WORDS.get(sop.get("lang", "en"), WORDS["en"])
+
+
+def _cond(c: dict, w: dict = WORDS["en"]) -> str:
+    out = c["text"] + w["how"].format(w[c.get("by", "look_up")])
+    return out + (f"{w['if_not']}{c['on_fail']}" if c.get("on_fail") else "")
 
 
 def _rules(sop: dict) -> str:
-    rs = sop.get("rules") or []
-    return ("General rules:\n" + "\n".join(f"- {r}" for r in rs) + "\n\n") if rs else ""
+    rs, w = sop.get("rules") or [], words(sop)
+    return (w["rules"] + "\n" + "\n".join(f"- {r}" for r in rs) + "\n\n") if rs else ""
 
 
 @register_format("structured")
 def structured(sop: dict) -> str:
-    head = {"all": "ALL of these must hold:", "any": "ANY ONE of these must hold:", "chain": "These steps, IN THIS ORDER:"}
+    w = words(sop)
 
     def tree(n, ind=0) -> list[str]:
         k, pad = kind(n), "  " * ind
         if k == "check":
-            return [pad + _cond(n)]
-        out = [pad + head[k]]
+            return [pad + _cond(n, w)]
+        out = [pad + w[k]]
         for i, p in enumerate(n[k], 1):
             sub = tree(p, ind + 1)
             mark = f"{i}. " if k == "chain" else "• "
@@ -200,48 +219,52 @@ def structured(sop: dict) -> str:
     parts = []
     for name, a in sop.get("actions", {}).items():
         lines = [f"* {name}: {a.get('description', '')}".rstrip(": ")]
-        lines += ["  Before doing it:"] + ["  " + x for x in tree(a["requires"], 1)] if a.get("requires") else ["  No conditions."]
-        lines += [f"  Then: {t}" for t in a.get("then", [])]
+        lines += ["  " + w["before"]] + ["  " + x for x in tree(a["requires"], 1)] if a.get("requires") else ["  " + w["none"]]
+        lines += [f"  {w['then']}{t}" for t in a.get("then", [])]
         if a.get("otherwise"):
-            lines.append(f"  Otherwise: {a['otherwise']}")
+            lines.append(f"  {w['otherwise']}{a['otherwise']}")
         parts.append("\n".join(lines))
-    return _rules(sop) + "Actions and their conditions:\n\n" + "\n\n".join(parts)
+    return _rules(sop) + w["actions"] + "\n\n" + "\n\n".join(parts)
 
 
 @register_format("list")
 def numbered(sop: dict) -> str:
     """Numbered steps per action. ``any`` becomes "one of: (a) ... (b) ..."; ``chain`` and ``all`` are steps (a chain's
     order is stated); the logic of the tree is kept, unlike a flat list of every condition."""
+    w = words(sop)
+
     def items(n) -> list[str]:
         k = kind(n)
         if k == "check":
-            return [_cond(n)]
+            return [_cond(n, w)]
         if k == "any":
             alts = []
             for j, p in enumerate(n[k]):
                 sub = items(p)
-                alts.append(f"({chr(97 + j)}) " + ("; and ".join(sub) if len(sub) > 1 else sub[0]))
-            return ["At least one of: " + " OR ".join(alts)]
+                alts.append(f"({chr(97 + j)}) " + (w["and"].join(sub) if len(sub) > 1 else sub[0]))
+            return [w["one_of"] + w["or"].join(alts)]
         return [x for p in n[k] for x in items(p)]
 
     parts = []
     for name, a in sop.get("actions", {}).items():
         req = a.get("requires")
         steps = items(req) if req else []
-        order = "in this order" if req and kind(req) == "chain" else "all of them"
+        order = w["in_order"] if req and kind(req) == "chain" else w["all_of"]
         lines = [f"{name}: {a.get('description', '')}".rstrip(": ")]
         if steps:
-            lines.append(f"Before doing it, check ({order}):")
+            lines.append(w["check"].format(order))
             lines += [f"{i}. {s}" for i, s in enumerate(steps, 1)]
-        lines += [f"Then: {t}" for t in a.get("then", [])]
+        lines += [f"{w['then']}{t}" for t in a.get("then", [])]
         if a.get("otherwise"):
-            lines.append(f"Otherwise: {a['otherwise']}")
+            lines.append(f"{w['otherwise']}{a['otherwise']}")
         parts.append("\n".join(lines))
     return _rules(sop) + "\n\n".join(parts)
 
 
 @register_format("code")
 def code(sop: dict) -> str:
+    w = words(sop)
+
     def expr(n) -> str:
         k = kind(n)
         if k == "check":
@@ -252,8 +275,7 @@ def code(sop: dict) -> str:
     out = []
     for name, a in sop.get("actions", {}).items():
         for c in checks(a.get("requires")):
-            how = "ask the caller" if c.get("by") == "ask" else "check your information"
-            line = f'def {c["check"]}() -> bool:\n    """{c["text"]} ({how})"""\n    ...'
+            line = f'def {c["check"]}() -> bool:\n    """{_cond({**c, "on_fail": None}, w)}"""\n    ...'
             if line not in out:
                 out.append(line)
     out.append("")
@@ -267,9 +289,9 @@ def code(sop: dict) -> str:
         for p in steps:  # in order
             body.append(f"    if not {expr(p)}:")
             fails = [c.get("on_fail") for c in checks(p) if c.get("on_fail")]
-            body.append(f"        return decline({(fails[-1] if fails else a.get('otherwise', 'decline'))!r})")
+            body.append(f"        return decline({(fails[-1] if fails else a.get('otherwise', w['decline']))!r})")
         for t in a.get("then", []):
-            body.append(f"    # then: {t}")
+            body.append(f"    # {w['then'].strip()} {t}")
         body.append(f"    return do_{name}()")
         out.append("\n".join(body))
     return _rules(sop) + "```python\n" + "\n\n".join(out) + "\n```"
@@ -277,7 +299,7 @@ def code(sop: dict) -> str:
 
 @register_format("mermaid")
 def mermaid(sop: dict) -> str:
-    lines, n = ["flowchart TD"], [0]
+    lines, n, w = ["flowchart TD"], [0], words(sop)
 
     def nid() -> str:
         n[0] += 1
@@ -291,13 +313,13 @@ def mermaid(sop: dict) -> str:
         if k == "check":
             i = nid()
             lines.append(f'  {i}{{"{q(node["text"])}"}}')
-            lines.append(f"  {i} -->|yes| {yes}")
+            lines.append(f"  {i} -->|{w['yes']}| {yes}")
             if node.get("on_fail"):
                 f = nid()
                 lines.append(f'  {f}["{q(node["on_fail"])}"]')
-                lines.append(f"  {i} -->|no| {f}")
+                lines.append(f"  {i} -->|{w['no']}| {f}")
             else:
-                lines.append(f"  {i} -->|no| {no}")
+                lines.append(f"  {i} -->|{w['no']}| {no}")
             return i
         parts = node[k]
         if k == "any":  # try each alternative in turn
@@ -313,8 +335,8 @@ def mermaid(sop: dict) -> str:
     for name, a in sop.get("actions", {}).items():
         start, do, dec = nid(), nid(), nid()
         lines.append(f'  {start}(["{q(name)}: {q(a.get("description", ""))}"])')
-        lines.append(f'  {do}["do {q(name)}' + ("; then " + q("; ".join(a["then"])) if a.get("then") else "") + '"]')
-        lines.append(f'  {dec}["{q(a.get("otherwise", "decline"))}"]')
+        lines.append(f'  {do}["{w["do"]}{q(name)}' + ("; " + w["then"] + q("; ".join(a["then"])) if a.get("then") else "") + '"]')
+        lines.append(f'  {dec}["{q(a.get("otherwise", w["decline"]))}"]')
         entry = flow(a["requires"], do, dec) if a.get("requires") else do
         lines.append(f"  {start} --> {entry}")
     return _rules(sop) + "```mermaid\n" + "\n".join(lines) + "\n```"

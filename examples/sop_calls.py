@@ -99,6 +99,55 @@ SHOP_SOP = validate({
 
 TODAY = "Today is Friday 16 October 2026, 15:20."
 
+# Chinese SOPs ("lang": "zh": the formats' own words and the agent's frame are in Chinese too)
+PARCEL_SOP = validate({
+    "name": "顺达快递：修改收件地址",
+    "lang": "zh",
+    "rules": ["回答简短。", "不要透露来电者以外的任何包裹信息。"],
+    "actions": {"change_address": {
+        "description": "为来电者修改一个包裹的收件地址。",
+        "requires": {"chain": [
+            {"check": "parcel_verified", "text": "来电者报出了运单号和收件人手机号后四位，并且和系统里的一个包裹一致（见包裹信息）。", "by": "ask",
+             "on_fail": "请对方核对运单号后再来电。"},
+            {"check": "not_out_for_delivery", "text": "包裹还没有开始派送（状态不是「派送中」或「已签收」）。", "by": "look_up",
+             "on_fail": "派送中的包裹不能改地址：把派送员的电话告诉对方，请对方直接联系派送员；或者拒收，包裹退回后再重新寄。"},
+            {"all": [
+                {"check": "new_address_given", "text": "来电者说出了完整的新地址（区、街道门牌、楼栋和房间号）。", "by": "ask"},
+                {"check": "same_city", "text": "新地址和原地址（见包裹信息）在同一个城市。", "by": "look_up",
+                 "on_fail": "跨城市不能改地址：可以拒收，包裹退回后由寄件人重新寄到新地址。"}]}]},
+        "then": ["把新地址完整复述一遍，对方确认后，告诉对方修改已提交，送达会晚一天左右。"],
+        "otherwise": "说明哪一条不满足，婉拒，并给出替代办法。"}}})
+
+HOTEL_SOP = validate({
+    "name": "云栖酒店：延迟退房",
+    "lang": "zh",
+    "rules": ["回答简短、礼貌。"],
+    "actions": {"late_checkout": {
+        "description": "为住客把今天的退房时间延后。",
+        "requires": {"chain": [
+            {"check": "guest_verified", "text": "来电者报出了房号和入住人姓名，并且和入住记录一致（见入住记录）。", "by": "ask"},
+            {"all": [
+                {"check": "room_not_booked", "text": "这个房间今天没有下一位客人入住（见今日预订）。", "by": "look_up",
+                 "on_fail": "只能免费延到 13:00；也可以帮对方把行李免费寄存在前台。"},
+                {"check": "until_18", "text": "要延到的时间不晚于 18:00。", "by": "ask",
+                 "on_fail": "18:00 以后要按一晚房费收，可以建议对方续住一晚。"},
+                {"any": [
+                    {"check": "gold_member", "text": "住客是金卡或以上会员（见入住记录），延迟退房免费。", "by": "look_up"},
+                    {"check": "pays_half_day", "text": "住客同意支付半天房费（该房一晚房价的一半）。", "by": "ask",
+                     "on_fail": "不付费的话，只能免费延到 13:00。"}]}]}]},
+        "then": ["复述新的退房时间和费用（如有），对方确认后告诉对方已经办好。"],
+        "otherwise": "说明哪一条不满足，婉拒，并给出替代办法。"}}})
+
+TODAY_ZH = "今天是 2026 年 10 月 16 日，星期五，15:20。"
+PARCELS = (f"{TODAY_ZH}\n包裹信息：\n"
+           "- 运单号 7731 0526 88，收件人李娜，手机尾号 3721，原地址杭州市拱墅区湖墅南路 186 号 2 幢 1101 室；状态：杭州转运中心，待派送（预计明天上午派送）。\n"
+           "- 运单号 7731 0529 03，收件人周强，手机尾号 5580，原地址苏州市姑苏区人民路 512 号；状态：派送中（派送员王师傅，电话 138 0512 2246）。")
+GUESTS = (f"今天是 2026 年 10 月 16 日，星期五，09:40。\n入住记录（今天都应在 12:00 前退房）：\n"
+          "- 1608 房，孙丽，大床房，房价 598 元一晚，普通会员。\n"
+          "- 2215 房，何建，双床房，房价 698 元一晚，金卡会员。\n"
+          "今日预订：1608 房今晚无人入住；2215 房今晚 19:00 有新客人入住。")
+ZH_NOTE = "全程说普通话，口语化，句子要短。"
+
 # ---------------------------------------------------------------- scenarios (one case each)
 
 SCENARIOS = {
@@ -162,11 +211,58 @@ SCENARIOS = {
               "they refuse; if they offer something else, accept it if it fixes the problem, then thank them and say goodbye."),
         first_turn="Hey, I need to return some headphones, they're already broken.",
         turn_taking={"yield_after_ms": None}),  # never stops when talked over
+    "zh-parcel-li": dict(  # should be done
+        agent_role="你是顺达快递的电话客服。",
+        sop=PARCEL_SOP,
+        sop_case={"action": "change_address", "facts": PARCELS,
+                  "truth": {"parcel_verified": True, "not_out_for_delivery": True, "new_address_given": True, "same_city": True},
+                  "expect": {"new_address": "杭州市西湖区文三路 90 号 3 幢 502 室"}},
+        persona="你在公司，打电话给快递客服。", voice="vivian",
+        profile={"name": "李娜", "gender": "female", "age": 31, "language": "zh", "occupation": "程序员",
+                 "speaking_style": "干脆、语速偏快", "traits": "怕麻烦，喜欢一次说清楚"},
+        goal=("你有个包裹寄到了公司，可明天周六公司没人，想改寄到家里。运单号 7731 0526 88，收件人手机尾号 3721，被问到再说。"
+              "新地址：杭州市西湖区文三路 90 号 3 幢 502 室（和公司在同一个城市）。客服复述地址时如果说错了就纠正。改好后道谢、说再见。" + ZH_NOTE),
+        first_turn="喂，你好，我想改一下快递的收件地址。"),
+    "zh-parcel-zhou": dict(  # should be declined: already out for delivery; the alternative is the courier's number
+        agent_role="你是顺达快递的电话客服。",
+        sop=PARCEL_SOP,
+        sop_case={"action": "change_address", "facts": PARCELS,
+                  "truth": {"parcel_verified": True, "not_out_for_delivery": False, "new_address_given": True, "same_city": True}},
+        persona="你走在马路边，打电话给快递客服。", voice="eric", background=None,  # the street's own ambience
+        profile={"name": "周强", "gender": "male", "age": 45, "language": "zh", "occupation": "装修公司老板",
+                 "speaking_style": "嗓门大、有点急", "traits": "急性子，被拒绝会再争取一次", "surroundings": "street"},
+        goal=("你的包裹寄到了苏州市姑苏区人民路 512 号的店里，但你今天在工地，想改送到苏州市吴中区东吴北路 88 号工地项目部 2 楼办公室。"
+              "运单号 7731 0529 03，收件人手机尾号 5580，被问到再说。如果客服说改不了，坚持争取一次；如果客服给你别的办法"
+              "（比如派送员的电话），记下来，道谢、说再见。" + ZH_NOTE),
+        first_turn="喂？我那个快递，能不能改个地址啊？"),
+    "zh-hotel-sun": dict(  # should be done: not a member, agrees to pay half a day
+        agent_role="你是云栖酒店的前台。",
+        sop=HOTEL_SOP,
+        sop_case={"action": "late_checkout", "facts": GUESTS,
+                  "truth": {"guest_verified": True, "room_not_booked": True, "until_18": True, "gold_member": False, "pays_half_day": True},
+                  "expect": {"checkout_time": "16:00", "fee": "半天房费, or 299 元"}},
+        persona="你在酒店房间里，用房间电话打给前台。", voice="serena",
+        profile={"name": "孙丽", "gender": "female", "age": 38, "language": "zh", "occupation": "销售经理",
+                 "speaking_style": "客气、说话清楚", "traits": "出差中，下午要开线上会"},
+        goal=("你住 1608 房，入住人孙丽。下午 2 点到 3 点半要在房间开线上会，想把退房延到下午 4 点。你不是金卡会员。"
+              "如果要收半天房费，你可以接受。确认好时间和费用后，道谢、说再见。" + ZH_NOTE),
+        first_turn="你好，前台吗？我想问一下能不能晚点退房。"),
+    "zh-hotel-he": dict(  # should be declined: the room is booked tonight (a gold member, but that does not help)
+        agent_role="你是云栖酒店的前台。",
+        sop=HOTEL_SOP,
+        sop_case={"action": "late_checkout", "facts": GUESTS,
+                  "truth": {"guest_verified": True, "room_not_booked": False, "until_18": True, "gold_member": True, "pays_half_day": False}},
+        persona="你在酒店房间里，用手机打给前台。", voice="dylan",
+        profile={"name": "何建", "gender": "male", "age": 52, "language": "zh", "occupation": "工程师",
+                 "speaking_style": "慢条斯理", "traits": "常住酒店，很看重会员待遇"},
+        goal=("你住 2215 房，入住人何建，是酒店的金卡会员。想把退房延到下午 5 点。如果被拒绝，提一句自己是金卡会员，争取一次；"
+              "如果还是不行，接受客服给的替代办法，道谢、说再见。你不想为延迟退房付钱。" + ZH_NOTE),
+        first_turn="喂，你好，我是 2215 的客人，想延迟退房。"),
 }
 
 
 def make_task(name: str, sc: dict) -> Task:
-    keep = ("persona", "profile", "first_turn", "turn_taking", "background", "agent_role", "sop", "sop_case")
+    keep = ("persona", "profile", "first_turn", "turn_taking", "background", "voice", "agent_role", "sop", "sop_case")
     return Task(id=name, scenario={k: sc[k] for k in keep if k in sc} | {"instructions": sc["goal"], "categories": ["sop"]})
 
 

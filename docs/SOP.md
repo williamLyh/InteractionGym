@@ -7,7 +7,7 @@ the user decide **how it is written for the model**.
 
 - `interaction_gym.sop`: the source format, the condition logic, and the formats (plugins).
 - `interaction_gym.sop_task`: spoken SOP tasks for agents that only talk, and their judge.
-- `examples/sop_calls.py`: four service calls (restaurant ×2, clinic, online shop) with MiniCPM-o 4.5.
+- `examples/sop_calls.py`: service calls with MiniCPM-o 4.5: in English a restaurant (×2), a clinic and an online shop; in Chinese a courier (changing a parcel's address, ×2) and a hotel (late checkout, ×2).
 
 ## 1. Source format
 
@@ -36,6 +36,10 @@ An SOP is JSON-able data (in a task: `task.scenario["sop"]`; in a trajectory: `m
 | `{"all": [...]}` | Every part must hold, in any order |
 | `{"any": [...]}` | At least one part must hold |
 | `{"chain": [...]}` | Every part must hold, established in this order |
+
+`lang` (optional, default `en`; built in: `en`, `zh`) is the language the SOP's texts are written in: the built-in
+formats write their own words in it ("ALL of these must hold" / "以下条件全部满足"), and `sop_task` frames the agent's
+instructions in it.
 
 This is the same shape as SOPBench's constraint graphs (`and` / `or` / `chain` over single conditions) and as a τ²
 policy's preconditions, written once so that it can be rendered, checked and generated.

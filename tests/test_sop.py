@@ -122,3 +122,12 @@ def test_known_checks_need_not_be_established_and_do_not_constrain_order():
     assert S.witnessed(TREE, ["who"], ok, known={"open", "small", "who"})
     assert not S.witnessed(TREE, [], {**ok, "small": False}, known={"open", "small"})   # deposit was never agreed
     assert S.refuted(TREE, ["deposit"], {**ok, "small": False}, known={"small"})
+
+
+def test_a_chinese_sop_is_framed_and_rendered_in_chinese():
+    zh = {**SOP, "lang": "zh"}
+    assert "以下步骤，按顺序：" in S.render(zh, "structured") and "以下步骤" not in S.render(SOP, "structured")
+    assert "至少满足其一：" in S.render(zh, "list") and S.render(zh, "mermaid").count("-->|是|") == 4
+    t = calls.make_task("zh-hotel-he", calls.SCENARIOS["zh-hotel-he"])
+    ins = st.agent_instructions(t)
+    assert "标准作业流程" in ins and "你能看到的信息" in ins and "Follow this" not in ins
