@@ -2,6 +2,7 @@
 """Build the GitHub Pages site in ``demo/``: the demo page plus a browsable run of example episodes.
 
     python scripts/build_site.py --examples runs/suite_v2          # copy a run into demo/examples/
+    python scripts/build_site.py --examples runs/aww2 --tab autowebworld   # ... or into another tab's directory
     python scripts/build_site.py                                   # only refresh the tab bar on existing pages
 
 The site has two tabs, shown as one bar at the top of every page:
@@ -9,6 +10,8 @@ The site has two tabs, shown as one bar at the top of every page:
 - ``demo/index.html``: the interactive demo (three recorded episodes, written by hand).
 - ``demo/examples/``: a run written by ``viewer.export_run`` (``index.html``, ``env.html``, ``*.agent.html``,
   ``media/``), e.g. from ``examples/minicpmo_suite.py``.
+- ``demo/openapps/``, ``demo/autowebworld/``: co-browsing runs on a shared screen, from ``examples/openapps_demo.py``
+  and ``examples/autowebworld_demo.py`` (``--examples runs/<run> --tab openapps``).
 
 With ``--examples`` the run's pages are copied, its WAV media are transcoded to MP3 (mono, ``--bitrate``) so
 the repository stays small (PNG screenshots are copied as they are), and absolute sound-bank paths are shortened
@@ -26,7 +29,9 @@ from pathlib import Path
 
 SITE = Path(__file__).resolve().parent.parent / "demo"
 REPO_URL = "https://github.com/williamLyh/InteractionGym"
-TABS = [("demo", "Demo", "index.html"), ("examples", "Example episodes", "examples/index.html")]
+TABS = [("demo", "Demo", "index.html"), ("examples", "Example episodes", "examples/index.html"),
+        ("openapps", "Co-browsing: OpenApps", "openapps/index.html"),
+        ("autowebworld", "Co-browsing: AutoWebWorld", "autowebworld/index.html")]
 BAR_H = 38  # px
 
 START, END = "<!-- site-nav -->", "<!-- /site-nav -->"
@@ -70,8 +75,8 @@ def put_nav(page: Path, active: str, root: str) -> None:
     page.write_text(s)
 
 
-def copy_examples(run: Path, bitrate: str) -> None:
-    out = SITE / "examples"
+def copy_examples(run: Path, bitrate: str, tab: str = "examples") -> None:
+    out = SITE / tab
     if out.exists():
         shutil.rmtree(out)
     (out / "media").mkdir(parents=True)
@@ -92,7 +97,7 @@ def copy_examples(run: Path, bitrate: str) -> None:
         shutil.copy2(f, dst)
     check_media(out)
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
-    print(f"examples: {len(list(out.glob('*.html')))} pages, {len(wavs)} audio files, {size / 1e6:.1f} MB -> {out}")
+    print(f"{tab}: {len(list(out.glob('*.html')))} pages, {len(wavs)} audio files, {size / 1e6:.1f} MB -> {out}")
 
 
 def check_media(out: Path) -> None:
@@ -109,13 +114,15 @@ def check_media(out: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--examples", type=Path, help="a run directory written by viewer.export_run")
+    ap.add_argument("--tab", default="examples", choices=[k for k, _, _ in TABS[1:]], help="the tab (directory) the run goes to")
     ap.add_argument("--bitrate", default="48k", help="MP3 bitrate for the examples' audio")
     args = ap.parse_args()
     if args.examples:
-        copy_examples(args.examples, args.bitrate)
+        copy_examples(args.examples, args.bitrate, args.tab)
     put_nav(SITE / "index.html", "demo", "")
-    for page in sorted((SITE / "examples").glob("*.html")):
-        put_nav(page, "examples", "../")
+    for key, _, _ in TABS[1:]:
+        for page in sorted((SITE / key).glob("*.html")):
+            put_nav(page, key, "../")
 
 
 if __name__ == "__main__":

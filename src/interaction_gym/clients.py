@@ -16,6 +16,8 @@ import io
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 import wave
 from typing import Callable, Protocol
@@ -35,13 +37,21 @@ class Speech(Protocol):
                     seed: int | None = None) -> Audio: ...
 
 
-def _post(url: str, payload: dict, api_key: str | None, timeout: float = 120) -> bytes:
+def _post(url: str, payload: dict, api_key: str | None, timeout: float = 120, retries: int = 0) -> bytes:
+    """POST JSON; a server error (5xx) is retried ``retries`` times, a second apart (a busy server's hiccup)."""
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    req = urllib.request.Request(url, json.dumps(payload).encode(), headers)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    data = json.dumps(payload).encode()
+    for k in range(retries + 1):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, data, headers), timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code < 500 or k == retries:
+                raise
+        time.sleep(1.0)
+    raise AssertionError("unreachable")
 
 
 class OpenAIChat:
@@ -100,7 +110,15 @@ class OpenAISpeech:
             payload.pop("voice")
             if ref_text:
                 payload["ref_text"] = ref_text
-        raw = await asyncio.to_thread(_post, self.url, payload, self.api_key)
+        for k in range(3):  # a server error is retried; a seeded TTS that ran away (no end-of-speech) would again: new seed
+            try:
+                raw = await asyncio.to_thread(_post, self.url, payload, self.api_key)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code < 500 or k == 2:
+                    raise
+                if "seed" in payload:
+                    payload["seed"] += 1
         if raw[:4] == b"RIFF":  # a WAV says its own rate (some TTS models are 16, 22.05, 44.1 or 48 kHz)
             with wave.open(io.BytesIO(raw)) as w:
                 audio = Audio.from_pcm16(w.readframes(w.getnframes()), w.getframerate())

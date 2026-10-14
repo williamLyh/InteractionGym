@@ -7,6 +7,7 @@ functions, a robot skill API, ...) plugs in by implementing a ``ToolBackend`` ad
 
 Streams: the agent calls on ``policy.tool_call`` and hears back on ``tool.result``;
 a simulated user calls on ``user.tool_call`` and hears back on ``tool.user_result``.
+A world that can be seen (a browser page) can also publish its picture as a video stream (``ToolWorld(screen=...)``).
 """
 
 from __future__ import annotations
@@ -83,6 +84,15 @@ class ToolBackend:
     def fork(self, state: Any, n: int) -> list[Any]:
         return [copy.deepcopy(state) for _ in range(n)]
 
+    def render(self, state: Any) -> bytes | None:
+        """The world's current picture (PNG), for backends that can be seen (e.g. a browser page); None: nothing to show."""
+        return None
+
+    def view(self, state: Any) -> dict | None:
+        """What the picture shows, as data (e.g. the values in a form's fields): carried with each frame, for simulated
+        people who look at it. None: nothing."""
+        return None
+
     def evaluate(self, task: Task, log: list[Frame], truncated: bool = False) -> dict | None:
         """Optional outcome reward computed by the backend from the episode log."""
         return None
@@ -115,18 +125,27 @@ class ToolWorld(Node):
 
     With several services, tool names are qualified as ``<service>__<tool>``. Services whose
     backends set the same ``state_group`` operate on one shared world (reset once, forked together).
+
+    ``screen`` (a stream name, e.g. ``video.SCREEN``): the picture of every backend that can ``render`` it is published
+    on that stream as ``VideoFrame``s, at the start of the episode and after each call that changed it (whoever made it),
+    at the time the call's result arrives.
+
+    ``serial`` (callers): each of these callers' calls start only when its previous call has finished, like one pair
+    of hands (several calls sent at once run one after the other); otherwise they all start when sent.
     """
 
     SESSION = "session"
 
     def __init__(self, backends: ToolBackend | dict[str, ToolBackend], latency_ms: int | Callable[[ToolCall], int] = 0,
-                 callers=("agent", "user"), mode: str = "all"):
+                 callers=("agent", "user"), mode: str = "all", screen: str | None = None, serial=()):
         if isinstance(backends, ToolBackend):
             backends = {backends.name: backends}
         assert mode in ("all", "discover"), mode
         self.backends = backends
         self.latency_ms = latency_ms
         self.mode = mode
+        self.screen = screen
+        self.serial = tuple(serial)
         self.reads = tuple(CALL[c] for c in callers)
         qualify = len(backends) > 1
         self.specs: dict[str, dict[str, ToolSpec]] = {}  # caller -> exposed name -> spec
@@ -176,13 +195,30 @@ class ToolWorld(Node):
                 if b.state_group not in groups:
                     groups[b.state_group] = b.reset(task, rng)
                 services[svc] = groups[b.state_group]
-        return {"services": services, "loaded": []}
+        return {"services": services, "loaded": [], "shown": {}, "free": {}}
+
+    def _frames(self, state, t: int, services, note: str = "") -> list[Frame]:
+        """A new frame on the screen stream for each of ``services`` whose picture changed."""
+        from .video import VideoFrame
+
+        out = []
+        for svc in services if self.screen else ():
+            png = self.backends[svc].render(state["services"][svc])
+            if png is not None and png != state["shown"].get(svc):
+                state["shown"][svc] = png
+                out.append(Frame(self.screen, t, VideoFrame(png, svc, note, self.backends[svc].view(state["services"][svc]))))
+        return out
 
     async def step(self, state, t, inbox):
         out = []
+        if self.screen and not state["shown"]:  # the first picture, at the start
+            out += self._frames(state, t, self.backends)
         for f in inbox:
             caller, call = CALLER[f.stream], f.data
             lat = self.latency_ms(call) if callable(self.latency_ms) else self.latency_ms
+            if caller in self.serial:  # one pair of hands: this call waits for the caller's previous one
+                lat += max(0, state["free"].get(caller, t) - t)
+                state["free"][caller] = t + lat
             if caller == "agent" and self.mode == "discover" and call.name in {m.name for m in META_TOOLS}:
                 res, update = self._meta(state, call)
                 out.append(Frame(RESULT[caller], t + lat, res))
@@ -198,6 +234,7 @@ class ToolWorld(Node):
                 svc, inner = self.route[caller][call.name]
                 res = await self.backends[svc].call(state["services"][svc], caller, dataclasses.replace(call, name=inner))
                 res = dataclasses.replace(res, name=call.name)
+                out += self._frames(state, t + lat, [svc], f"{caller}: {inner}")
             out.append(Frame(RESULT[caller], t + lat, res))
         return out, None
 
@@ -237,8 +274,8 @@ class ToolWorld(Node):
             s = state["services"][svc]
             if id(s) not in copies:
                 copies[id(s)] = b.fork(s, n)
-        return [{"services": {svc: copies[id(state["services"][svc])][i] for svc in self.backends}, "loaded": list(state["loaded"])}
-                for i in range(n)]
+        return [{"services": {svc: copies[id(state["services"][svc])][i] for svc in self.backends}, "loaded": list(state["loaded"]),
+                 "shown": dict(state["shown"]), "free": dict(state.get("free", {}))} for i in range(n)]
 
 
 def tool_log(log: list[Frame]) -> list[tuple[int, str, ToolCall, ToolResult | None]]:

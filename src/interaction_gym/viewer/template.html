@@ -191,7 +191,7 @@ function catsOf(ep) {
   if ((m.categories || []).length) return m.categories;
   if ((sc.categories || []).length) return sc.categories;
   const out = m.policy ? ['sop'] : [];
-  if ((e.tools || []).length || (e.tool_services || []).length || (e.tool_updates || []).length) out.push('tool_call');
+  if ((e.tools || []).length || (e.tool_services || []).length || (e.tool_updates || []).length || (e.user_tools || []).length) out.push('tool_call');
   return out.length ? out : ['chitchat'];
 }
 function catHtml(k) { return `<span class="cat ${esc(k)}">${esc(CATEGORIES[k] || k)}</span>`; }
@@ -218,6 +218,7 @@ function fromEpisode(ep) {
       if (c.result_time != null) frames.push({stream: user ? 'tool.user_result' : 'tool.result', t: c.result_time, src: 'tools', dur: 0, data: {id: c.id, name: c.name, content: c.content ?? '', error: !!c.error, images: c.images || []}});
     });
   });
+  (ep.video || []).forEach(v => frames.push({stream: v.stream, t: v.t, src: 'tools', dur: 0, data: {__video__: true, image: v.image || null, note: v.note || ''}}));
   frames.push({stream: 'end', t: m.duration_ms, src: '', dur: 0, data: m.end_reason});
   const envc = m.env || {};   // tools the environment offers the agent: at t=0, then each later addition
   const envTools = (envc.tools || []).map(tool => ({t: 0, tool})).concat(
@@ -392,6 +393,7 @@ const modality = s => isAudio(s.data) ? '🔊 ' : '';
 function sliceTxt(d, a, b) { return typeof d === 'string' ? d.slice(a, b) : Array.isArray(d) ? `[${Math.max(0, Math.min(b, d.length) - a)} items]` : ''; }
 function summary(d) {
   if (d == null) return '';
+  if (d.__video__) return 'frame' + (d.note ? ' after ' + d.note : '');
   if (isSeg(d)) return `seg ${d.id} [${d.t0}–${d.t0 + d.dur}] ${isAudio(d.data) ? txt(d.data) + ' ' : ''}${segText(d)}`;
   if (typeof d === 'object' && d.name && d.arguments) return `${d.name}(${Object.entries(d.arguments).map(([k, v]) => k + '=' + JSON.stringify(v)).join(', ')})  #${d.id}`;
   if (typeof d === 'object' && d.name && 'content' in d) return `${d.error ? '✗ ' : ''}${d.name} → ${d.content}  #${d.id}`;
@@ -574,7 +576,8 @@ function envHtml(c) {
   return `<div class="chips" style="margin:0 0 8px"><span class="hint" style="align-self:center">components</span>${comps}${e.tool_schema_mode ? `<span class="chip">tool_schema_mode <b>${esc(e.tool_schema_mode)}</b></span>` : ''}${(e.background || []).map(b => `<span class="chip">background <b>${esc(bgLabel(b))}</b></span>`).join('')}</div>
     <div class="grid2" style="gap:18px">
       <div>
-        <div class="hint">tools offered at t=0 <span>(click for the parameter schema)</span></div>${(e.tools || []).map(toolHtml).join('') || '<div class="hint">none</div>'}
+        <div class="hint">agent's tools at t=0 <span>(click for the parameter schema)</span></div>${(e.tools || []).map(toolHtml).join('') || '<div class="hint">none</div>'}
+        ${(e.user_tools || []).length ? `<div class="hint" style="margin-top:8px">simulated user's tools <span>(its own hands on the page; not in the agent's session)</span></div>${e.user_tools.map(toolHtml).join('')}` : ''}
         ${e.instructions ? `<details style="margin-top:6px"><summary class="hint">instructions (${e.instructions.length} chars)</summary><pre>${esc(e.instructions)}</pre></details>` : ''}
         ${e.agent_context ? `<div class="hint" style="margin-top:6px">agent_context</div><pre>${esc(JSON.stringify(e.agent_context, null, 2))}</pre>` : ''}
       </div>
@@ -976,8 +979,13 @@ function renderState() {
     }).join('');
     h += `<div class="row"><span class="who other">tools</span><div style="margin-top:4px">${rows}</div></div>`;
   }
-  // computer use: the screen as the agent last saw it (the newest screenshot returned by t)
-  const shots = (c.tools || []).filter(k => k.res && (k.res.data.images || []).length);
+  // a video stream (a shared screen): the frame shown at t; else, computer use: the newest screenshot returned by t
+  const video = c.frames.filter(f => f.data && f.data.__video__ && f.data.image);
+  const shots = video.length ? [] : (c.tools || []).filter(k => k.res && (k.res.data.images || []).length);
+  if (video.length) {
+    const seen = video.filter(f => f.t <= t), f = seen[seen.length - 1];
+    h += `<div class="row screen"><span class="who other">screen</span> ${f ? `<small style="color:var(--muted)"><span style="font-family:var(--mono)">${esc(f.stream)}</span> · frame ${seen.length}/${video.length} at ${f.t}ms${f.data.note ? ' · after ' + esc(f.data.note) : ''}</small><img alt="screen" src="${esc(MEDIA_BASE + f.data.image.uri)}">` : '<span class="unheard">(no picture yet)</span>'}</div>`;
+  }
   if (shots.length) {
     const seen = shots.filter(k => k.t1 <= t), k = seen[seen.length - 1];
     h += `<div class="row screen"><span class="who other">screen</span> ${k ? `<small style="color:var(--muted)">after <b style="font-family:var(--mono);font-weight:500">${esc(k.call.data.name)}</b> at ${k.t1}ms</small><img alt="screenshot" src="${esc(MEDIA_BASE + k.res.data.images[k.res.data.images.length - 1].uri)}">` : '<span class="unheard">(no screenshot yet)</span>'}</div>`;

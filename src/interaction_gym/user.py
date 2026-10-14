@@ -222,6 +222,20 @@ class Leveling:
                 "peak_dbfs": self.peak_dbfs}
 
 
+def clip_reference(audio: Audio, text: str, max_ms: int, window_ms: int = 40) -> tuple[Audio, str]:
+    """A voice reference no longer than ``max_ms``: cut at the quietest ``window_ms`` within its last quarter (a pause
+    between words, as near the end as it gets), keeping the share of the words that went before the cut."""
+    if audio.dur_ms <= max_ms:
+        return audio, text
+    w = max(1, audio.sr * window_ms // 1000)
+    lo, hi = audio.sr * max_ms * 3 // 4000, audio.sr * max_ms // 1000 - w
+    s = audio.samples
+    cut = min(range(lo, hi + 1, w), key=lambda i: (sum(abs(x) for x in s[i:i + w]), -i)) + w // 2
+    words = (text or "").split()
+    keep = max(1, round(len(words) * cut / len(s)))
+    return audio[:cut], " ".join(words[:keep])
+
+
 class Voice:
     """Renders a turn: use its audio if given, else TTS, else text with an estimated duration.
 
@@ -242,6 +256,8 @@ class Voice:
     (``clones``); ``clone=False`` opts out explicitly. With it the user keeps one voice for the whole episode: the first turn with words in it (synthesized as above, or given as recorded audio) becomes
     the reference, and every later turn is cloned from it (``ref_audio`` + ``ref_text``), which also carries the
     reference's pace and manner over. The reference lives in the user node's episode state (passed in as ``ref``).
+    A reference turn longer than ``ref_max_ms`` (cloning servers cap it, e.g. vLLM-Omni at 30 s) is clipped to fit
+    (``clip_reference``): cut at the quietest moment of its last quarter, with the words in proportion.
 
     ``leveling`` (a ``Leveling``) post-processes every synthesized turn: silence trimmed, loudness normalised.
     ``seed=True`` sends one sampling seed (from the task id and speaker) with every turn of an episode, for TTS
@@ -250,7 +266,7 @@ class Voice:
 
     def __init__(self, speech: Speech | None = None, voice: str = "default", words_per_sec: float = WORDS_PER_SEC,
                  voices: list[dict] | None = None, clone: Speech | bool | None = None, ref_min_words: int = 3,
-                 style: str | None = "neutral", leveling: Leveling | None = Leveling(), seed: bool = True):
+                 ref_max_ms: int = 29_000, style: str | None = "neutral", leveling: Leveling | None = Leveling(), seed: bool = True):
         self.speech = speech
         self.voice = voice
         self.wps = words_per_sec
@@ -263,6 +279,7 @@ class Voice:
             clone = speech
         self.clone = None if clone is False else clone
         self.ref_min_words = ref_min_words
+        self.ref_max_ms = ref_max_ms
         self.style = style
         self.leveling = leveling
         self.seed = seed
@@ -315,7 +332,9 @@ class Voice:
         """The episode's voice reference after ``seg``: the first segment with real words and audio."""
         if ref is not None or self.clone is None or not isinstance(seg.data, Audio):
             return ref
-        return (seg.data, seg.text) if n_words(seg.text or "") >= self.ref_min_words else None
+        if n_words(seg.text or "") < self.ref_min_words:
+            return None
+        return clip_reference(seg.data, seg.text, self.ref_max_ms)
 
     def max_ms(self, text: str) -> int:
         """The longest a turn with these words can plausibly take (TTS models occasionally run away,

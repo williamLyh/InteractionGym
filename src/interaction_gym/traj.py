@@ -18,6 +18,7 @@ from .core import REWARD, SESSION, Env, Frame, Segment, Session
 from .eval import duplex, scores
 from .media import MediaStore
 from .tools import CALL, CALLER, RESULT, ToolCall, ToolResult
+from .video import VideoFrame
 
 SCHEMA = 1
 
@@ -111,6 +112,9 @@ def _env_context(env: Env, log: list[Frame]) -> dict:
     available at t=0 (or the catalog to discover them), instructions, granted context, and the
     tools added later (with the time they became available)."""
     out: dict = {"components": {name: type(node).__name__ for name, node in env.nodes.items() if name != Env.POLICY}}
+    user_tools = [_tool_dict(s) for node in env.nodes.values() for s in (getattr(node, "specs", None) or {}).get("user", {}).values()]
+    if user_tools:  # the simulated user's own tools (its hands on a shared world): never in the agent's session
+        out["user_tools"] = user_tools
     if env.background_specs:  # the always-on background (context, no turn): what it is, even when nothing is mixed
         out["background"] = [dict(s) for s in env.background_specs]
     frames = [f for f in log if f.stream == SESSION]
@@ -241,6 +245,11 @@ def episode(
     if bg:
         ep["background"] = bg
     ep["turns"] = turns
+    video = [f for f in log if isinstance(f.data, VideoFrame)]
+    if video:  # what a camera or a shared screen showed: each frame holds until the next on its stream
+        ep["video"] = [{"stream": f.stream, "t": f.t, **({"image": media.image_ref(f.data.png)} if media is not None else {}),
+                        **({"note": f.data.note} if f.data.note else {}), **({"view": f.data.view} if f.data.view is not None else {})}
+                       for f in video]
     if reward is None:  # from the episode's reward stream; null when nothing defines a reward
         rewarded = any(f.stream == REWARD for f in log)
         reward = {"total": env.sim.reward if rewarded else None, "parts": {}}
