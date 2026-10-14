@@ -38,6 +38,7 @@ CLONE_URL = getenv("IG_CLONE_URL", "http://127.0.0.1:8005/v1")
 CLONE_MODEL = getenv("IG_CLONE_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 MAX_MS = 900_000
 AGENT_PROMPTS = {"minicpmo": "You are a helpful AI assistant. Always speak in English.",
+                 "gander": "You are a helpful AI assistant. Always speak in English.",
                  "cascaded": "You are a helpful AI assistant. Always speak in English. Your replies are spoken aloud on a live call: answer in at most four short sentences, no lists or markdown."}
 
 

@@ -86,6 +86,26 @@ EITHER_LAYER = frozenset({"bad_audio", "bad_event"})
 class InputDroppedError(RuntimeError):
     """Lockstep: the server kept refusing an input, so the model did not hear it."""
 MINICPMO_CPS = 11.3  # MiniCPM-o 4.5 speaking rate, characters/s (speech_rate over 7 lockstep audio episodes, 2026-10-02)
+GANDER_CPS = 12.8  # Gander speaking rate, characters/s (speech_rate over 34 complete English turns, 29 lockstep audio FD-Bench v3 episodes, 2026-10-14)
+
+# Native duplex models the benchmark runners know by name (``--agent``): the served model id, the model's own
+# reference voice (relative to IG_MODEL_DIR) and its speaking rate for text-only output.
+DUPLEX_MODELS = {
+    "minicpmo": {"model": "openbmb/MiniCPM-o-4_5", "ref_audio": "MiniCPM-o-4_5/assets/system_ref_audio.wav", "speech_cps": MINICPMO_CPS},
+    # Gander-Omni/Gander (MiniCPM-o 4.5 fine-tune, Apache-2.0): needs a server that reads the checkpoint's duplex_cadence
+    "gander": {"model": "Gander-Omni/Gander", "ref_audio": "Gander/talker/assets/ref_audio.wav", "speech_cps": GANDER_CPS},
+}
+
+
+def duplex_model(agent: str) -> dict:
+    """``{"model", "ref_audio", "speech_cps"}`` for a runner's ``--agent`` name (``minicpmo``, ``minicpmo-confirm``,
+    ``gander``, ...: the entry of its first word); IG_AGENT_MODEL, IG_AGENT_REF_AUDIO and IG_AGENT_CPS override it."""
+    from ..envvars import getenv
+
+    m = DUPLEX_MODELS[agent.split("-")[0]]
+    return {"model": getenv("IG_AGENT_MODEL", m["model"]),
+            "ref_audio": getenv("IG_AGENT_REF_AUDIO", str(Path(getenv("IG_MODEL_DIR", "models")) / m["ref_audio"])),
+            "speech_cps": float(getenv("IG_AGENT_CPS", str(m["speech_cps"])))}
 
 
 def output_label(audio_out: bool, speech_cps: float = MINICPMO_CPS) -> str:

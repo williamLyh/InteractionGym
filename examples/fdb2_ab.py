@@ -26,7 +26,7 @@ from pathlib import Path
 from interaction_gym import AgentSpec, Env
 from interaction_gym import turn_validity as tv
 from interaction_gym.agents.cascaded import CascadedAgent, Endpointing, LatencyModel, ToolChat
-from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode
+from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model
 from interaction_gym.benchmarks import benchmark_user, fdb2
 from interaction_gym.clients import OpenAIChat, OpenAISpeech, OpenAITranscribe
 from interaction_gym.envvars import getenv
@@ -46,8 +46,6 @@ CLONE_URL = getenv("IG_CLONE_URL", "http://127.0.0.1:8005/v1")
 CLONE_MODEL = getenv("IG_CLONE_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 TTS_MODEL = getenv("IG_TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice")
 AGENT_URL = getenv("IG_AGENT_URL", "ws://127.0.0.1:8010/v1/realtime?duplex=1")
-AGENT_MODEL = getenv("IG_AGENT_MODEL", "openbmb/MiniCPM-o-4_5")
-REF_AUDIO = getenv("IG_AGENT_REF_AUDIO", str(Path(getenv("IG_MODEL_DIR", "models")) / "MiniCPM-o-4_5/assets/system_ref_audio.wav"))
 AUDIO_OUT = False  # MiniCPM-o output: False = text timed at speech_cps (Thinker-only server); --audio-out = the talker's speech
 EXAMINER_VOICE = "serena"
 EXAMINER_MAX_TURNS = 12
@@ -59,6 +57,7 @@ CONFIRM_PROMPT = ("You are a helpful voice assistant on a live phone call. Alway
                   "what you still need. Keep every reply short and natural: it is spoken aloud.")
 CASCADED_PROMPT = fdb2.EXAMINEE_PROMPT + " Your replies are spoken aloud on a live call: keep them short and conversational."
 AGENTS = {"minicpmo": ("duplex", fdb2.EXAMINEE_PROMPT), "minicpmo-confirm": ("duplex", CONFIRM_PROMPT),
+          "gander": ("duplex", fdb2.EXAMINEE_PROMPT),
           "cascaded": ("cascaded", CASCADED_PROMPT)}
 
 
@@ -166,7 +165,7 @@ def make_env(task, rec: dict, d: Path, cond: str, seed: int) -> Env:
 def make_agent(name: str, seed: int, cache: dict):
     kind, prompt = AGENTS[name]
     if kind == "duplex":
-        return VllmOmniDuplexAgent(DUPLEX_SPEC, AGENT_URL, model=AGENT_MODEL, ref_audio=REF_AUDIO, out_sr=SR, clock="input",
+        return VllmOmniDuplexAgent(DUPLEX_SPEC, AGENT_URL, **duplex_model(name), out_sr=SR, clock="input",
                                    audio_out=AUDIO_OUT, trace_tokens=True, session={"instructions": prompt})
     return CascadedAgent(CASCADED_SPEC, OpenAITranscribe(ASR_URL, ASR_MODEL), ToolChat(LLM_URL, LLM_MODEL, native=False, max_tokens=300),
                          tts(), instructions=prompt, voice="aiden", seed=seed, cache=cache,
