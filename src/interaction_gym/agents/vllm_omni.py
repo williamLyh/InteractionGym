@@ -64,6 +64,7 @@ import base64
 import json
 import time
 import warnings
+from array import array
 from pathlib import Path
 
 import websockets
@@ -89,23 +90,40 @@ MINICPMO_CPS = 11.3  # MiniCPM-o 4.5 speaking rate, characters/s (speech_rate ov
 GANDER_CPS = 12.8  # Gander speaking rate, characters/s (speech_rate over 34 complete English turns, 29 lockstep audio FD-Bench v3 episodes, 2026-10-14)
 
 # Native duplex models the benchmark runners know by name (``--agent``): the served model id, the model's own
-# reference voice (relative to IG_MODEL_DIR) and its speaking rate for text-only output.
+# reference voice (relative to IG_MODEL_DIR), its speaking rate for text-only output, the env step (a divisor of the
+# model's unit) and adapter settings. ``audio_only``: the server has no text-only path (the agent always speaks).
 DUPLEX_MODELS = {
     "minicpmo": {"model": "openbmb/MiniCPM-o-4_5", "ref_audio": "MiniCPM-o-4_5/assets/system_ref_audio.wav", "speech_cps": MINICPMO_CPS},
     # Gander-Omni/Gander (MiniCPM-o 4.5 fine-tune, Apache-2.0): needs a server that reads the checkpoint's duplex_cadence
     "gander": {"model": "Gander-Omni/Gander", "ref_audio": "Gander/talker/assets/ref_audio.wav", "speech_cps": GANDER_CPS},
+    # nvidia/personaplex-7b-v1 (Moshi fine-tune, NVIDIA Open Model License): 80 ms frames at 24 kHz, a bundled voice;
+    # it emits near-silent audio between replies, so utterances are split on 800 ms of quiet output
+    "personaplex": {"model": "nvidia/personaplex-7b-v1", "chunk_ms": 80, "audio_only": True,
+                    "agent": {"voice": "NATF2.pt", "in_sr": 24000, "in_format": "pcm_f32le", "split_silence_ms": 800}},
 }
 
 
 def duplex_model(agent: str) -> dict:
-    """``{"model", "ref_audio", "speech_cps"}`` for a runner's ``--agent`` name (``minicpmo``, ``minicpmo-confirm``,
-    ``gander``, ...: the entry of its first word); IG_AGENT_MODEL, IG_AGENT_REF_AUDIO and IG_AGENT_CPS override it."""
+    """``VllmOmniDuplexAgent`` keyword arguments for a runner's ``--agent`` name (``minicpmo``, ``minicpmo-confirm``,
+    ``gander``, ``personaplex``, ...: the entry of its first word): ``model``, ``ref_audio``, ``speech_cps``, the
+    model's adapter settings and, for an audio-only model, ``audio_out=True``. IG_AGENT_MODEL, IG_AGENT_REF_AUDIO and
+    IG_AGENT_CPS override the table."""
     from ..envvars import getenv
 
     m = DUPLEX_MODELS[agent.split("-")[0]]
-    return {"model": getenv("IG_AGENT_MODEL", m["model"]),
-            "ref_audio": getenv("IG_AGENT_REF_AUDIO", str(Path(getenv("IG_MODEL_DIR", "models")) / m["ref_audio"])),
-            "speech_cps": float(getenv("IG_AGENT_CPS", str(m["speech_cps"])))}
+    ref = getenv("IG_AGENT_REF_AUDIO", str(Path(getenv("IG_MODEL_DIR", "models")) / m["ref_audio"]) if m.get("ref_audio") else None)
+    kw = {"model": getenv("IG_AGENT_MODEL", m["model"]), "ref_audio": ref, **m.get("agent", {})}
+    if m.get("speech_cps"):
+        kw["speech_cps"] = float(getenv("IG_AGENT_CPS", str(m["speech_cps"])))
+    if m.get("audio_only"):
+        kw["audio_out"] = True
+    return kw
+
+
+def duplex_spec(agent: str, sr: int, audio: str = "user.audio") -> AgentSpec:
+    """The env's ``AgentSpec`` for a duplex model: ``chunk_ms`` from ``DUPLEX_MODELS`` (default 200 ms, which divides
+    MiniCPM-o's 1 s unit)."""
+    return AgentSpec(chunk_ms=DUPLEX_MODELS[agent.split("-")[0]].get("chunk_ms", 200), audio=audio, sr=sr)
 
 
 def output_label(audio_out: bool, speech_cps: float = MINICPMO_CPS) -> str:
@@ -191,6 +209,7 @@ class VllmOmniDuplexAgent:
         audio_out: bool = True,  # False: text only, timed at speech_cps
         speech_cps: float = MINICPMO_CPS,
         in_sr: int = IN_SR,
+        in_format: str = "pcm16",  # input sample format the server expects: "pcm16" or "pcm_f32le" (PersonaPlex)
         voice: str | None = None,
         turn_detection: dict | None = None,
         commit_after_silence_ms: int | None = None,
@@ -215,7 +234,9 @@ class VllmOmniDuplexAgent:
         self.ref_audio = Path(ref_audio) if ref_audio else None
         self.audio_out, self.speech_cps = audio_out, speech_cps
         self.extra = session or {}
-        self.in_sr, self.voice, self.turn_detection, self.video_frame = in_sr, voice, turn_detection, video_frame
+        if in_format not in ("pcm16", "pcm_f32le"):
+            raise ValueError(f"in_format must be pcm16 or pcm_f32le, not {in_format!r}")
+        self.in_sr, self.in_format, self.voice, self.turn_detection, self.video_frame = in_sr, in_format, voice, turn_detection, video_frame
         self.commit_after_silence_ms, self.vad_rms = commit_after_silence_ms, vad_rms
         self._heard_speech, self._quiet_in_ms, self.commits = False, 0, 0
         self.split_silence_ms, self.silence_rms = split_silence_ms, silence_rms
@@ -265,7 +286,7 @@ class VllmOmniDuplexAgent:
         session = {
             "model": self.model,
             "modalities": ["audio", "text"] if self.audio_out else ["text"],
-            "input_audio_format": "pcm16",
+            "input_audio_format": self.in_format,
             "output_audio_format": "pcm16",
             "audio": {"input": {"sample_rate_hz": self.in_sr}, "output": {"sample_rate_hz": self.out_sr}},
             "turn_detection": self.turn_detection,
@@ -364,15 +385,21 @@ class VllmOmniDuplexAgent:
             raise ValueError(f"AgentSpec.chunk_ms={step} does not divide the model's unit of {unit} ms "
                              f"(session.capabilities.chunk_period_ms); use a divisor such as {ok[-4:]}")
 
+    def _input_bytes(self, audio: Audio) -> bytes:
+        a = audio.resample(self.in_sr)
+        if self.in_format == "pcm16":
+            return a.samples.tobytes()
+        return array("f", (x / 32768.0 for x in a.samples)).tobytes()
+
     async def act(self, t: int, obs: list[Frame]) -> list[Frame]:
         if self.ws is None:
             s = next((f.data for f in obs if f.stream == SESSION and isinstance(f.data, Session)), None)
             await self._connect(s.instructions if s else "")
         for f in obs:
             if f.stream == self.spec.audio:
-                pcm = f.data.resample(self.in_sr).samples.tobytes()
+                pcm = self._input_bytes(f.data)
                 await self._send_input(t, {"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm).decode(),
-                                           "format": "pcm16", "sample_rate_hz": self.in_sr,
+                                           "format": self.in_format, "sample_rate_hz": self.in_sr,
                                            **({"video_frames": [self.video_frame]} if self.video_frame else {})})
                 self.appends += 1
                 if self.commit_after_silence_ms is not None and await self._end_of_user_turn(f.data, f.dur):

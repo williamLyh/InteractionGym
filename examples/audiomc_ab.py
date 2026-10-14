@@ -23,10 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fdb2_ab import AGENTS, CASCADED_SPEC, DUPLEX_SPEC, SR, TTS_MODEL, TTS_URL, Judge, _done, _strip, boot_ci, describe, llm, make_agent, timing, timing_table, validity, validity_table  # noqa: E402
+from fdb2_ab import AGENTS, CASCADED_SPEC, SR, TTS_MODEL, TTS_URL, Judge, _done, _strip, boot_ci, describe, llm, make_agent, timing, timing_table, validity, validity_table  # noqa: E402
 
 from interaction_gym import Env
-from interaction_gym.agents.vllm_omni import check_output_mode
+from interaction_gym.agents.vllm_omni import check_output_mode, duplex_spec
 from interaction_gym.benchmarks import audiomc, benchmark_user
 from interaction_gym.clients import OpenAISpeech
 from interaction_gym.envvars import getenv
@@ -39,6 +39,7 @@ CLONE_MODEL = getenv("IG_CLONE_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 MAX_MS = 900_000
 AGENT_PROMPTS = {"minicpmo": "You are a helpful AI assistant. Always speak in English.",
                  "gander": "You are a helpful AI assistant. Always speak in English.",
+                 "personaplex": "You are a helpful AI assistant. Always speak in English.",
                  "cascaded": "You are a helpful AI assistant. Always speak in English. Your replies are spoken aloud on a live call: answer in at most four short sentences, no lists or markdown."}
 
 
@@ -69,7 +70,7 @@ def make_env(task, cond: str, seed: int, spec) -> Env:
 
 async def run_one(task, cond, seed, name, cache):
     kind = AGENTS[name][0]
-    env = make_env(task, cond, seed, DUPLEX_SPEC if kind == "duplex" else CASCADED_SPEC)
+    env = make_env(task, cond, seed, duplex_spec(name, SR) if kind == "duplex" else CASCADED_SPEC)
     import fdb2_ab
 
     fdb2_ab.AGENTS[name] = (kind, AGENT_PROMPTS[name])

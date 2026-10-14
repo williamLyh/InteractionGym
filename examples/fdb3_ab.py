@@ -41,7 +41,7 @@ from pathlib import Path
 
 from interaction_gym import AgentSpec, Env
 from interaction_gym.agents.cascaded import CascadedAgent, Endpointing, LatencyModel, ToolChat
-from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model
+from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model, duplex_spec
 from interaction_gym.benchmarks import benchmark_user, fdb3
 from interaction_gym.benchmarks import fdb3_spoken as spoken
 from interaction_gym.clients import OpenAIChat, OpenAISpeech, OpenAITranscribe
@@ -71,7 +71,6 @@ USER_MAX_TURNS = 8
 
 # Native duplex agents (no tools): the model hears the microphone and decides by itself when to speak.
 AGENT_URL = getenv("IG_AGENT_URL", "ws://127.0.0.1:8010/v1/realtime?duplex=1")
-DUPLEX_SPEC = AgentSpec(chunk_ms=200, audio="user.audio", sr=SR)  # MiniCPM-o decides once per 1 s unit
 DOMAINS = {"travel_identity": "a travel agency (flight search and booking, passport and ID document updates)",
            "finance_billing": "a bank (card benefits, currency exchange, autopay and bill payments)",
            "housing_location": "a rental housing agency (apartment search, commute times, search filters)",
@@ -81,7 +80,7 @@ DUPLEX_PROMPT = ("You are the voice assistant of {domain}, answering a customer 
                  "repeating every detail they gave (names, dates, places, amounts, numbers and codes) with the final values they settled on: "
                  "if they corrected themselves, use the corrected value. Then say that you are taking care of it. "
                  "Only ask a question if something essential is missing. Your replies are spoken aloud: keep them short and natural.")
-DUPLEX_AGENTS = {"minicpmo": DUPLEX_PROMPT, "gander": DUPLEX_PROMPT}
+DUPLEX_AGENTS = {"minicpmo": DUPLEX_PROMPT, "gander": DUPLEX_PROMPT, "personaplex": DUPLEX_PROMPT}
 
 
 def duplex_prompt(task) -> str:
@@ -108,13 +107,14 @@ class CloneWithFallback:
         return await self.plain.synth(text, self.voice, None, language=language)
 
 
-def make_env(task, condition: str, seed: int, duplex: bool = False, a_idle_ms: int = 3000) -> Env:
+def make_env(task, condition: str, seed: int, duplex: bool = False, a_idle_ms: int = 3000, agent_name: str = "minicpmo") -> Env:
+    dspec = duplex_spec(agent_name, SR) if duplex else None
     tools = ToolWorld(fdb3.MockAPIBackend(), fdb3.latency_ms(task))
     if condition == "A":
         user = ReplayUser(voice=Voice())
         max_ms = task.scenario["benchmark"]["user_end_ms"] + 60_000
         if duplex:  # no tools; the model is given a_idle_ms of quiet to start / continue
-            return Env({"user": user}, DUPLEX_SPEC, max_ms=max_ms, end_idle_ms=a_idle_ms)
+            return Env({"user": user}, dspec, max_ms=max_ms, end_idle_ms=a_idle_ms)
     else:
         llm = OpenAIChat(LLM_URL, LLM_MODEL, temperature=0.7, seed=seed, max_tokens=200)
         clone = CloneWithFallback(OpenAISpeech(CLONE_URL, CLONE_MODEL, sr=SR), OpenAISpeech(TTS_URL, TTS_MODEL, sr=SR))
@@ -122,7 +122,7 @@ def make_env(task, condition: str, seed: int, duplex: bool = False, a_idle_ms: i
                        timing=TurnTaking(response_delay=ResponseDelay(), yield_after_ms=None, nudge_after_ms=10_000))
         max_ms = 180_000
     if duplex:
-        return Env({"user": user}, DUPLEX_SPEC, max_ms=max_ms, end_idle_ms=3000)
+        return Env({"user": user}, dspec, max_ms=max_ms, end_idle_ms=3000)
     return Env({"user": user, "tools": tools}, SPEC, max_ms=max_ms, end_idle_ms=3000)
 
 
@@ -130,8 +130,8 @@ AUDIO_OUT = False  # MiniCPM-o output: False = text timed at speech_cps (Thinker
 
 
 def make_duplex_agent(task, name: str = "minicpmo") -> VllmOmniDuplexAgent:
-    return VllmOmniDuplexAgent(DUPLEX_SPEC, AGENT_URL, **duplex_model(name), out_sr=SR, clock="input",
-                               audio_out=AUDIO_OUT, trace_tokens=True, session={"instructions": duplex_prompt(task)})
+    return VllmOmniDuplexAgent(duplex_spec(name, SR), AGENT_URL, **{"audio_out": AUDIO_OUT, **duplex_model(name)}, out_sr=SR, clock="input",
+                               trace_tokens=True, session={"instructions": duplex_prompt(task)})
 
 
 def make_agent(name: str, seed: int, cache: dict, endpoint_ms: int = 800) -> CascadedAgent:
@@ -142,7 +142,7 @@ def make_agent(name: str, seed: int, cache: dict, endpoint_ms: int = 800) -> Cas
 
 async def run_one(task, condition: str, seed: int, agent_name: str, cache: dict, endpoint_ms: int = 800, a_idle_ms: int = 3000):
     duplex = agent_name in DUPLEX_AGENTS
-    env = make_env(task, condition, seed, duplex, a_idle_ms)
+    env = make_env(task, condition, seed, duplex, a_idle_ms, agent_name)
     agent = make_duplex_agent(task, agent_name) if duplex else make_agent(agent_name, seed, cache, endpoint_ms)
     wall = time.monotonic()
     try:

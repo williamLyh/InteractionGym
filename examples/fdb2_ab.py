@@ -26,7 +26,7 @@ from pathlib import Path
 from interaction_gym import AgentSpec, Env
 from interaction_gym import turn_validity as tv
 from interaction_gym.agents.cascaded import CascadedAgent, Endpointing, LatencyModel, ToolChat
-from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model
+from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model, duplex_spec
 from interaction_gym.benchmarks import benchmark_user, fdb2
 from interaction_gym.clients import OpenAIChat, OpenAISpeech, OpenAITranscribe
 from interaction_gym.envvars import getenv
@@ -49,7 +49,6 @@ AGENT_URL = getenv("IG_AGENT_URL", "ws://127.0.0.1:8010/v1/realtime?duplex=1")
 AUDIO_OUT = False  # MiniCPM-o output: False = text timed at speech_cps (Thinker-only server); --audio-out = the talker's speech
 EXAMINER_VOICE = "serena"
 EXAMINER_MAX_TURNS = 12
-DUPLEX_SPEC = AgentSpec(chunk_ms=200, audio="user.audio", sr=SR)
 CASCADED_SPEC = AgentSpec(chunk_ms=100, obs=("user.speech",), audio="user.audio", sr=SR)
 CONFIRM_PROMPT = ("You are a helpful voice assistant on a live phone call. Always speak in English. Let the caller finish speaking "
                   "before you reply. Help them with what they ask; when they give details (items, names, times, numbers), confirm "
@@ -57,7 +56,7 @@ CONFIRM_PROMPT = ("You are a helpful voice assistant on a live phone call. Alway
                   "what you still need. Keep every reply short and natural: it is spoken aloud.")
 CASCADED_PROMPT = fdb2.EXAMINEE_PROMPT + " Your replies are spoken aloud on a live call: keep them short and conversational."
 AGENTS = {"minicpmo": ("duplex", fdb2.EXAMINEE_PROMPT), "minicpmo-confirm": ("duplex", CONFIRM_PROMPT),
-          "gander": ("duplex", fdb2.EXAMINEE_PROMPT),
+          "gander": ("duplex", fdb2.EXAMINEE_PROMPT), "personaplex": ("duplex", fdb2.EXAMINEE_PROMPT),
           "cascaded": ("cascaded", CASCADED_PROMPT)}
 
 
@@ -148,7 +147,7 @@ def a_turns(rec: dict, d: Path) -> list[dict]:
 
 
 def make_env(task, rec: dict, d: Path, cond: str, seed: int) -> Env:
-    spec = DUPLEX_SPEC if AGENTS[task.scenario["_agent"]][0] == "duplex" else CASCADED_SPEC
+    spec = duplex_spec(task.scenario["_agent"], SR) if AGENTS[task.scenario["_agent"]][0] == "duplex" else CASCADED_SPEC
     if cond == "A":
         task.scenario["turns"] = a_turns(rec, d)
         end = min(rec["script_end_ms"] + 15_000, A_MAX_MS)
@@ -165,8 +164,8 @@ def make_env(task, rec: dict, d: Path, cond: str, seed: int) -> Env:
 def make_agent(name: str, seed: int, cache: dict):
     kind, prompt = AGENTS[name]
     if kind == "duplex":
-        return VllmOmniDuplexAgent(DUPLEX_SPEC, AGENT_URL, **duplex_model(name), out_sr=SR, clock="input",
-                                   audio_out=AUDIO_OUT, trace_tokens=True, session={"instructions": prompt})
+        return VllmOmniDuplexAgent(duplex_spec(name, SR), AGENT_URL, **{"audio_out": AUDIO_OUT, **duplex_model(name)}, out_sr=SR, clock="input",
+                                   trace_tokens=True, session={"instructions": prompt})
     return CascadedAgent(CASCADED_SPEC, OpenAITranscribe(ASR_URL, ASR_MODEL), ToolChat(LLM_URL, LLM_MODEL, native=False, max_tokens=300),
                          tts(), instructions=prompt, voice="aiden", seed=seed, cache=cache,
                          endpointing=Endpointing(silence_ms=800), latency=LatencyModel())
