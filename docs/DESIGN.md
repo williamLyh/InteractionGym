@@ -255,6 +255,55 @@ interaction_gym/
 | v2 | `world/physics` (ManiSkill) + action Segments | robot tasks with "corrected mid-execution" are trainable |
 | v3 | real humans and real robots, wall-clock mode | tested with real humans or on real robots |
 
+### 5.1 Future plan: any role can be the one under training (idea, 2026-10-14; not scheduled)
+
+Today the trained side is always "the agent" and the other side is "the user". The idea: any role of a task can be
+the one that is evaluated or trained, including the user side (teaching a model to act as a realistic caller) or any
+role of a multi-party task.
+
+**Why.**
+- **Realistic user models are a known gap.** LLM users are too polite, patient and verbose. They rarely hang up or
+  give up. There is work on trained user models, but only for text. Full-duplex user behaviour (barging in,
+  backchannels, hesitation, being called away, impatience) has hardly been studied, and the env already has the
+  timing and audio machinery for it.
+- **It is a loop.** A more realistic user makes the gym more valid. The real-human data needed to validate the
+  simulator is also what trains the user model.
+- **Personal assistants are multi-party.** The assistant calls a business for its user, so it is a caller toward the
+  business and an assistant toward the user. Two roles named user / agent cannot express this. Today's SOP tasks can be
+  reused with the business played by an LLM following the SOP and the trained model as the assistant; add a hidden
+  preference sheet for the user as ground truth.
+
+**Design sketch.**
+- **Separate the role in the story from what is being trained.** A task declares named roles (e.g. `caller`,
+  `assistant`, `business`), each with its identity and instructions (persona, goal, SOP, hidden preferences), what
+  it perceives (whose audio, which tools, its screen) and how it is judged. A run binds one role to the external
+  policy (`controlled`). The others are simulated: an LLM user sim, an agent adapter wrapped as a node, or a replay.
+  "Agent" stays the API word for the controlled policy, as in PettingZoo.
+- **Trajectory.** Turns are tagged with the role name. `meta.controlled` lists the controlled role(s). The default is
+  `controlled="agent"` with the roles `user` / `agent`, so existing tasks, data and the schema stay compatible (old
+  files read as before).
+- **Evaluation is per role.**
+  - The timing scores are symmetric: "how X responds to Y's events" works for either side.
+  - The content checks differ by role:
+    - service agent: the SOP judge;
+    - caller / user: realism and spec adherence. That means timing and length statistics close to real corpora
+      (Fisher / CANDOR), keeping persona and goal, not leaking the goal early, ending the call when done or hopeless,
+      and plausible persistence;
+    - personal assistant: the outcome matches the hidden preferences, and it asks before changing terms or spending.
+- **Anchor user-side training in real data.** "Human-like" cannot be defined by an LLM judge alone, because a policy
+  trained against a judge learns the judge (SOTOPIA-π: the GPT-4 score exceeded human ratings by 1.42 after training).
+  The reward must include distances to real-corpus statistics, checked periodically by blind human tests.
+
+**Scope.**
+- **First:** a role table and one controlled role. Then switch the trajectory format from `user` / `agent` to role
+  names, keeping old files readable. This enables two things:
+  - evaluating "act as the caller" models on the existing SOP tasks;
+  - three-party "assistant calls the business for its user" tasks.
+- **Later:** several controlled roles at once (self-play). Two trained roles co-adapt away from human behaviour, so wait
+  until real-human data can anchor them.
+- A design doc (`docs/ROLES.md`) with the role-table format, the API, per-role evaluation and compatibility comes
+  before code, since the format, eval and viewer all change.
+
 ## 6. Open questions
 
 1. **Which policy model**: τ-Voice tasks need tool calls, but Moshi / PersonaPlex cannot call tools. Candidates: MiniCPM-o 4.5, an open-source release of Qwen3-Omni (to be confirmed), or doing tool-free endogenous tasks first in v0.3 (FD-Bench v2 Correction / Entity Tracking).
