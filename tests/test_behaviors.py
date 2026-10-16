@@ -166,6 +166,26 @@ def test_barge_in_intent_is_chosen_by_the_user_llm_writing_the_line():
     assert sum(BARGE_IN_NOTE in c[-1]["content"] for c in calls) == len(barges)  # one generation call each, none extra for the intent
 
 
+def test_barge_in_rate_calibration_forces_cut_ins_written_by_the_user_llm():
+    def user(messages):
+        if BARGE_IN_NOTE in messages[-1]["content"]:
+            return "INTENT: question\nSorry, which email?"
+        return "Bye ###STOP###" if any(m["content"].startswith("Sorry, which") for m in messages) else "Hi, I need to move a booking."
+
+    listen = lambda messages: "LISTEN"
+    _, ep = run(user, listener=listen)
+    assert ep["meta"]["user"]["decisions"]["forced_interrupts"] == 0 and not [t for t in user_turns(ep) if t.get("expects") == "yield"]
+    env, ep = run(user, listener=listen, behaviors=Behaviors(barge_in_per_min=600.0))  # ~10 per second of agent speech: at once
+    d = ep["meta"]["user"]["decisions"]
+    barge = next(t for t in user_turns(ep) if t["text"] == "Sorry, which email?")
+    assert d["forced_interrupts"] >= 1 and d["INTERRUPT"] == 0 and barge["intent"] == "question" and barge["expects"] == "yield"
+    a0 = next(t for t in ep["turns"] if t["id"] == "a0")
+    assert a0["start_time"] < barge["start_time"] < a0["end_time"]
+    # a user who never barges in is never forced to
+    _, ep = run(user, listener=listen, interrupt=None, behaviors=Behaviors(barge_in_per_min=600.0))
+    assert ep["meta"]["user"]["decisions"]["forced_interrupts"] == 0
+
+
 def test_parse_intent():
     assert parse_intent("INTENT: question\nWhat time is it?") == ("question", "What time is it?")
     assert parse_intent("**Intent:** stop\nOkay, that's enough.") == ("stop", "Okay, that's enough.")

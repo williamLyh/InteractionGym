@@ -14,8 +14,8 @@ reaction time comes from scheduling the utterance in the future instead.
 from __future__ import annotations
 
 import hashlib
-import random
 import math
+import random
 import re
 import warnings
 from dataclasses import asdict, dataclass, replace
@@ -798,6 +798,12 @@ class Behaviors:
       persona's language and voice, for the surroundings and the call so far; ``asides`` / ``HOLD_ON`` / ``BACK`` are
       the fixed fallback without a model.
 
+    Calibration (off by default): ``barge_in_per_min`` extra barge-ins per minute of the agent's speech, a Poisson
+    hazard checked at the listener's decision points (only for a user who may barge in, never before the listener's
+    ``min_words``). When it fires the user cuts in without asking the listener; what it says, and why (the barge-in
+    intent), is still written by the user LLM from the call so far. Meant to match a target interruption rate, e.g.
+    the rate an open-loop (replayed) user produces, for a like-for-like comparison.
+
     ``None`` for a rate = from the surroundings (``SURROUNDINGS``; asides x2 with low ``attentiveness``), as in ``PERSONA``.
 
     Safety nets only (they should rarely bind): user sounds at least ``min_gap_ms`` apart, at most
@@ -810,6 +816,7 @@ class Behaviors:
 
     backchannel_per_min: float | None = None  # deprecated
     aside_per_min: float | None = 0.0
+    barge_in_per_min: float = 0.0  # calibration: extra barge-ins per minute of agent speech (see above)
     noise_per_min: float | None = 0.0
     pause_p: float | None = 0.0  # deprecated
     min_gap_ms: int = 3000
@@ -1150,10 +1157,11 @@ class UserSim(Node):
         base = f"{rng.getrandbits(64)}:{task.id}"
         st = {"task": task, "timing": self._timing(task), "behaviors": b, "levels": levels, "rng": rng, "agent": {}, "mine": {},
               "n": 0, "uid": 0, "done": False, "planned": None, "pending": [], "sounds": 0, "last_sound": None, "per_turn": {}, "dp": {},
-              "erng": {k: random.Random(f"{base}:{k}") for k in ("noise", "aside")}, "next_event": {},
+              "erng": {k: random.Random(f"{base}:{k}") for k in ("noise", "aside", "barge")}, "next_event": {},
               "noise": EventProcess(self._noise_rates(b, levels), base),
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
-                      LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0},
+                      LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
+                      "forced_interrupts": 0},
               "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
                          "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
         st["next_event"]["aside"] = self._draw(st, "aside", 0)
@@ -1363,7 +1371,7 @@ class UserSim(Node):
         n = st["per_turn"].get(agent_id, {}).get("backchannel", 0)
         return b.max_backchannels_per_turn is None or n < b.max_backchannels_per_turn
 
-    async def _decide(self, st, agent: Segment, t: int, at: str) -> tuple[list[Frame], int | None] | None:
+    async def _decide(self, st, agent: Segment, t: int, at: str, dt: int = 0) -> tuple[list[Frame], int | None] | None:
         tt, log, task = st["timing"], st["log"], st["task"]
         log["points"] += 1
         log[at] += 1
@@ -1387,6 +1395,10 @@ class UserSim(Node):
         if n_words(agent.heard_text(t)) < self.listener.min_words:
             log["too_few_words"] += 1
             return None
+        lam = st["behaviors"].barge_in_per_min
+        if INTERRUPT in options and lam > 0 and st["erng"]["barge"].random() < 1 - math.exp(-lam * dt / 60000):
+            log["forced_interrupts"] += 1  # calibration hazard over the dt ms of agent speech since the last decision point
+            return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
         d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
                                        st["behaviors"].backchannels, at)
         log["llm_calls"] += 1
@@ -1554,7 +1566,7 @@ class UserSim(Node):
             if t >= nxt:
                 at = "boundary" if any(last < b <= t for b in phrase_boundaries(agent)) else "fallback"
                 st["dp"][agent.id] = t
-                out = await self._decide(st, agent, t, at)
+                out = await self._decide(st, agent, t, at, t - last)
                 if out is not None:
                     return out
                 nxt = self._next_point(st, agent, t)
