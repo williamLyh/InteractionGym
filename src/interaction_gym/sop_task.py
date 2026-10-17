@@ -109,7 +109,7 @@ Transcript (turn id, speaker, text):
 Answer with one JSON object and nothing else:
 {{"decision": "done" | "declined" | "unfinished",   // done: the agent told the caller the action is done or confirmed; declined: it said it cannot be done; unfinished: neither
  "decision_turn": "<agent turn id where it confirmed or declined, or null>",
- "established": [{{"check": "<condition id>", "turn": "<turn id where it was established>", "evidence": "<the words that establish it, quoted>", "holds": true | false}}],
+ "established": [{{"check": "<condition id>", "turn": "<for [ask]: the CALLER turn that gave the answer; for [look_up]: the agent turn that stated it>", "evidence": "<the words that establish it, quoted>", "holds": true | false}}],
    // conditions the agent established, in order: [ask] = the caller said it (asked or volunteered) and the agent acknowledged or used it; [look_up] = the agent stated or clearly used the information it has. A condition that names several items (e.g. a name AND a phone number) is established only when every item was actually said; a cut-off or partial answer does not count. Leave out conditions that were never established.
  "decline_reason": "<condition id the agent gave as the reason for declining, or null>",
  "offered_alternative": true | false,   // did it offer the SOP's alternative for the failing condition
@@ -163,7 +163,13 @@ async def judge(ep: dict, task: Task, llm) -> dict:
     order = {t["id"]: i for i, t in enumerate(ep["turns"])}
     cut = order.get(report.get("decision_turn"), len(order))
     known = {c["check"] for c in conds}
-    est = [e["check"] for e in report.get("established", []) if e.get("check") in known and order.get(e.get("turn"), -1) <= cut]
+    # an [ask] condition is established by the caller's answer: an agent turn (its own question left unanswered, or the
+    # agent asserting the fact) does not count; nor does an entry with no turn of this call (DuplexInteractionRL
+    # docs/review/reward_audit_r3r4.md: both were paid in training)
+    role = {t["id"]: t["role"] for t in ep["turns"]}
+    by = {c["check"]: c.get("by", "look_up") for c in conds}
+    est = [e["check"] for e in report.get("established", []) if e.get("check") in known and e.get("turn") in order
+           and order[e["turn"]] <= cut and (by[e["check"]] != "ask" or role.get(e["turn"]) != "agent")]
     want = S.holds(req, truth)
     dec = report.get("decision")
     decision_ok = dec == ("done" if want else "declined")

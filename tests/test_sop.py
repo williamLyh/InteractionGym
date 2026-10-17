@@ -104,7 +104,8 @@ def test_judge_checks_details_when_done():
     t = calls.make_task("booking-alex", calls.SCENARIOS["booking-alex"])
     ep = _ep([("u0", "user", "Tonight at 7 for two."), ("a0", "agent", "19:00 is free. Name and phone?"), ("u1", "user", "Alex Chen, 07700 900123."),
               ("a1", "agent", "Booked: tonight 7pm, two people, Alex Chen.")])
-    est = [{"check": c, "turn": "a0"} for c in ("request_details", "opening_hours", "party_of_8_or_fewer", "table_free")] + [{"check": "name_and_phone", "turn": "u1"}]
+    est = [{"check": "request_details", "turn": "u0"}] + [{"check": c, "turn": "a0"} for c in ("opening_hours", "party_of_8_or_fewer", "table_free")] \
+        + [{"check": "name_and_phone", "turn": "u1"}]
     report = {"decision": "done", "decision_turn": "a1", "established": est, "committed": {"day": "tonight", "time": "7pm", "people": "two", "name": "Alex Chen"}}
     match = {"match": {"day": True, "time": True, "people": True, "name": True}}
     res = asyncio.run(st.judge(ep, t, FakeLLM("```json\n" + json.dumps(report) + "\n```", json.dumps(match))))
@@ -113,6 +114,12 @@ def test_judge_checks_details_when_done():
     assert res["reward"]["parts"]["procedure_followed"] == 0.0                # confirmed without asking for a name and phone
     res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": est[:1] + est[-1:]}), json.dumps(match))))
     assert res["reward"]["total"] == 1.0                                      # the free tables are on its screen: need not be said
+    asked = [{**e, "turn": "a0"} if e["check"] == "name_and_phone" else e for e in est]  # its own question, never answered
+    res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": asked}), json.dumps(match))))
+    assert res["reward"]["parts"]["procedure_followed"] == 0.0                # an [ask] condition needs the caller's answer
+    res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": [{**e, "turn": None} if e["check"] == "name_and_phone" else e for e in est]}),
+                                              json.dumps(match))))
+    assert res["reward"]["parts"]["procedure_followed"] == 0.0                # nor an entry with no turn of this call
     res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "decision": "declined", "decline_reason": "table_free",
                                                          "offered_alternative": False, "committed": {}}))))
     assert res["reward"]["parts"] == {"decision_correct": 0.0, "procedure_followed": 0.0, "details_correct": 0.0}  # no credit for a wrong decline
