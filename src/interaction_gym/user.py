@@ -1077,6 +1077,9 @@ class TurnTaking:
     check_ms: int = 1000  # after yielding to the agent, how soon the user looks again
     reaction_ms: int = 300  # barge-in decision → start of speech
     yield_after_ms: int | None = 1000  # how long the user keeps talking when the agent talks over it; None = never yields
+    # a user holding a ready answer while the agent keeps talking takes the floor with it after this long (as a barge-in);
+    # None = waits however long the agent talks (a monologue then never hears the answer)
+    hold_max_ms: int | None = None
 
 
 # Where a listener may react: after a phrase-final mark followed by a space (so not "3.5" or "e.g.x"), or after
@@ -1162,7 +1165,7 @@ class UserSim(Node):
               "noise": EventProcess(self._noise_rates(b, levels), base),
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
                       LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
-                      "forced_interrupts": 0},
+                      "forced_interrupts": 0, "hold_takeovers": 0},
               "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
                          "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
         st["next_event"]["aside"] = self._draw(st, "aside", 0)
@@ -1555,12 +1558,20 @@ class UserSim(Node):
                 return [], due
             st["pending"].pop(0)
             return await self._speak(st, t, t, turn, barge_in=agent_speaking and turn.kind is None, resumed=True)
+        if st["planned"] is None:
+            st.pop("hold_since", None)
         if st["planned"] is not None:  # an answer is ready, waiting for its moment
             turn, t0 = st["planned"]
             if agent_speaking:  # the agent started again meanwhile: hold it, re-time it after the agent stops
                 st["planned"] = (turn, None)
+                since, cap = st.setdefault("hold_since", t), st["timing"].hold_max_ms
+                if cap is not None and t - since >= cap:  # held too long: say it now, over the agent
+                    st["planned"] = None
+                    st["log"]["hold_takeovers"] += 1
+                    return await self._speak(st, t, t, turn, barge_in=True)
+                wake = agent.end if cap is None else min(agent.end, since + cap)
                 if st["behaviors"].barge_in_per_min <= 0 or self.listener is not self.interrupt:
-                    return [], agent.end
+                    return [], wake
                 # calibrated: a user holding an answer may still cut in (and then says something new, not the held answer)
                 last = st["dp"].setdefault(agent.id, agent.t0)
                 nxt = self._next_point(st, agent, last)
@@ -1570,7 +1581,7 @@ class UserSim(Node):
                         st["planned"] = None
                         return await self._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
                     nxt = self._next_point(st, agent, t)
-                return [], min(nxt, agent.end)
+                return [], min(nxt, wake)
             if t0 is None:
                 t0 = t + self._delay(st, turn)
                 st["planned"] = (turn, t0)

@@ -602,3 +602,41 @@ def test_viewer_shows_background_and_labels():
                   scenario={"profile": {"surroundings": "cafe"}})
     page = render_html([ep])
     assert "function bgSpecs" in page and "'background'" in page and '"label": "' in page and '"ambience:cafe"' in page
+
+
+def test_a_user_holding_an_answer_takes_the_floor_after_hold_max_ms():
+    """The agent ends a turn and starts another before the user's (delayed) answer: the user holds it. With
+    hold_max_ms it says it over the agent after that long (a barge-in); without, it waits for the agent to finish."""
+    from interaction_gym.user import ResponseDelay, TurnTaking
+
+    def go(hold_max_ms):
+        async def main():
+            sp = AgentSpec(chunk_ms=100)
+            timing = TurnTaking(response_delay=ResponseDelay(median_ms=1500, sigma=1e-6, distracted_p=0.0), hold_max_ms=hold_max_ms)
+            user = UserSim(LLMSource(FakeChat(["Hi, I need to move a booking.", "Saturday, please.", "Bye ###STOP###"])), Voice(),
+                           interrupt=None, listener=None, timing=timing)
+            env = Env({"user": user}, sp, max_ms=40_000)
+            await env.reset(Task(id="t", scenario={"instructions": "Move my booking to Saturday."}), seed=0)
+            plan = []
+            while not env.done:
+                act = []
+                users = [t for t in episode(env, "x")["turns"] if t["role"] == "user" and t.get("kind") is None]
+                if not plan and users and env.t >= users[-1]["end_time"] + 300:
+                    act, plan = [Frame(sp.out, env.t, Segment("a0", env.t, 1000, "Sure, which day?"))], [env.t + 1200]
+                elif len(plan) == 1 and env.t >= plan[0]:
+                    act = [Frame(sp.out, env.t, Segment("a1", env.t, 15_000, "And while I check that, let me tell you about our "
+                                                                             "new loyalty programme, which gives you points on every visit."))]
+                    plan.append(env.t)
+                await env.step(act)
+            return check(episode(env, "e"))
+        return asyncio.run(main())
+
+    ep = go(3000)
+    a1 = next(t for t in ep["turns"] if t["id"] == "a1")
+    ans = next(t for t in user_turns(ep) if t["text"] == "Saturday, please.")
+    assert a1["start_time"] < ans["start_time"] < a1["start_time"] + 4000 and ans["expects"] == "yield"
+    assert ep["meta"]["user"]["decisions"]["hold_takeovers"] == 1
+    ep = go(None)  # waits the agent out
+    a1 = next(t for t in ep["turns"] if t["id"] == "a1")
+    ans = next(t for t in user_turns(ep) if t["text"] == "Saturday, please.")
+    assert ans["start_time"] >= a1["end_time"] and ep["meta"]["user"]["decisions"]["hold_takeovers"] == 0
