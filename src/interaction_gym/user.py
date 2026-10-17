@@ -800,7 +800,8 @@ class Behaviors:
 
     Calibration (off by default): ``barge_in_per_min`` extra barge-ins per minute of the agent's speech, a Poisson
     hazard checked at the listener's decision points (only for a user who may barge in, never before the listener's
-    ``min_words``). When it fires the user cuts in without asking the listener; what it says, and why (the barge-in
+    ``min_words``; also while the user holds an answer for the agent to finish), on a clock of all the agent's speech so
+    that the time no point could use is carried to the next one. When it fires the user cuts in without asking the listener; what it says, and why (the barge-in
     intent), is still written by the user LLM from the call so far. Meant to match a target interruption rate, e.g.
     the rate an open-loop (replayed) user produces, for a like-for-like comparison.
 
@@ -1371,7 +1372,21 @@ class UserSim(Node):
         n = st["per_turn"].get(agent_id, {}).get("backchannel", 0)
         return b.max_backchannels_per_turn is None or n < b.max_backchannels_per_turn
 
-    async def _decide(self, st, agent: Segment, t: int, at: str, dt: int = 0) -> tuple[list[Frame], int | None] | None:
+    def _forced(self, st, t: int) -> bool:
+        """The calibration hazard (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock
+        counts all of the agent's speech, so what passed while no barge-in was possible (before ``min_words``, after a
+        turn's last decision point) is carried to the next point instead of lost, and the rate holds per agent-minute."""
+        lam = st["behaviors"].barge_in_per_min
+        if lam <= 0:
+            return False
+        spoken = sum(max(0, min(s.end, t) - s.t0) for s in st["agent"].values() if s.t0 <= t)
+        dt, st["barge_clock"] = spoken - st.get("barge_clock", 0), spoken
+        if st["erng"]["barge"].random() < 1 - math.exp(-lam * dt / 60000):
+            st["log"]["forced_interrupts"] += 1
+            return True
+        return False
+
+    async def _decide(self, st, agent: Segment, t: int, at: str) -> tuple[list[Frame], int | None] | None:
         tt, log, task = st["timing"], st["log"], st["task"]
         log["points"] += 1
         log[at] += 1
@@ -1395,9 +1410,7 @@ class UserSim(Node):
         if n_words(agent.heard_text(t)) < self.listener.min_words:
             log["too_few_words"] += 1
             return None
-        lam = st["behaviors"].barge_in_per_min
-        if INTERRUPT in options and lam > 0 and st["erng"]["barge"].random() < 1 - math.exp(-lam * dt / 60000):
-            log["forced_interrupts"] += 1  # calibration hazard over the dt ms of agent speech since the last decision point
+        if INTERRUPT in options and self._forced(st, t):
             return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
         d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
                                        st["behaviors"].backchannels, at)
@@ -1546,7 +1559,18 @@ class UserSim(Node):
             turn, t0 = st["planned"]
             if agent_speaking:  # the agent started again meanwhile: hold it, re-time it after the agent stops
                 st["planned"] = (turn, None)
-                return [], agent.end
+                if st["behaviors"].barge_in_per_min <= 0 or self.listener is not self.interrupt:
+                    return [], agent.end
+                # calibrated: a user holding an answer may still cut in (and then says something new, not the held answer)
+                last = st["dp"].setdefault(agent.id, agent.t0)
+                nxt = self._next_point(st, agent, last)
+                if t >= nxt:
+                    st["dp"][agent.id] = t
+                    if n_words(agent.heard_text(t)) >= self.listener.min_words and self._forced(st, t):
+                        st["planned"] = None
+                        return await self._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
+                    nxt = self._next_point(st, agent, t)
+                return [], min(nxt, agent.end)
             if t0 is None:
                 t0 = t + self._delay(st, turn)
                 st["planned"] = (turn, t0)
@@ -1566,7 +1590,7 @@ class UserSim(Node):
             if t >= nxt:
                 at = "boundary" if any(last < b <= t for b in phrase_boundaries(agent)) else "fallback"
                 st["dp"][agent.id] = t
-                out = await self._decide(st, agent, t, at, t - last)
+                out = await self._decide(st, agent, t, at)
                 if out is not None:
                     return out
                 nxt = self._next_point(st, agent, t)

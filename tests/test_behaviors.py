@@ -186,6 +186,32 @@ def test_barge_in_rate_calibration_forces_cut_ins_written_by_the_user_llm():
     assert ep["meta"]["user"]["decisions"]["forced_interrupts"] == 0
 
 
+def test_barge_in_clock_counts_all_agent_speech():
+    """The hazard's clock is the agent's speech heard so far, so time no decision point used (before min_words, a turn's
+    tail) carries to the next point: the realised rate matches barge_in_per_min per agent-minute."""
+    from types import SimpleNamespace as NS
+
+    from interaction_gym.user import UserSim
+
+    class Never(random.Random):
+        def random(self):
+            return 0.999999
+
+    st = {"behaviors": Behaviors(barge_in_per_min=3.0), "erng": {"barge": Never()}, "log": {"forced_interrupts": 0},
+          "agent": {"a0": NS(t0=0, end=4000), "a1": NS(t0=9000, end=20000)}}
+    assert not UserSim._forced(None, st, 2000) and st["barge_clock"] == 2000
+    assert not UserSim._forced(None, st, 12000) and st["barge_clock"] == 4000 + 3000  # a0's unused tail carried over
+    hits = 0
+    for k in range(4000):  # Poisson over agent speech: ~3 per agent-minute whatever the decision points
+        st = {"behaviors": Behaviors(barge_in_per_min=3.0), "erng": {"barge": random.Random(k)}, "log": {"forced_interrupts": 0},
+              "agent": {"a0": NS(t0=0, end=60000)}}
+        for t in (1000, 7000, 30000, 60000):
+            if UserSim._forced(None, st, t):
+                hits += 1
+                break
+    assert abs(hits / 4000 - (1 - math.exp(-3))) < 0.03
+
+
 def test_parse_intent():
     assert parse_intent("INTENT: question\nWhat time is it?") == ("question", "What time is it?")
     assert parse_intent("**Intent:** stop\nOkay, that's enough.") == ("stop", "Okay, that's enough.")

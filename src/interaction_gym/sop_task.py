@@ -55,7 +55,7 @@ VERIFIER = {
                                "steps in order) was established before it committed; what it looks up on its screen counts as known. Declined: a failing condition that rules the action out "
                                "was established, and given as the reason"),
         "details_correct": ("done: what the agent committed to matches the caller's request and the facts. Declined: it offered "
-                            "the SOP's alternative, where the failing condition has one"),
+                            "the SOP's alternative, where the failing condition has one. Never for a wrong decision"),
     },
 }
 
@@ -184,6 +184,7 @@ async def judge(ep: dict, task: Task, llm) -> dict:
         details_ok = bool(report.get("offered_alternative")) or not has_alt
     else:
         details_ok = False
+    details_ok = details_ok and decision_ok  # the details of a wrong decision are not right (a wrong decline offered no alternative)
     parts = {"decision_correct": float(decision_ok), "procedure_followed": float(procedure_ok), "details_correct": float(details_ok)}
     return {"reward": {"total": float(all(parts.values())), "parts": parts}, "should_do": want, "decision": dec,
             "established": est, "failing": S.failing(req, truth), "details_match": match, "report": report}

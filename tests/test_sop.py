@@ -113,6 +113,9 @@ def test_judge_checks_details_when_done():
     assert res["reward"]["parts"]["procedure_followed"] == 0.0                # confirmed without asking for a name and phone
     res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": est[:1] + est[-1:]}), json.dumps(match))))
     assert res["reward"]["total"] == 1.0                                      # the free tables are on its screen: need not be said
+    res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "decision": "declined", "decline_reason": "table_free",
+                                                         "offered_alternative": False, "committed": {}}))))
+    assert res["reward"]["parts"] == {"decision_correct": 0.0, "procedure_followed": 0.0, "details_correct": 0.0}  # no credit for a wrong decline
 
 
 def test_known_checks_need_not_be_established_and_do_not_constrain_order():
