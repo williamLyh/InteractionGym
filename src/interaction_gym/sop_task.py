@@ -166,10 +166,14 @@ async def judge(ep: dict, task: Task, llm) -> dict:
     # an [ask] condition is established by the caller's answer: an agent turn (its own question left unanswered, or the
     # agent asserting the fact) does not count; nor does an entry with no turn of this call (DuplexInteractionRL
     # docs/review/reward_audit_r3r4.md: both were paid in training)
+    # The agent turn right after a caller turn still counts: judges cite the agent acknowledging the answer (r4 review:
+    # 40-90 % of their ask citations), and only a turn chained onto the agent's own turn can be its unanswered question.
     role = {t["id"]: t["role"] for t in ep["turns"]}
     by = {c["check"]: c.get("by", "look_up") for c in conds}
+    said = sorted((t for t in ep["turns"] if t.get("kind") is None), key=lambda t: (t.get("start_time", 0), order[t["id"]]))
+    after_caller = {b["id"] for a, b in zip(said, said[1:]) if a["role"] == "user" and b["role"] == "agent"}
     est = [e["check"] for e in report.get("established", []) if e.get("check") in known and e.get("turn") in order
-           and order[e["turn"]] <= cut and (by[e["check"]] != "ask" or role.get(e["turn"]) != "agent")]
+           and order[e["turn"]] <= cut and (by[e["check"]] != "ask" or role.get(e["turn"]) != "agent" or e["turn"] in after_caller)]
     want = S.holds(req, truth)
     dec = report.get("decision")
     decision_ok = dec == ("done" if want else "declined")

@@ -114,8 +114,13 @@ def test_judge_checks_details_when_done():
     assert res["reward"]["parts"]["procedure_followed"] == 0.0                # confirmed without asking for a name and phone
     res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": est[:1] + est[-1:]}), json.dumps(match))))
     assert res["reward"]["total"] == 1.0                                      # the free tables are on its screen: need not be said
-    asked = [{**e, "turn": "a0"} if e["check"] == "name_and_phone" else e for e in est]  # its own question, never answered
-    res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": asked}), json.dumps(match))))
+    acked = [{**e, "turn": "a1"} if e["check"] == "name_and_phone" else e for e in est]  # the agent acknowledging the answer
+    res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": acked}), json.dumps(match))))
+    assert res["reward"]["total"] == 1.0                                      # an agent turn right after the caller's answer counts
+    chained = _ep([("u0", "user", "Tonight at 7 for two."), ("a0", "agent", "19:00 is free."), ("a0b", "agent", "Name and phone?"),
+                   ("a1", "agent", "Booked: tonight 7pm, two people, Alex Chen.")])
+    asked = [{**e, "turn": "a0b"} if e["check"] == "name_and_phone" else e for e in est]  # its own question, never answered
+    res = asyncio.run(st.judge(chained, t, FakeLLM(json.dumps({**report, "established": asked}), json.dumps(match))))
     assert res["reward"]["parts"]["procedure_followed"] == 0.0                # an [ask] condition needs the caller's answer
     res = asyncio.run(st.judge(ep, t, FakeLLM(json.dumps({**report, "established": [{**e, "turn": None} if e["check"] == "name_and_phone" else e for e in est]}),
                                               json.dumps(match))))
