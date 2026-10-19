@@ -54,7 +54,8 @@ Episodes are plain JSON ([FORMAT.md](FORMAT.md)): save them with `interaction_gy
 with `uv run python -m interaction_gym.viewer runs/*.json -o viewer.html`, and score them with
 `interaction_gym.eval.scores(episode["turns"], end_ms=episode["meta"]["duration_ms"])`: one score per user
 turn (did the agent do what the user expected, graded by latency when it took over: `eval.latency_score`, a
-logistic with full score up to ~500 ms, 0.92 at 700 ms, 0.38 at 1 s; docs/FORMAT.md §6.3).
+logistic with full score up to ~500 ms, 0.92 at 700 ms, 0.38 at 1 s; a reply within ~50 ms of the user's end is
+penalised as too fast, `eval.reply_score`; docs/FORMAT.md §6.3).
 
 ## 4. A closed-loop episode with real models
 

@@ -304,6 +304,35 @@ role of a multi-party task.
 - A design doc (`docs/ROLES.md`) with the role-table format, the API, per-role evaluation and compatibility comes
   before code, since the format, eval and viewer all change.
 
+### 5.2 Future plan: human-like turn-taking timing for the simulated user (2026-10-14; not scheduled)
+
+The simulated user is a person, so its timing should follow human data. Today it is slower than people and never
+projects a turn end:
+
+- `TurnTaking.respond_after_ms` is a fixed 1000 ms gap (τ-Voice's wait-to-respond).
+- `ResponseDelay`, when set, is log-normal around 300 ms and never below 0.
+- Human reference (Switchboard, 193k floor transfers, IPU-level with backchannels kept; Zhu et al., arXiv
+  2610.08683): median floor-transfer offset 137 ms (163 ms in the first 90 s of a call; Roberts et al. 168 ms), mode
+  160 ms. A quarter of transfers fall within ±120 ms, the band listeners do not perceive as a gap or overlap
+  (Heldner 2011). A tenth start in the partner's last 120 ms. 32 % overlap at any depth, and 42 % of positive
+  offsets exceed 320 ms.
+
+An agent trained against a slow, purely reactive user learns that rhythm; the paper warns that a duplex model used as
+an examiner passes on its reactive endpointer's timing in the same way.
+
+**Plan.**
+- Make `ResponseDelay` the default and fit it to the human distribution: a median of ~150 ms, a long right tail, and
+  about 10 % small negative offsets (−120–0 ms, starting just before the agent's end). Keep `distracted_*` and the
+  "(pause)" additions.
+- A user may start in the agent's last ~120 ms only at a turn end it can project: the agent's phrase-final boundary
+  (the listener's decision points), never mid-phrase.
+- Asymmetry: the user may be human-fast, while the agent is held to an assistant's standard (`eval.reply_score`
+  penalises replies under ~50 ms, and starting before the user ends is `talked_over`).
+- Report the user's own timing (median, ±120 ms share, W1 to Switchboard) in `timing_summary`, so a run shows that
+  its user is human-like.
+- Re-check the effect on results: closed-loop benchmarks and RL rollouts change when the user answers ~1 s sooner.
+  Fixed-delay presets stay available for reproducing the 0.1.0 results.
+
 ## 6. Open questions
 
 1. **Which policy model**: τ-Voice tasks need tool calls, but Moshi / PersonaPlex cannot call tools. Candidates: MiniCPM-o 4.5, an open-source release of Qwen3-Omni (to be confirmed), or doing tool-free endogenous tasks first in v0.3 (FD-Bench v2 Correction / Entity Tracking).

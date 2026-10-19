@@ -2,7 +2,7 @@
 
 import pytest
 
-from interaction_gym.eval import latency_score, scores
+from interaction_gym.eval import latency_score, reply_score, scores
 
 
 def T(tid, role, start, end, **kw):
@@ -22,6 +22,21 @@ def test_latency_curve():
     assert latency_score(950) == 0.5 and latency_score(-100) == latency_score(0) and latency_score(10**7) == 0.0
     xs = [0, 100, 300, 600, 900, 1100, 2000, 5000]
     assert all(latency_score(a) > latency_score(b) for a, b in zip(xs, xs[1:]))  # monotone: earlier is never worse
+
+
+def test_reply_curve_penalises_only_replies_that_come_too_fast():
+    # replies (respond): too fast under ~50 ms, floor 0.3 (the table in reply_score's docstring)
+    table = {0: 0.300, 20: 0.313, 30: 0.383, 40: 0.650, 50: 0.916, 60: 0.987, 200: 0.999, 800: 0.818, 1000: 0.378}
+    assert {ms: round(reply_score(ms), 3) for ms in table} == table
+    assert all(reply_score(ms, early_floor=1.0) == latency_score(ms) for ms in (0, 30, 500, 1200))
+    turns = [T("u0", "user", 0, 2000), T("a0", "agent", 2010, 3000), T("u1", "user", 4000, 5000), T("a1", "agent", 5300, 6000)]
+    sc = scores(turns)
+    assert ev(sc, "u0", "respond")["score"] == pytest.approx(reply_score(10)) and ev(sc, "u0")["score"] < 0.31
+    assert ev(sc, "u1", "respond")["score"] == pytest.approx(latency_score(300), abs=1e-3)
+    assert ev(scores(turns, early_floor=1.0), "u0")["score"] == pytest.approx(latency_score(10))
+    # a barge-in stopped at once is not penalised (yield keeps latency_score)
+    barge = [T("a0", "agent", 0, 3000, unsaid="..."), T("u0", "user", 2990, 4000), T("a1", "agent", 4400, 5000)]
+    assert ev(scores(barge), "u0", "yield")["score"] == pytest.approx(latency_score(10))
 
 
 def test_every_kind_of_expectation_is_scored():

@@ -207,6 +207,11 @@ TRAILING = ("...", "…")
 # The latency curve (``latency_score``): a logistic in milliseconds, half score at LATENCY_MID_MS.
 LATENCY_MID_MS = 950.0
 LATENCY_WIDTH_MS = 100.0
+# Replies only (``reply_score``): a reply that starts within ~50 ms of the user's end is too fast for an assistant
+# (it cannot have heard the turn end); the score falls to LATENCY_EARLY_FLOOR. A floor of 1 turns this off.
+LATENCY_EARLY_MS = 40.0
+LATENCY_EARLY_WIDTH_MS = 5.0
+LATENCY_EARLY_FLOOR = 0.3
 
 
 def latency_score(ms: float, mid_ms: float = LATENCY_MID_MS, width_ms: float = LATENCY_WIDTH_MS) -> float:
@@ -215,20 +220,44 @@ def latency_score(ms: float, mid_ms: float = LATENCY_MID_MS, width_ms: float = L
 
         s(l) = 1 / (1 + exp((l - mid_ms) / width_ms)),   mid_ms = 950, width_ms = 100,
 
-    so 200-500 ms is full score, 500-700 ms still high, and from ~800 ms it falls off quickly:
+    so up to 500 ms is full score, 500-700 ms still high, and from ~800 ms it falls off quickly. This is a lenient
+    target for agents that think in ~1 s units; people hand over the floor faster (median ~140-170 ms):
 
     ====== ====== ====== ====== ====== ====== ====== ====== ====== ======
     l (ms)    0    200    500    700    800    900   1000   1200   1500
     s(l)   1.000  0.999  0.989  0.924  0.818  0.622  0.378  0.076  0.004
     ====== ====== ====== ====== ====== ====== ====== ====== ====== ======
 
-    Monotone: a very early reaction (under 200 ms, but after the user ended / after the barge-in started) also scores
-    ~1. Negative delays are clamped to 0 (they do not occur in ``scores``: a reply that starts during the user's turn
+    Monotone: a very early reaction scores ~1; a reply that comes too fast is penalised by ``reply_score``, which
+    ``scores`` uses for ``respond``. Negative delays are clamped to 0 (they do not occur in ``scores``: a reply that starts during the user's turn
     is ``talked_over``)."""
     x = (max(ms, 0.0) - mid_ms) / width_ms
     if x > 50:
         return 0.0
     return 1.0 / (1.0 + math.exp(x))
+
+
+def reply_score(ms: float, mid_ms: float = LATENCY_MID_MS, width_ms: float = LATENCY_WIDTH_MS,
+                early_ms: float = LATENCY_EARLY_MS, early_width_ms: float = LATENCY_EARLY_WIDTH_MS,
+                early_floor: float = LATENCY_EARLY_FLOOR) -> float:
+    """``latency_score`` for taking the floor after the user ends (``respond``), times a penalty for replying too
+    fast: an assistant that starts within a few tens of ms of the user's end has not waited to hear that the user
+    finished, which users take as being cut off,
+
+        reply_score(l) = latency_score(l) * (f + (1 - f) / (1 + exp(-(l - early_ms) / early_width_ms))),
+        early_ms = 40, early_width_ms = 5, f = early_floor = 0.3:
+
+    ====== ====== ====== ====== ====== ====== ====== ====== ====== ======
+    l (ms)    0     20     30     40     50     60    200    800   1000
+    s(l)   0.300  0.313  0.383  0.650  0.916  0.987  0.999  0.818  0.378
+    ====== ====== ====== ====== ====== ====== ====== ====== ====== ======
+
+    Human conversation is faster than assistants are allowed to be (median floor transfer ~140-170 ms, a quarter of
+    transfers within +-120 ms, Switchboard), so the penalty only covers replies under ~50 ms. ``early_floor=1``
+    gives the plain ``latency_score``. Stopping for a barge-in (``yield``) is never too fast and keeps
+    ``latency_score``."""
+    early = early_floor + (1.0 - early_floor) / (1.0 + math.exp(min(-(max(ms, 0.0) - early_ms) / early_width_ms, 50.0)))
+    return latency_score(ms, mid_ms, width_ms) * early
 
 
 def expectation(u: dict, agent_playing: bool) -> str:
@@ -256,12 +285,12 @@ def expectations(u: dict, agent_playing: bool) -> list[str]:
 
 
 def scores(turns: list[dict], agent: str = "agent", respond_within_ms: int = 5000, mid_ms: float = LATENCY_MID_MS,
-           width_ms: float = LATENCY_WIDTH_MS, end_ms: int | None = None) -> dict:
+           width_ms: float = LATENCY_WIDTH_MS, end_ms: int | None = None, early_floor: float = LATENCY_EARLY_FLOOR) -> dict:
     """One rule-based score in [0, 1] per user turn: did the agent do what the user expected (``expectation``),
     and — where doing it means taking over the conversation — how fast. Outcomes (docs/FORMAT.md §6.3):
 
     - ``respond`` (a normal turn): ``talked_over`` (0) if an agent turn started during the user's turn; else
-      ``responded`` — ``latency_score`` of the gap from the user's end to the reply — if the agent started speaking
+      ``responded`` — ``reply_score`` of the gap from the user's end to the reply — if the agent started speaking
       after the turn ended, before the next directed user turn and within ``respond_within_ms``; else
       ``no_response`` (0). With ``end_ms`` (the episode's end), a turn left unanswered because the episode ended
       before its window closed is ``censored``: kept without a score and left out of the means (replayed benchmark
@@ -319,7 +348,8 @@ def scores(turns: list[dict], agent: str = "agent", respond_within_ms: int = 500
                 ev.update(outcome="talked_over", score=0.0, target=cut_in["id"], resolved_ms=cut_in["start_time"])
             elif reply is not None:
                 gap = reply["start_time"] - u1
-                ev.update(outcome="responded", latency_ms=gap, score=latency_score(gap, mid_ms, width_ms), target=reply["id"],
+                ev.update(outcome="responded", latency_ms=gap, score=reply_score(gap, mid_ms, width_ms, early_floor=early_floor),
+                          target=reply["id"],
                           resolved_ms=reply["start_time"])
             elif censored:
                 ev.update(outcome="censored")
