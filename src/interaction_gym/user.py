@@ -803,7 +803,10 @@ class Behaviors:
     ``min_words``; also while the user holds an answer for the agent to finish), on a clock of all the agent's speech so
     that the time no point could use is carried to the next one. When it fires the user cuts in without asking the listener; what it says, and why (the barge-in
     intent), is still written by the user LLM from the call so far. Meant to match a target interruption rate, e.g.
-    the rate an open-loop (replayed) user produces, for a like-for-like comparison.
+    the rate an open-loop (replayed) user produces, for a like-for-like comparison. With ``question_quiet`` the hazard is not
+    applied while the agent is asking a question (``asking``) nor while the user holds an answer to one: a person waits
+    for the question to end and answers it rather than cutting in with something else. The clock still runs, so the
+    rate holds per agent-minute and those barge-ins move to the agent's other speech.
 
     ``None`` for a rate = from the surroundings (``SURROUNDINGS``; asides x2 with low ``attentiveness``), as in ``PERSONA``.
 
@@ -818,6 +821,7 @@ class Behaviors:
     backchannel_per_min: float | None = None  # deprecated
     aside_per_min: float | None = 0.0
     barge_in_per_min: float = 0.0  # calibration: extra barge-ins per minute of agent speech (see above)
+    question_quiet: bool = False  # calibration barge-ins skip the agent's questions (see above)
     noise_per_min: float | None = 0.0
     pause_p: float | None = 0.0  # deprecated
     min_gap_ms: int = 3000
@@ -1080,6 +1084,10 @@ class TurnTaking:
     # a user holding a ready answer while the agent keeps talking takes the floor with it after this long (as a barge-in);
     # None = waits however long the agent talks (a monologue then never hears the answer)
     hold_max_ms: int | None = None
+    # the held answer is to the agent's question (its turn ended on one) and the agent went on talking instead of waiting
+    # for it: the user says it over the agent after this long instead (people answer a question they were just asked,
+    # they do not wait out what follows it); None = hold_max_ms applies to these too
+    question_hold_ms: int | None = None
 
 
 # Where a listener may react: after a phrase-final mark followed by a space (so not "3.5" or "e.g.x"), or after
@@ -1097,6 +1105,33 @@ def phrase_boundaries(seg: Segment) -> list[int]:
     if not n or seg.dur <= 0:
         return []
     return [seg.t0 + math.ceil(seg.dur * m.end() / n) for m in _BOUNDARY.finditer(text) if m.end() < n]
+
+
+_QUESTION = ("?", "？")
+
+
+def ends_on_question(text: str) -> bool:
+    """The text's last sentence is a question (a trailing ``?`` / ``？``, closing quotes and brackets aside)."""
+    return text.rstrip().rstrip("\"'”’)）」").endswith(_QUESTION)
+
+
+def asking(seg: Segment, t: int, after_ms: int = 1000) -> bool:
+    """At ``t`` the agent's ``seg`` is in a phrase that ends with a question mark, or one ended so less than
+    ``after_ms`` ago (the moment to answer it). Phrases as in ``phrase_boundaries``. Unlike a decision, this looks at
+    the end of the phrase being heard (its mark): it only gates the calibration hazard, which is not the user's choice."""
+    text, n = seg.transcript, len(seg.transcript)
+    if not n or seg.dur <= 0:
+        return False
+    at = (t - seg.t0) * n / seg.dur  # the transcript position heard by t (linear, as heard_text)
+    for m in _BOUNDARY.finditer(text):
+        end_t = seg.t0 + math.ceil(seg.dur * m.end() / n)
+        if m.end() >= at:  # the phrase being heard: a question if its mark is one
+            return m.group() in _QUESTION
+        if m.group() in _QUESTION and t - end_t < after_ms:
+            return True
+    if at < n:  # the last phrase, without a boundary mark followed by a space
+        return ends_on_question(text)
+    return ends_on_question(text) and t - seg.end < after_ms
 
 
 def _lang(task: Task) -> str:
@@ -1165,7 +1200,7 @@ class UserSim(Node):
               "noise": EventProcess(self._noise_rates(b, levels), base),
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
                       LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
-                      "forced_interrupts": 0, "hold_takeovers": 0},
+                      "forced_interrupts": 0, "hold_takeovers": 0, "question_takeovers": 0},
               "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
                          "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
         st["next_event"]["aside"] = self._draw(st, "aside", 0)
@@ -1375,6 +1410,11 @@ class UserSim(Node):
         n = st["per_turn"].get(agent_id, {}).get("backchannel", 0)
         return b.max_backchannels_per_turn is None or n < b.max_backchannels_per_turn
 
+    def _quiet(self, st, agent: Segment, t: int) -> bool:
+        """``Behaviors.question_quiet``: no calibration barge-in now (the agent is asking, or an answer to its question is
+        held). The hazard is not drawn, so its clock carries the time to the next point."""
+        return st["behaviors"].question_quiet and (bool(st.get("planned_q")) or asking(agent, t, st["timing"].respond_after_ms))
+
     def _forced(self, st, t: int) -> bool:
         """The calibration hazard (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock
         counts all of the agent's speech, so what passed while no barge-in was possible (before ``min_words``, after a
@@ -1413,7 +1453,7 @@ class UserSim(Node):
         if n_words(agent.heard_text(t)) < self.listener.min_words:
             log["too_few_words"] += 1
             return None
-        if INTERRUPT in options and self._forced(st, t):
+        if INTERRUPT in options and not self._quiet(st, agent, t) and self._forced(st, t):
             return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
         d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
                                        st["behaviors"].backchannels, at)
@@ -1560,14 +1600,18 @@ class UserSim(Node):
             return await self._speak(st, t, t, turn, barge_in=agent_speaking and turn.kind is None, resumed=True)
         if st["planned"] is None:
             st.pop("hold_since", None)
+            st.pop("planned_q", None)
         if st["planned"] is not None:  # an answer is ready, waiting for its moment
             turn, t0 = st["planned"]
             if agent_speaking:  # the agent started again meanwhile: hold it, re-time it after the agent stops
                 st["planned"] = (turn, None)
                 since, cap = st.setdefault("hold_since", t), st["timing"].hold_max_ms
+                if st.get("planned_q") and st["timing"].question_hold_ms is not None:
+                    cap = st["timing"].question_hold_ms
                 if cap is not None and t - since >= cap:  # held too long: say it now, over the agent
                     st["planned"] = None
                     st["log"]["hold_takeovers"] += 1
+                    st["log"]["question_takeovers"] += bool(st.get("planned_q")) and st["timing"].question_hold_ms is not None
                     return await self._speak(st, t, t, turn, barge_in=True)
                 wake = agent.end if cap is None else min(agent.end, since + cap)
                 if st["behaviors"].barge_in_per_min <= 0 or self.listener is not self.interrupt:
@@ -1577,7 +1621,7 @@ class UserSim(Node):
                 nxt = self._next_point(st, agent, last)
                 if t >= nxt:
                     st["dp"][agent.id] = t
-                    if n_words(agent.heard_text(t)) >= self.listener.min_words and self._forced(st, t):
+                    if n_words(agent.heard_text(t)) >= self.listener.min_words and not self._quiet(st, agent, t) and self._forced(st, t):
                         st["planned"] = None
                         return await self._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
                     nxt = self._next_point(st, agent, t)
@@ -1624,6 +1668,8 @@ class UserSim(Node):
                 if t0 <= t:
                     return await self._speak(st, t, t, turn)
                 st["planned"] = (turn, t0)
+                last = max((s for s in st["agent"].values() if s.t0 <= t), key=lambda s: s.end)
+                st["planned_q"] = ends_on_question(last.transcript)  # the answer to the agent's question
                 return [], t0
             if t - agent_end >= tt.respond_after_ms:
                 return await self._speak(st, t, t)

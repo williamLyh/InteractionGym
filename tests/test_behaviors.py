@@ -640,3 +640,79 @@ def test_a_user_holding_an_answer_takes_the_floor_after_hold_max_ms():
     a1 = next(t for t in ep["turns"] if t["id"] == "a1")
     ans = next(t for t in user_turns(ep) if t["text"] == "Saturday, please.")
     assert ans["start_time"] >= a1["end_time"] and ep["meta"]["user"]["decisions"]["hold_takeovers"] == 0
+
+
+def test_an_answer_to_the_agents_question_is_said_over_it_after_question_hold_ms():
+    """The agent asks, then goes on talking before the user's answer: with question_hold_ms the user answers over it
+    that soon (a barge-in, counted as a question takeover); an answer to a statement still waits hold_max_ms."""
+    from interaction_gym.user import ResponseDelay, TurnTaking
+
+    def go(first, question_hold_ms):
+        async def main():
+            sp = AgentSpec(chunk_ms=100)
+            timing = TurnTaking(response_delay=ResponseDelay(median_ms=1500, sigma=1e-6, distracted_p=0.0), hold_max_ms=8000,
+                                question_hold_ms=question_hold_ms)
+            user = UserSim(LLMSource(FakeChat(["Hi, I need to move a booking.", "Saturday, please.", "Bye ###STOP###"])), Voice(),
+                           interrupt=None, listener=None, timing=timing)
+            env = Env({"user": user}, sp, max_ms=40_000)
+            await env.reset(Task(id="t", scenario={"instructions": "Move my booking to Saturday."}), seed=0)
+            plan = []
+            while not env.done:
+                act = []
+                users = [t for t in episode(env, "x")["turns"] if t["role"] == "user" and t.get("kind") is None]
+                if not plan and users and env.t >= users[-1]["end_time"] + 300:
+                    act, plan = [Frame(sp.out, env.t, Segment("a0", env.t, 1000, first))], [env.t + 1200]
+                elif len(plan) == 1 and env.t >= plan[0]:
+                    act = [Frame(sp.out, env.t, Segment("a1", env.t, 15_000, "And while I check that, let me tell you about our "
+                                                                             "new loyalty programme, which gives you points on every visit."))]
+                    plan.append(env.t)
+                await env.step(act)
+            return check(episode(env, "e"))
+        return asyncio.run(main())
+
+    ep = go("Sure, which day?", 1000)
+    a1 = next(t for t in ep["turns"] if t["id"] == "a1")
+    ans = next(t for t in user_turns(ep) if t["text"] == "Saturday, please.")
+    assert a1["start_time"] < ans["start_time"] < a1["start_time"] + 2000 and ans["expects"] == "yield"
+    d = ep["meta"]["user"]["decisions"]
+    assert d["hold_takeovers"] == 1 and d["question_takeovers"] == 1
+    for first, qh in (("Sure, which day?", None), ("Sure, I can do that.", 1000)):  # off, or not a question: hold_max_ms
+        ep = go(first, qh)
+        a1 = next(t for t in ep["turns"] if t["id"] == "a1")
+        ans = next(t for t in user_turns(ep) if t["text"] == "Saturday, please.")
+        assert ans["start_time"] >= a1["start_time"] + 7900 and ep["meta"]["user"]["decisions"]["question_takeovers"] == 0
+
+
+def test_asking_and_question_quiet_calibration():
+    """``asking``: inside a phrase that ends on a question mark, or just after one; ``question_quiet`` skips the
+    calibration hazard there without drawing it, so the clock carries the time to the next point."""
+    from types import SimpleNamespace as NS
+
+    from interaction_gym.user import UserSim, asking, ends_on_question
+
+    assert ends_on_question("Which day?") and ends_on_question("Which day？") and ends_on_question('"Which day?" ')
+    assert not ends_on_question("Okay. Which day? Let me check.")
+    seg = Segment("a0", 0, 4000, "Okay, let me see. Which day would you like? I will check that now.")
+    n = len(seg.transcript)
+    at = lambda frac: int(4000 * frac)  # noqa: E731
+    q_end = seg.transcript.index("?") + 1
+    assert not asking(seg, at(5 / n))  # in "Okay,"
+    assert asking(seg, at((q_end - 5) / n))  # in "Which day would you like?"
+    assert asking(seg, at(q_end / n) + 300, after_ms=1000)  # just after it
+    assert not asking(seg, at(q_end / n) + 1500, after_ms=1000) and not asking(seg, 3900)
+    tail = Segment("a1", 0, 2000, "Do you have the receipt?")  # the last phrase has no boundary mark: its end decides
+    assert asking(tail, 1000) and asking(tail, 2500) and not asking(tail, 3500)
+
+    class Always(random.Random):
+        def random(self):
+            return 0.0
+
+    def st(quiet, planned_q=False):
+        return {"behaviors": Behaviors(barge_in_per_min=3.0, question_quiet=quiet), "erng": {"barge": Always()},
+                "log": {"forced_interrupts": 0}, "agent": {"a1": tail}, "timing": NS(respond_after_ms=1000), "planned_q": planned_q}
+
+    s = st(True)
+    assert UserSim._quiet(None, s, tail, 1000) and "barge_clock" not in s  # skipped: nothing drawn, the clock untouched
+    assert not UserSim._quiet(None, st(False), tail, 1000)
+    plain = Segment("a2", 0, 2000, "I will check that now, one moment please.")
+    assert not UserSim._quiet(None, st(True), plain, 1000) and UserSim._quiet(None, st(True, planned_q=True), plain, 1000)
