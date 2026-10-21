@@ -212,6 +212,29 @@ def test_barge_in_clock_counts_all_agent_speech():
     assert abs(hits / 4000 - (1 - math.exp(-3))) < 0.03
 
 
+
+def test_per_turn_barge_ins_do_not_grow_with_the_turn():
+    """``barge_in_per_turn``: one draw per agent turn at its first possible point, firing at the first point at least
+    U(0, window) later; a 4 s turn and a 20 s turn are cut in on equally often, and a turn that ends first loses it."""
+    from types import SimpleNamespace as NS
+
+    from interaction_gym.user import UserSim
+
+    def rate(points, end, k0):
+        hits = 0
+        for k in range(3000):
+            st = {"behaviors": Behaviors(barge_in_per_turn=0.3, barge_in_turn_window_ms=2000), "erng": {"barge": random.Random(k0 + k)},
+                  "log": {"forced_interrupts": 0, "forced_turn_interrupts": 0}, "agent": {"a0": NS(t0=0, end=end)}}
+            hits += any(UserSim._forced(None, st, t, NS(id="a0")) for t in points)
+        return hits / 3000
+
+    short, long_ = rate(range(1000, 4001, 500), 4000, 0), rate(range(1000, 20001, 500), 20000, 10**6)
+    assert abs(short - 0.3) < 0.03 and abs(long_ - 0.3) < 0.03
+    assert rate([1000], 1000, 0) < 0.03  # no later point in the turn: lost (only an immediate draw of 0 ms fires)
+    st = {"behaviors": Behaviors(barge_in_per_turn=0.0), "erng": {"barge": random.Random(0)}, "log": {"forced_interrupts": 0},
+          "agent": {"a0": NS(t0=0, end=4000)}}
+    assert not UserSim._forced(None, st, 2000, NS(id="a0")) and "turn_barge" not in st  # off: no draws
+
 def test_parse_intent():
     assert parse_intent("INTENT: question\nWhat time is it?") == ("question", "What time is it?")
     assert parse_intent("**Intent:** stop\nOkay, that's enough.") == ("stop", "Okay, that's enough.")

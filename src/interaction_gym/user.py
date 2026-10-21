@@ -806,7 +806,11 @@ class Behaviors:
     the rate an open-loop (replayed) user produces, for a like-for-like comparison. With ``question_quiet`` the hazard is not
     applied while the agent is asking a question (``asking``) nor while the user holds an answer to one: a person waits
     for the question to end and answers it rather than cutting in with something else. The clock still runs, so the
-    rate holds per agent-minute and those barge-ins move to the agent's other speech.
+    rate holds per agent-minute and those barge-ins move to the agent's other speech. ``barge_in_per_turn`` adds a
+    per-turn part: at an agent turn's first point where a barge-in is possible, with that probability the user will cut
+    in at the first point at least ``U(0, barge_in_turn_window_ms)`` later (lost if the turn ends first). Unlike the
+    per-minute hazard it does not grow with the turn's length, so a turn is not more likely to be cut in on just
+    because it is longer; the two can be combined (time + turn).
 
     ``None`` for a rate = from the surroundings (``SURROUNDINGS``; asides x2 with low ``attentiveness``), as in ``PERSONA``.
 
@@ -821,6 +825,8 @@ class Behaviors:
     backchannel_per_min: float | None = None  # deprecated
     aside_per_min: float | None = 0.0
     barge_in_per_min: float = 0.0  # calibration: extra barge-ins per minute of agent speech (see above)
+    barge_in_per_turn: float = 0.0  # calibration: probability per agent turn of one extra barge-in (see above)
+    barge_in_turn_window_ms: int = 3000  # the per-turn barge-in comes up to this long after the turn's first point
     question_quiet: bool = False  # calibration barge-ins skip the agent's questions (see above)
     noise_per_min: float | None = 0.0
     pause_p: float | None = 0.0  # deprecated
@@ -1200,7 +1206,7 @@ class UserSim(Node):
               "noise": EventProcess(self._noise_rates(b, levels), base),
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
                       LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
-                      "forced_interrupts": 0, "hold_takeovers": 0, "question_takeovers": 0},
+                      "forced_interrupts": 0, "forced_turn_interrupts": 0, "hold_takeovers": 0, "question_takeovers": 0},
               "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
                          "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
         st["next_event"]["aside"] = self._draw(st, "aside", 0)
@@ -1415,11 +1421,28 @@ class UserSim(Node):
         held). The hazard is not drawn, so its clock carries the time to the next point."""
         return st["behaviors"].question_quiet and (bool(st.get("planned_q")) or asking(agent, t, st["timing"].respond_after_ms))
 
-    def _forced(self, st, t: int) -> bool:
-        """The calibration hazard (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock
-        counts all of the agent's speech, so what passed while no barge-in was possible (before ``min_words``, after a
-        turn's last decision point) is carried to the next point instead of lost, and the rate holds per agent-minute."""
-        lam = st["behaviors"].barge_in_per_min
+    @staticmethod
+    def _calibrated(st) -> bool:
+        b = st["behaviors"]
+        return b.barge_in_per_min > 0 or b.barge_in_per_turn > 0
+
+    def _forced(self, st, t: int, agent: Segment | None = None) -> bool:
+        """The calibration barge-ins: the per-turn draw (``barge_in_per_turn``) for ``agent``'s turn, then the hazard
+        (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock counts all of the agent's
+        speech, so what passed while no barge-in was possible (before ``min_words``, after a turn's last decision point)
+        is carried to the next point instead of lost, and the rate holds per agent-minute."""
+        b = st["behaviors"]
+        if b.barge_in_per_turn > 0 and agent is not None:
+            due = st.setdefault("turn_barge", {})
+            if agent.id not in due:  # the turn's first possible point: draw whether (and when) it is cut in on
+                rng = st["erng"]["barge"]
+                due[agent.id] = t + int(rng.random() * b.barge_in_turn_window_ms) if rng.random() < b.barge_in_per_turn else None
+            if due[agent.id] is not None and t >= due[agent.id]:
+                due[agent.id] = None
+                st["log"]["forced_interrupts"] += 1
+                st["log"]["forced_turn_interrupts"] += 1
+                return True
+        lam = b.barge_in_per_min
         if lam <= 0:
             return False
         spoken = sum(max(0, min(s.end, t) - s.t0) for s in st["agent"].values() if s.t0 <= t)
@@ -1453,7 +1476,7 @@ class UserSim(Node):
         if n_words(agent.heard_text(t)) < self.listener.min_words:
             log["too_few_words"] += 1
             return None
-        if INTERRUPT in options and not self._quiet(st, agent, t) and self._forced(st, t):
+        if INTERRUPT in options and not self._quiet(st, agent, t) and self._forced(st, t, agent):
             return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
         d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
                                        st["behaviors"].backchannels, at)
@@ -1614,14 +1637,14 @@ class UserSim(Node):
                     st["log"]["question_takeovers"] += bool(st.get("planned_q")) and st["timing"].question_hold_ms is not None
                     return await self._speak(st, t, t, turn, barge_in=True)
                 wake = agent.end if cap is None else min(agent.end, since + cap)
-                if st["behaviors"].barge_in_per_min <= 0 or self.listener is not self.interrupt:
+                if not self._calibrated(st) or self.listener is not self.interrupt:
                     return [], wake
                 # calibrated: a user holding an answer may still cut in (and then says something new, not the held answer)
                 last = st["dp"].setdefault(agent.id, agent.t0)
                 nxt = self._next_point(st, agent, last)
                 if t >= nxt:
                     st["dp"][agent.id] = t
-                    if n_words(agent.heard_text(t)) >= self.listener.min_words and not self._quiet(st, agent, t) and self._forced(st, t):
+                    if n_words(agent.heard_text(t)) >= self.listener.min_words and not self._quiet(st, agent, t) and self._forced(st, t, agent):
                         st["planned"] = None
                         return await self._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
                     nxt = self._next_point(st, agent, t)
