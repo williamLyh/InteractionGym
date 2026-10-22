@@ -21,8 +21,18 @@
   (unaffected by stalls); playback is contiguous (`underrun="wait"` holds the env while a slow stream catches up —
   0.7x real time was measured — or `"silence"`); user speech stops playback and the server's item is truncated to what
   was heard (deleted if nothing was). `usage` from `response.done`, per-response timing in `trace()`;
-  `meta.agent.reproducible: false`. `examples/openai_realtime_demo.py` runs it against an all-OpenAI user. Tests
-  against a local stand-in with sample-based VAD and a slow stream.
+  `meta.agent.reproducible: false`. **Barriers:** over a WebSocket the server's turn-detection events queue behind
+  reply audio already sent (the server produces a reply far faster than real time; an interruption detected at 10.9 s
+  of audio reached the client at 29 s), so while the agent is active and the microphone carries sound each step ends
+  with an in-order barrier (`conversation.item.retrieve` of a non-existent item) and the env waits for its answer;
+  barge-ins are then cut where the server detected them (live: user at 11.0 s, cut at 11.3 s). `trace()` records
+  `input_lag` per turn-detection event, `barriers` and `client_events`; a warning fires once when an event lands over
+  1 s late (the network is part of the measurement — documented in the module and Getting started).
+  `audio_format="pcmu"` (8 kHz mu-law, 8x less to download). Keepalive pongs may be late (they queue too) without
+  closing the session. `examples/openai_realtime_demo.py` runs it against an all-OpenAI user;
+  `examples/openai_realtime_checks.py` runs live checks (barge-in, backchannel, tools, semantic VAD, silence
+  underrun, pcmu — all passed on gpt-realtime-mini, 2026-10-22). Tests against a local stand-in with sample-based VAD,
+  a slow stream and a slow link.
 - **SOPs: one source format, pluggable presentation.** `interaction_gym.sop`: an SOP as data (actions whose conditions
   combine with `all` / `any` / `chain`, each `ask` or `look_up`, with `on_fail` alternatives), the logic to check an
   agent against it (`holds`, `witnessed`, `refuted`), and formats as plugins: `structured`, `list` (keeps the logic,

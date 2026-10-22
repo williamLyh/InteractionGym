@@ -25,6 +25,22 @@ time; a 6 s pause in sending, at the end of a turn or in the middle of a word, d
   once and tells the server how much was heard (``conversation.item.truncate``; an item nothing of which was heard
   is deleted), so the model's history holds what the user heard.
 
+**Barriers.** Over a WebSocket, server events arrive in order behind the reply audio already queued for this client,
+and the server produces a reply much faster than real time: a ``speech_started`` can reach the client seconds after
+the server detected it (measured: an interruption at 10.9 s of audio arrived at 29 s), so a plain client keeps
+playing over the user. So while the agent is active and the microphone carries sound (``vad_rms``, and
+``sync_tail_ms`` after it), each step ends with a barrier: a request the server answers with an error in order
+(``conversation.item.retrieve`` of a non-existent item), and the env waits for that answer — by then every event the
+server emitted for the audio sent so far has arrived. Barge-ins are then cut at the step the server detected them.
+``input_lag`` in ``trace()`` records, per turn-detection event, how late it arrived in simulated time.
+
+**The network matters.** Unlike a local model, results depend on this client's link to the API: the first-audio
+latency includes the round trip; reply audio comes down at whatever rate the link allows (from 0.7x to 3x real time
+was measured from one client, 24 kHz PCM; ``audio_format="pcmu"`` asks for 8 kHz G.711 mu-law, 8x smaller, telephone quality), which
+``underrun="wait"`` hides but costs wall time; and turn-detection events wait behind queued audio, which the barriers
+correct at the cost of more wall time. Run evaluations from a well-connected machine, keep the same machine across
+models you compare, and check ``trace()["input_lag"]`` (the adapter warns once when an event lands over 1 s late).
+
 Latency therefore includes the network from this client and the provider's load: runs are not reproducible, and
 there are no token log-probabilities. Use it for evaluation, not RL.
 
@@ -44,6 +60,7 @@ import json
 import os
 import time
 import warnings
+from array import array
 
 import websockets
 
@@ -53,10 +70,29 @@ from ..tools import CALL, RESULT, ToolCall, ToolResult
 
 OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 RT_SR = 24000  # the API's PCM rate, in and out
+ULAW_SR = 8000
+
+
+def _ulaw_table() -> list[int]:
+    out = []
+    for b in range(256):
+        u = ~b & 0xFF
+        mag = (((u & 0x0F) << 3) + 0x84) << ((u & 0x70) >> 4)
+        out.append((0x84 - mag) if u & 0x80 else (mag - 0x84))
+    return out
+
+
+ULAW = _ulaw_table()  # G.711 mu-law byte -> PCM16
+
+
+def ulaw_to_pcm16(data: bytes) -> array:
+    return array("h", (ULAW[b] for b in data))
 SERVER_VAD = {"type": "server_vad", "threshold": 0.5, "prefix_padding_ms": 300, "silence_duration_ms": 500,
               "create_response": True, "interrupt_response": True}
 # errors about a client request that came too late to matter (e.g. truncating an item already gone)
 BENIGN_ERRORS = ("response_cancel_not_active", "item_truncate_invalid_item_id", "conversation_already_has_active_response")
+LATE_MS = 1000  # a turn-detection event handled this much later than its audio: warn (once per session)
+SYNC_PREFIX = "ig_sync_"  # barrier ids: conversation.item.retrieve of an item that does not exist
 
 
 class _Response:
@@ -96,13 +132,25 @@ class OpenAIRealtimeAgent:
     def __init__(self, spec: AgentSpec, model: str = "gpt-realtime-mini", *, voice: str = "marin",
                  turn_detection: dict | None = None, instructions: str | None = None, url: str = OPENAI_REALTIME_URL,
                  api_key_env: str = "OPENAI_API_KEY", underrun: str = "wait", prebuffer_ms: int = 300,
-                 max_wait_s: float = 30.0, tools: bool = True, session: dict | None = None, name: str | None = None):
+                 max_wait_s: float = 30.0, tools: bool = True, session: dict | None = None, name: str | None = None,
+                 sync: bool = True, vad_rms: float = 300.0, sync_tail_ms: int = 800, sync_timeout_s: float = 120.0,
+                 audio_format: str = "pcm"):
         assert spec.audio, "the realtime agent listens to the microphone: set AgentSpec(audio=...)"
         assert underrun in ("wait", "silence"), underrun
+        assert audio_format in ("pcm", "pcmu"), audio_format
+        self.audio_format = audio_format  # reply audio: 24 kHz PCM16, or 8 kHz G.711 mu-law (8x less to download)
         self.spec, self.model, self.voice, self.url = spec, model, voice, url
         self.turn_detection = dict(SERVER_VAD if turn_detection is None else turn_detection)
         self.instructions, self.extra, self.use_tools, self.name = instructions, session or {}, tools, name
         self.underrun, self.prebuffer_ms, self.max_wait_s = underrun, prebuffer_ms, max_wait_s
+        self.sync, self.vad_rms, self.sync_tail_ms, self.sync_timeout_s = sync, vad_rms, sync_tail_ms, sync_timeout_s
+        self._loud_until = -1  # simulated time until which the microphone counts as active
+        self._sync_n = 0
+        self._synced: set[str] = set()
+        self.syncs = 0
+        self.mic_t0: int | None = None  # simulated time of the first microphone sample sent
+        self.input_lag: list[dict] = []  # turn-detection events: how late they arrived (simulated ms)
+        self._warned_late = False
         self.api_key = os.environ.get(api_key_env)
         if not self.api_key:
             raise RuntimeError(f"OpenAIRealtimeAgent: the OpenAI API needs a key in ${api_key_env}")
@@ -122,6 +170,7 @@ class OpenAIRealtimeAgent:
         self.extra_frames: list[Frame] = []  # frames that came up while playback waited for audio
         self.usage: dict[str, int] = {}
         self.errors: list[dict] = []
+        self.client_log: list[dict] = []  # what the adapter told the server besides audio and session updates
         self.events: dict[str, int] = {}
 
     # ---------------------------------------------------------------- session
@@ -141,12 +190,14 @@ class OpenAIRealtimeAgent:
         return {"type": "realtime", "output_modalities": ["audio"],
                 **({"instructions": instructions} if instructions else {}),
                 "audio": {"input": {"format": {"type": "audio/pcm", "rate": RT_SR}, "turn_detection": self.turn_detection},
-                          "output": {"format": {"type": "audio/pcm", "rate": RT_SR}, "voice": self.voice}},
+                          "output": {"format": {"type": "audio/pcm", "rate": RT_SR} if self.audio_format == "pcm"
+                                     else {"type": "audio/pcmu"}, "voice": self.voice}},
                 **({"tools": tools, "tool_choice": "auto"} if tools else {}), **self.extra}
 
     async def _connect(self, session: Session | None) -> None:
         sep = "&" if "?" in self.url else "?"
-        self.ws = await websockets.connect(f"{self.url}{sep}model={self.model}", max_size=None,
+        # keepalive pings stay on, but a late pong is no failure: it queues behind the reply audio on a slow link
+        self.ws = await websockets.connect(f"{self.url}{sep}model={self.model}", max_size=None, ping_timeout=None,
                                            additional_headers={"Authorization": f"Bearer {self.api_key}"})
         self.reader = asyncio.create_task(self._read())
         await self._send({"type": "session.update", "session": self._session(session)})
@@ -162,6 +213,8 @@ class OpenAIRealtimeAgent:
 
     async def _send(self, event: dict) -> None:
         await self.ws.send(json.dumps(event))
+        if event["type"] in ("conversation.item.truncate", "conversation.item.delete", "conversation.item.create", "response.create"):
+            self.client_log.append(event)
 
     async def _read(self) -> None:
         async for raw in self.ws:
@@ -172,6 +225,10 @@ class OpenAIRealtimeAgent:
                 self._updated.set()
             elif kind == "error":
                 err = ev.get("error") or {}
+                if str(err.get("event_id") or "").startswith(SYNC_PREFIX):  # a barrier's answer
+                    self._synced.add(err["event_id"])
+                    self._arrived.set()
+                    continue
                 if err.get("code") in BENIGN_ERRORS:
                     self.errors.append(err)
                     continue
@@ -193,6 +250,36 @@ class OpenAIRealtimeAgent:
             return self.anchors_t[0] if self.anchors_t else 0
         return self.anchors_t[k] + min(round((w - self.anchors_w[k]) * 1000), self.spec.chunk_ms)
 
+    def _loud(self, a: Audio) -> bool:
+        """Any 20 ms of the step above ``vad_rms``: the user (or noise) may be speaking."""
+        x, n = a.samples, RT_SR // 50
+        return any((sum(v * v for v in x[i:i + n]) / n) ** 0.5 >= self.vad_rms for i in range(0, max(1, len(x) - n + 1), n))
+
+    def _active(self) -> bool:
+        """A response in progress or playing: user sound now may interrupt it."""
+        return self.cur is not None or any(r.status is None for r in self.responses.values())
+
+    async def _barrier(self) -> None:
+        """Wait until every event the server emitted for the audio sent so far has arrived (see the module docs)."""
+        self._sync_n += 1
+        sid = f"{SYNC_PREFIX}{self._sync_n}"
+        await self._send({"type": "conversation.item.retrieve", "item_id": sid, "event_id": sid})
+        self.syncs += 1
+        deadline = time.monotonic() + self.sync_timeout_s
+        while sid not in self._synced:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                warnings.warn(f"OpenAIRealtimeAgent: no answer to barrier {sid} in {self.sync_timeout_s:.0f} s", stacklevel=2)
+                return
+            self._arrived.clear()
+            try:
+                await asyncio.wait_for(self._arrived.wait(), left)
+            except asyncio.TimeoutError:
+                pass
+            if self.reader.done():
+                self.reader.result()
+        self._synced.discard(sid)
+
     # ---------------------------------------------------------------- the step
 
     @property
@@ -212,8 +299,12 @@ class OpenAIRealtimeAgent:
             self.reader.result()
         for f in obs:
             if f.stream == self.spec.audio and isinstance(f.data, Audio):
-                pcm = f.data.resample(RT_SR).samples.tobytes()
-                await self._send({"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm).decode()})
+                a = f.data.resample(RT_SR)
+                if self.mic_t0 is None:
+                    self.mic_t0 = t - a.dur_ms
+                if self._loud(a):
+                    self._loud_until = t + self.sync_tail_ms
+                await self._send({"type": "input_audio_buffer.append", "audio": base64.b64encode(a.samples.tobytes()).decode()})
         self.anchors_w.append(time.monotonic())
         self.anchors_t.append(t)
         out = []
@@ -223,6 +314,8 @@ class OpenAIRealtimeAgent:
         # a live microphone: one step of audio per step of wall time; after a stall, carry on from now
         self.next_wall = max(self.next_wall + self.spec.chunk_ms / 1000, time.monotonic())
         await asyncio.sleep(self.next_wall - time.monotonic())
+        if self.sync and t <= self._loud_until and self._active():
+            await self._barrier()
         out += await self._process(t)
         out += await self._play(t)
         out, self.extra_frames = self.extra_frames + out, []
@@ -251,7 +344,10 @@ class OpenAIRealtimeAgent:
                     r.first_w = w
                     r.start_t = r.created_t + round((w - r.created_w) * 1000)
                 if r.cut_t is None:
-                    r.pcm += base64.b64decode(ev["delta"])
+                    raw = base64.b64decode(ev["delta"])
+                    if self.audio_format == "pcmu":  # kept at the API's PCM rate like the rest
+                        raw = Audio(ulaw_to_pcm16(raw), ULAW_SR).resample(RT_SR).samples.tobytes()
+                    r.pcm += raw
         elif kind == "response.output_audio_transcript.delta":
             r = self.responses.get(ev.get("response_id"))
             if r is not None:
@@ -278,7 +374,20 @@ class OpenAIRealtimeAgent:
                     self._cut(r, t)
                 if r.cut_t is not None:
                     await self._fix(r)
-        elif kind == "input_audio_buffer.speech_started" and self.turn_detection.get("interrupt_response", True):
+        if kind in ("input_audio_buffer.speech_started", "input_audio_buffer.speech_stopped") and self.mic_t0 is not None:
+            at = self.mic_t0 + int(ev.get("audio_start_ms", ev.get("audio_end_ms", 0)))
+            self.input_lag.append({"event": kind.rsplit(".", 1)[1], "audio_t": at, "handled_t": t})
+            # beyond what the detector itself takes: its prefix padding (start), its silence window (end; semantic_vad
+            # waits as long as it judges, so its ends are not checked)
+            vad = self.turn_detection
+            late = t - at - (vad.get("silence_duration_ms", 0) if kind.endswith("stopped") else vad.get("prefix_padding_ms", 0))
+            checked = kind.endswith("started") or vad.get("type") == "server_vad"
+            if checked and late > LATE_MS and not self._warned_late:
+                self._warned_late = True
+                warnings.warn(f"OpenAIRealtimeAgent: a {kind.rsplit('.', 1)[1]} event reached the env {late} ms of simulated "
+                              f"time after its audio: this client's link to the API is slowing the conversation down "
+                              f"(input_lag in trace(); see the module docs)", stacklevel=2)
+        if kind == "input_audio_buffer.speech_started" and self.turn_detection.get("interrupt_response", True):
             # the user talks: a client stops playing and drops whatever it has not played yet
             for r in self.responses.values():
                 if r.cut_t is None and (r.status is None or r.played < r.received):
@@ -386,13 +495,16 @@ class OpenAIRealtimeAgent:
         """``meta.agent``: which model, served how, on which clock."""
         return {"name": self.name or self.model, "model": self.model, "provider": "openai", "kind": "full-duplex (VAD turns)",
                 "server": f"openai realtime {self.url}", "clock": "wall, audio-paced", "underrun": self.underrun,
-                "voice": self.voice, "turn_detection": self.turn_detection, "output": "audio", "reproducible": False,
+                "voice": self.voice, "turn_detection": self.turn_detection, "output": "audio", "audio_format": self.audio_format,
+                "reproducible": False,
+                "barriers": self.sync,
                 **({"usage": dict(self.usage)} if self.usage else {})}
 
     def trace(self, episode_id: str) -> dict:
         """Each response's timing (``agent_traces.jsonl``)."""
         return {"episode_id": episode_id, "server": "openai realtime", "model": self.model,
                 "responses": [self.responses[rid].log() for rid in self.order], "usage": dict(self.usage),
+                "input_lag": self.input_lag, "barriers": self.syncs, "client_events": self.client_log,
                 **({"errors": self.errors} if self.errors else {})}
 
     async def close(self) -> None:

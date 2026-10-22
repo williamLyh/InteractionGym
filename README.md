@@ -81,6 +81,16 @@ IG_AGENT_URL='ws://localhost:8010/v1/realtime?duplex=1' IG_MODEL_DIR=/path/to/mo
   uv run python examples/minicpmo_suite.py --out runs/suite                 # MiniCPM-o 4.5 as the agent
 ```
 
+With the OpenAI API instead (key in `$OPENAI_API_KEY`; costs money, and results depend on this machine's network — see [Getting started](docs/GETTING_STARTED.md#an-openai-realtime-model-as-the-agent)):
+
+```bash
+IG_LLM_URL=https://api.openai.com/v1 IG_LLM_MODEL=gpt-5.4-mini \
+  uv run python examples/live_user.py --html runs/live_user.html             # user's words from OpenAI, voice from local TTS
+uv sync --extra vllm-omni                                                    # websockets, for the Realtime agent
+uv run python examples/openai_realtime_demo.py --html runs/openai_realtime.html  # gpt-realtime as the agent, all-OpenAI user
+uv run python examples/openai_realtime_checks.py                             # live checks: barge-in, backchannel, tools, VAD modes
+```
+
 Notes:
 - **MiniCPM-o output.** By default MiniCPM-o runs Thinker-only, with text output timed at speaking rate; `--audio-out` gives real speech.
 - **vLLM-Omni patch.** The agent server must run the patched vLLM-Omni from [Install](#agent-server-vllm-omni--our-patch-required-for-full-duplex-agents).

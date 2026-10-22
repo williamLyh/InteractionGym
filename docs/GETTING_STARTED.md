@@ -183,7 +183,18 @@ included); a reply that streams slower than real time is waited for rather than 
 (`underrun="silence"` plays the gaps, as a live client would); user speech during a reply stops it and the server is
 told how much was heard. Episodes take at least their own length in wall time (more while the user simulator
 computes), are not reproducible, and cost money (`agent.usage`); use it for evaluation, not RL. Session tools work if
-`AgentSpec.obs` includes `"tool.result"`.
+`AgentSpec.obs` includes `"tool.result"`. `examples/openai_realtime_checks.py` runs short scripted calls against the real
+API and checks the adapter's part in each (barge-in cut and truncation, backchannel, tool round trip, `semantic_vad`,
+`underrun="silence"`, `audio_format="pcmu"`).
+
+> **Warning: the network is part of the measurement.** A Realtime agent's latency includes this machine's round trip
+> to the API, and a slow link delays both the reply audio and the server's turn-detection events (they queue behind
+> the audio over the WebSocket). The adapter compensates where it can — it waits for slow audio instead of playing
+> gaps, and syncs with the server (barriers) while the user may be interrupting, so barge-ins are cut where the server
+> detected them — but episodes then take longer, and first-audio latency still varies with the link
+> (`audio_format="pcmu"` downloads 8x less, at telephone quality). Run comparisons
+> from one well-connected machine, and check `agent.trace(...)["input_lag"]` (a warning is printed when a
+> turn-detection event arrives more than 1 s late).
 
 ## τ²-bench, AutomationBench and SOPBench
 

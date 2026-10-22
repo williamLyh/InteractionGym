@@ -36,14 +36,32 @@ class ToneSpeech:
 class Fake:
     """Server settings and what it saw."""
 
-    def __init__(self, latency_s=0.4, deltas=5, delta_ms=200, gap_s=0.3, tool=False):
+    def __init__(self, latency_s=0.4, deltas=5, delta_ms=200, gap_s=0.3, tool=False, wire=None):
         self.latency_s, self.deltas, self.delta_ms, self.gap_s, self.tool = latency_s, deltas, delta_ms, gap_s, tool
+        self.wire = wire  # a slow link: audio leaves at this many x real time, every event queued behind it
         self.got: list[dict] = []
         self.created_wall: list[float] = []
 
 
 async def fake_realtime(ws, f: Fake):
     assert ws.request.headers["Authorization"] == "Bearer sk-test" and "model=gpt-realtime-mini" in ws.request.path
+    if f.wire:  # every message through one queue, audio drained at f.wire x real time (as over a slow WebSocket)
+        q: asyncio.Queue = asyncio.Queue()
+        raw_send = ws.send
+
+        async def drain():
+            while True:
+                m = await q.get()
+                if '"response.output_audio.delta"' in m:
+                    await asyncio.sleep(f.delta_ms / 1000 / f.wire)
+                await raw_send(m)
+
+        asyncio.ensure_future(drain())
+
+        async def queued(m):
+            q.put_nowait(m)
+
+        ws.send = queued
     await ws.send(json.dumps({"type": "session.created", "session": {}}))
     pos = speech_run = silence_run = 0
     speaking, active, called, n = False, None, False, 0
@@ -104,6 +122,9 @@ async def fake_realtime(ws, f: Fake):
                             n += 1
                             active = f"r{n}"
                             asyncio.ensure_future(respond(active))
+        elif kind == "conversation.item.retrieve":  # the adapter's barrier: answered in order, with an error
+            await ws.send(json.dumps({"type": "error", "error": {"type": "invalid_request_error",
+                                      "code": "item_retrieve_invalid_item_id", "event_id": ev.get("event_id")}}))
         elif kind == "response.create":
             n += 1
             active = f"r{n}"
@@ -219,3 +240,16 @@ def test_a_hosted_realtime_agent_needs_a_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY")
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
         OpenAIRealtimeAgent(AgentSpec(chunk_ms=100, audio="user.audio", sr=SR))
+
+
+def test_a_barge_in_is_cut_where_the_server_detected_it_even_behind_a_slow_link():
+    # the whole 3 s reply is produced at once and leaves at 0.7x real time: the server's speech_started queues behind it
+    turns = [{"t": 0, "text": "what time do you open"}, {"t": 3500, "text": "sorry one more thing"}]
+    env, agent = run(Fake(latency_s=0.2, deltas=15, gap_s=0, wire=0.7), turns, max_ms=9000)
+    first = agent_turns(env)[0]
+    assert first["end_time"] <= 3500 + 100 + 300 and agent.trace("e")["barriers"] > 0  # cut at once, as detected
+    lag = [x for x in agent.trace("e")["input_lag"] if x["event"] == "speech_started"]
+    assert lag[-1]["handled_t"] - lag[-1]["audio_t"] <= 400
+    env, agent = run(Fake(latency_s=0.2, deltas=15, gap_s=0, wire=0.7), turns, max_ms=9000, sync=False)
+    assert agent_turns(env)[0]["end_time"] > 3500 + 1000  # without barriers the cut comes late
+
