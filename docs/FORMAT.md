@@ -204,6 +204,12 @@ Other open datasets that would fit (check each license; several are non-commerci
 | ESC-50 | `events/*`: 40 clips each of dog, door knock, cough, car horn, siren, keyboard, clock alarm, ... | CC BY-NC 3.0 |
 | WHAM! noise | `ambience/cafe`, `ambience/street`: urban restaurant / cafe / bar noise | CC BY-NC 4.0 |
 
+Third-party speech is the noise label `speech` (`Behaviors.third_party_per_min`): recordings only, from the bank's
+`events/speech/` (e.g. `benchmarks.clip_bank.speech_events`); a turn of `kind: "noise"`, `label: "speech"`, expected
+to be ignored. A `task.scenario["voice_pack"]` (`user.VoicePack`) makes the simulated user a recorded speaker: the
+voice clone starts from the pack's reference recording, and backchannels / asides are the speaker's own recordings
+(`meta.user.voice_pack`).
+
 ### 4.3 `turns`
 
 Sorted by `start_time` ascending (ties keep their order of appearance). A turn is one continuous stretch of sound from one role.

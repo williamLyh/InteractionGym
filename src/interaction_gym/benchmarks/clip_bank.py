@@ -327,3 +327,53 @@ if __name__ == "__main__":
     if a.humdial:
         print(extract_humdial(a.humdial, a.out, material_frac=a.material_frac, include_eval=a.include_eval))
     (Path(a.out) / "human_stats.json").write_text(json.dumps(human_stats(a.root), indent=2))
+
+
+# ---------------------------------------------------------------- recorded speakers for online users
+
+
+def voice_packs(manifest: str | Path, *, refs_per_speaker: int = 3, ref_ms: tuple[int, int] = (4000, 9000), min_ref_words: int = 6,
+                max_backchannel_ms: int = 2000, split: str = "material") -> list[dict]:
+    """``user.VoicePack`` specs (``task.scenario["voice_pack"]``) from the bank's real-speaker clips (HumDial: one
+    speaker per id prefix, ``<speaker>_<item>``): per speaker, ``refs_per_speaker`` packs, each cloning the voice from
+    a different opening of ``ref_ms`` length (the voice's manner varies with the reference), all with the speaker's
+    own backchannels (at most ``max_backchannel_ms``) and asides. Only ``split`` clips (default ``material``)."""
+    by: dict = {}
+    for r in load_manifest(manifest, split=split):
+        src = r.get("source") or {}
+        if src.get("synthetic") or not r.get("lang") or "sample_id" not in src:
+            continue
+        by.setdefault((r["lang"], src["sample_id"].split("_")[0]), []).append(r)
+    packs = []
+    for (lang, spk), recs in sorted(by.items()):
+        bcs = [{"audio": r["audio"], "text": r["text"]} for r in recs if r["kind"] == "backchannel" and r["dur_ms"] <= max_backchannel_ms]
+        asides = [{"audio": r["audio"], "text": r["text"]} for r in recs if r["kind"] == "aside"]
+        mid = sum(ref_ms) / 2
+        refs = sorted((r for r in recs if r["use"] == "opening" and ref_ms[0] <= r["dur_ms"] <= ref_ms[1]
+                       and len(r["text"].split()) >= (min_ref_words if lang != "zh" else 1) and (lang != "zh" or len(r["text"]) >= 2 * min_ref_words)),
+                      key=lambda r: (abs(r["dur_ms"] - mid), r["id"]))[:refs_per_speaker]
+        if not bcs or not refs:
+            continue
+        lic = sorted({(r.get("source") or {}).get("license") for r in recs} - {None})
+        for k, ref in enumerate(refs):
+            packs.append({"id": f"{(recs[0]['source'] or {}).get('benchmark', 'bank')}-{lang}-{spk}-r{k}", "lang": lang,
+                          "ref": {"audio": ref["audio"], "text": ref["text"]}, "backchannel": bcs, "aside": asides,
+                          "license": ", ".join(lic), "source": {"speaker": spk, "split": split, "manifest": str(manifest)}})
+    return packs
+
+
+def speech_events(manifest: str | Path, bank: str | Path, *, split: str = "material", langs: tuple[str, ...] | None = None) -> int:
+    """Copy the bank's real third-party speech clips (``kind == "noise"``, not synthetic; HumDial's people talking to
+    the user or near them) into a ``soundscape.SoundBank`` at ``bank`` as ``events/speech/<id>.wav`` (the noise
+    label "speech", ``user.Behaviors.third_party_per_min``). Returns the number of clips written."""
+    import shutil
+
+    out = Path(bank) / "events" / "speech"
+    out.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for r in load_manifest(manifest, split=split, kind="noise"):
+        if (r.get("source") or {}).get("synthetic") or (langs is not None and r.get("lang", "en") not in langs):
+            continue
+        shutil.copyfile(r["audio"], out / f"{r['id']}.wav")
+        n += 1
+    return n

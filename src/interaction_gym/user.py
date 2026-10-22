@@ -253,6 +253,33 @@ def clip_reference(audio: Audio, text: str, max_ms: int, window_ms: int = 40) ->
     return audio[:cut], " ".join(words[:keep])
 
 
+@dataclass
+class VoicePack:
+    """A recorded speaker for a simulated user (``task.scenario["voice_pack"]``): the user's voice is cloned from
+    ``ref`` (audio, its words) from the first turn on, and its backchannels / asides are the speaker's own recordings
+    (``clips[kind]``: [(audio, words)]) instead of synthesized ones. The scenario entry is a dict ``{"id", "lang",
+    "ref": {"audio": wav path, "text"}, "backchannel": [{"audio", "text"}], "aside": [...], "license", "source"}``
+    (built from a clip bank: ``benchmarks.clip_bank.voice_packs``)."""
+
+    id: str
+    ref: tuple
+    clips: dict
+    meta: dict
+
+    @classmethod
+    def load(cls, spec: dict, sr: int) -> "VoicePack":
+        def read(path: str) -> Audio:
+            a = Audio.read_wav(path)
+            return a if a.sr == sr else a.resample(sr)
+
+        clips = {k: [(read(c["audio"]), c["text"]) for c in spec.get(k, [])] for k in ("backchannel", "aside")}
+        meta = {k: spec[k] for k in ("lang", "license", "source") if k in spec}
+        return cls(spec["id"], (read(spec["ref"]["audio"]), spec["ref"]["text"]), clips, meta)
+
+    def describe(self) -> dict:
+        return {"id": self.id, "clips": {k: len(v) for k, v in self.clips.items()}, **self.meta}
+
+
 class Voice:
     """Renders a turn: use its audio if given, else TTS, else text with an estimated duration.
 
@@ -858,6 +885,9 @@ class Behaviors:
     pause_min_words: int = 6
     noise_ms: tuple[int, int] = (300, 700)  # unused (noise lengths come from the clips)
     noise_rates: dict | None = None  # {label: onsets per minute}: replaces the surroundings' table (soundscape.EVENT_RATES)
+    # third-party speech (noise label "speech": someone else talking nearby, a TV), onsets per minute on top of the
+    # noise rates; recordings only (the sound bank's events/speech/), expected to be ignored like any noise
+    third_party_per_min: float = 0.0
     backchannels: tuple[str, ...] = ()
     asides: tuple[str, ...] = ()
     backchannel_p: float = 0.0  # deprecated: per-check probabilities
@@ -1227,13 +1257,42 @@ class UserSim(Node):
               "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
                          "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
         st["next_event"]["aside"] = self._draw(st, "aside", 0)
+        if b.third_party_per_min:
+            from .soundscape import _bank
+
+            bank = _bank(self.soundscape.bank, fetch=False)
+            if bank is None or not bank.files("events", "speech"):
+                raise ValueError("Behaviors.third_party_per_min needs a sound bank with events/speech/*.wav recordings")
+        pack = task.scenario.get("voice_pack")
+        if pack and self.voice.speech is not None:
+            st["pack"] = VoicePack.load(pack, getattr(self.voice.speech, "sr", 16000))
+            st["ref"] = clip_reference(st["pack"].ref[0], st["pack"].ref[1], self.voice.ref_max_ms)
+            st["erng"]["pack"] = random.Random(f"{base}:pack")
+            st["events"] |= {"pack_backchannels": 0, "pack_asides": 0}
         return st
+
+    def _pack_clip(self, st, kind: str, last: str | None = None) -> UserTurn | None:
+        """A recorded ``kind`` ("backchannel" | "aside") of the episode's voice pack, as a turn (levelled like the
+        synthesized turns), never the same backchannel twice in a row; None without a pack or such recordings."""
+        pack = st.get("pack")
+        clips = pack.clips.get(kind) if pack is not None else None
+        if not clips:
+            return None
+        rng = st["erng"]["pack"]
+        audio, text = rng.choice([c for c in clips if c[1] != last] or clips)
+        if self.voice.leveling is not None:
+            audio = self.voice.leveling.apply(audio, st["task"], self.voice.speaker(st["task"]))
+        st["events"][f"pack_{kind}s"] += 1
+        return UserTurn(text, audio=audio, kind=kind, expects="ignore")
 
     @staticmethod
     def _noise_rates(b: Behaviors, levels: dict) -> dict[str, float]:
         from .soundscape import event_rates
 
-        return event_rates(levels["surroundings"], b.noise_per_min, b.noise_rates)
+        rates = event_rates(levels["surroundings"], b.noise_per_min, b.noise_rates)
+        if b.third_party_per_min:
+            rates["speech"] = rates.get("speech", 0.0) + b.third_party_per_min
+        return rates
 
     def _resolve(self, task: Task) -> tuple[Behaviors, dict]:
         """This user's habits and the persona levels in effect: the constructor's ``behaviors`` with any
@@ -1323,6 +1382,8 @@ class UserSim(Node):
         """What this episode's user did beyond its turns: how its decisions were made (decision points, model calls
         and choices, safety caps that held) and how many random events happened (for ``meta.user``)."""
         out = {"decisions": dict(st["log"]), "random_events": dict(st["events"])}
+        if st.get("pack") is not None:
+            out["voice_pack"] = st["pack"].describe()
         if st["noise_log"]:
             out["noise_events"] = [dict(e) for e in st["noise_log"]]
         return out
@@ -1506,8 +1567,9 @@ class UserSim(Node):
             if not text or text == last:  # the model's sound, but never the same one twice in a row (greedy decoding
                 # would say "mm-hmm" every time): else one from the language's sounds, seeded
                 text = st["rng"].choice([v for v in st["behaviors"].backchannels if v != last] or st["behaviors"].backchannels)
-            st["last_backchannel"] = text
-            frame = await self._emit(st, t, UserTurn(text, kind="backchannel", expects="ignore"))
+            turn = self._pack_clip(st, "backchannel", last) or UserTurn(text, kind="backchannel", expects="ignore")
+            st["last_backchannel"] = turn.text
+            frame = await self._emit(st, t, turn)
             self._count(st, agent, "backchannel")
             st["last_sound"] = t
             return [frame], frame.data.end
@@ -1575,7 +1637,7 @@ class UserSim(Node):
             lines |= got
         else:
             st["events"]["lines_fixed"] += 3 if away else 1
-        aside = UserTurn(lines["ASIDE"], kind="aside", expects="ignore")
+        aside = self._pack_clip(st, "aside") or UserTurn(lines["ASIDE"], kind="aside", expects="ignore")
         if away:
             st["events"]["called_away"] += 1
             hold = UserTurn(lines["HOLD"], expects="wait", label="called_away")

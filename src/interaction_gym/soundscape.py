@@ -59,11 +59,15 @@ EVENT_TYPES = {
     "horn": ("surroundings", -12.0, 0.45, 4, (150, 900)),
     "siren": ("surroundings", -18.0, 0.0, 1, (0, 0)),
     "indicator": ("surroundings", -22.0, 0.0, 1, (0, 0)),
+    # third-party speech: someone else talking nearby (to the caller or to another person), a TV or a radio. Recordings
+    # only (``RECORDED_ONLY``): a synthetic stand-in would not be speech. Rates: ``Behaviors.third_party_per_min``
+    "speech": ("surroundings", -10.0, 0.0, 1, (0, 0)),
 }
+RECORDED_ONLY = frozenset({"speech"})  # labels with no synthetic stand-in: a bank must have ``events/<label>/``
 JITTER_DB = 6.0
 # the longest a burst gets (seconds): later occurrences that would pass it are dropped
 MAX_BURST_S = {"cough": 4.0, "sneeze": 3.0, "door_slam": 3.0, "dog_bark": 8.0, "phone_ring": 20.0, "dishes": 6.0, "cup": 5.0,
-               "keyboard": 8.0, "horn": 5.0, "siren": 10.0}
+               "keyboard": 8.0, "horn": 5.0, "siren": 10.0, "speech": 10.0}
 # surroundings -> {label: event onsets per minute of the call}. Totals (0.1 quiet ... 0.8 street) are the earlier
 # single noise rates; bursts add occurrences, not onsets.
 EVENT_RATES = {
@@ -331,6 +335,8 @@ def event_clip(label: str, sr: int, rng: random.Random, bank=None) -> tuple[Audi
     path = b.pick("events", label, rng) if b is not None else None
     if path is not None:
         return _clip(str(path)), f"file:{path}"
+    if label in RECORDED_ONLY:
+        raise ValueError(f"noise event {label!r} needs recordings (a sound bank with events/{label}/*.wav)")
     return synth_event(label, sr, rng), "synthetic"
 
 

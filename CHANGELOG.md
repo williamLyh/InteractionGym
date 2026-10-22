@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
+  TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
+  `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,
+  `user.VoicePack`): a recorded speaker for the simulated user — its voice is cloned from the speaker's own reference
+  recording from the first turn on, and its backchannels and asides are that speaker's recordings instead of
+  synthesized ones (levelled like the synthesized turns; `meta.user.voice_pack`, `random_events.pack_*`).
+  `benchmarks.clip_bank.voice_packs` builds them from a clip bank's real speakers (HumDial, material split, one
+  speaker per id prefix) and `clip_bank.speech_events` copies its real third-party speech into a sound bank.
 - **Agent proxy.** `interaction_gym.agent_proxy` (`python -m interaction_gym.agent_proxy --backends ...`): one
   WebSocket address in front of several duplex agent servers. A vLLM-Omni server runs a single Thinker (no
   data-parallel Thinker yet), so several GPUs mean several servers; duplex sessions are stateful, so the proxy
