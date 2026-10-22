@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **Agent proxy.** `interaction_gym.agent_proxy` (`python -m interaction_gym.agent_proxy --backends ...`): one
+  WebSocket address in front of several duplex agent servers. A vLLM-Omni server runs a single Thinker (no
+  data-parallel Thinker yet), so several GPUs mean several servers; duplex sessions are stateful, so the proxy
+  balances per connection — each session goes to the server with the fewest open sessions (ties rotate) and stays
+  there; sessions queue when every server is at `--max-sessions` (1013 after `--queue-timeout-s`); a server that
+  refuses is skipped; close codes pass through; plain HTTP returns the open sessions per server. The reference
+  deployment starts it on `AGENT_PORT` (8009) and prints it as the one `IG_AGENT_URL` (the runners used to reach only
+  the first of the four servers). `servers_behind(url)` lets the FD-Bench v2 / v3 and Audio MultiChallenge runners
+  warm up one throw-away session per server. The extra hop measured well under a millisecond per round trip.
+  docs/agent_server.md records the future alternative (Thinker data parallelism inside vLLM-Omni).
 - **OpenAI API backends (non-duplex).** `OpenAIChat`, `OpenAISpeech`, `OpenAITranscribe` and the cascaded agent's
   `ToolChat` reach `api.openai.com` (by the URL's host, `api="openai"`, or `.openai(model)`): key from
   `$OPENAI_API_KEY`; retries with backoff on 429 (not an exhausted quota), 5xx and dropped connections, honouring

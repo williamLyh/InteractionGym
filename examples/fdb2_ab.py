@@ -26,6 +26,7 @@ from pathlib import Path
 from interaction_gym import AgentSpec, Env
 from interaction_gym import turn_validity as tv
 from interaction_gym.agents.cascaded import CascadedAgent, Endpointing, LatencyModel, ToolChat
+from interaction_gym.agent_proxy import servers_behind
 from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model, duplex_spec
 from interaction_gym.benchmarks import benchmark_user, fdb2
 from interaction_gym.clients import OpenAIChat, OpenAISpeech, OpenAITranscribe
@@ -219,11 +220,13 @@ async def run(args) -> None:
     duplex = AGENTS[args.agent][0] == "duplex"
     for c in conds if duplex else ():
         check_output_mode(out / tag / c / "episodes.jsonl", AUDIO_OUT)  # never resume a run of the other output mode
-    if duplex and jobs:  # the first session after a server start returns no audio: one throw-away episode
+    if duplex and jobs:  # the first session after a server start returns no audio: one throw-away episode per server
         t0, s0 = jobs[0]
         d0 = script_dir(out, t0.id, s0)
-        env, agent, wall = await run_one(fdb2.load(args.data, only=[t0.id])[0], json.loads((d0 / "script.json").read_text()), d0, "A", s0, args.agent, {})
-        print(f"warm-up: {env.t / 1000:.1f}s sim in {wall:.1f}s wall", flush=True)
+        n = servers_behind(AGENT_URL)  # behind the agent proxy, at once: one lands on each server
+        warm = await asyncio.gather(*[run_one(fdb2.load(args.data, only=[t0.id])[0], json.loads((d0 / "script.json").read_text()),
+                                              d0, "A", s0, args.agent, {}) for _ in range(n)])
+        print(f"warm-up ({n} server{'s' * (n > 1)}): {warm[0][0].t / 1000:.1f}s sim in {max(w for _, _, w in warm):.1f}s wall", flush=True)
     sem, t_start, n_ok = asyncio.Semaphore(args.concurrency), time.monotonic(), [0]
 
     async def pair(task, seed):

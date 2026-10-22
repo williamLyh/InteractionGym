@@ -49,6 +49,7 @@ case $AGENT_LAYOUT in
   audio) : "${AGENT_SERVERS=4,5:8010}"; : "${AGENT_MAX_SESSIONS:=4}" ;;
   *) echo "AGENT_LAYOUT must be thinker or audio (got $AGENT_LAYOUT)" >&2; return 1 2>/dev/null || exit 1 ;;
 esac
+: "${AGENT_PORT:=8009}"  # the agent proxy clients use (one address for every agent server)
 : "${AGENT_TOKEN_TRACE:=1}"
 : "${IG_MINICPMO_OVERLAY=}"
 

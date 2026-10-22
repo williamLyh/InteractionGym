@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fdb2_ab import AGENTS, CASCADED_SPEC, SR, TTS_MODEL, TTS_URL, Judge, _done, _strip, boot_ci, describe, llm, make_agent, timing, timing_table, validity, validity_table  # noqa: E402
 
 from interaction_gym import Env
+from interaction_gym.agent_proxy import servers_behind
 from interaction_gym.agents.vllm_omni import check_output_mode, duplex_spec
 from interaction_gym.benchmarks import audiomc, benchmark_user
 from interaction_gym.clients import OpenAISpeech
@@ -103,9 +104,11 @@ async def run(args) -> None:
     fdb2_ab.AUDIO_OUT = args.audio_out  # make_agent reads it
     for c in conds if duplex else ():
         check_output_mode(out / tag / c / "episodes.jsonl", args.audio_out)  # never resume a run of the other output mode
-    if duplex and jobs:
-        env, agent, wall = await run_one(jobs[0][0], "A", jobs[0][1], args.agent, {})
-        print(f"warm-up: {env.t / 1000:.1f}s sim in {wall:.1f}s wall", flush=True)
+    if duplex and jobs:  # the first session after a server start returns no audio: one throw-away episode per server
+        n = servers_behind(fdb2_ab.AGENT_URL)  # behind the agent proxy, at once: one lands on each server
+        warm = await asyncio.gather(*[run_one(jobs[0][0], "A", jobs[0][1], args.agent, {}) for _ in range(n)])
+        env, agent, wall = warm[0]
+        print(f"warm-up ({n} server{'s' * (n > 1)}): {env.t / 1000:.1f}s sim in {wall:.1f}s wall", flush=True)
     sem, t_start, n_ok = asyncio.Semaphore(args.concurrency), time.monotonic(), [0]
 
     async def pair(task, seed):

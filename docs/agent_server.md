@@ -163,6 +163,25 @@ unit 3  thinker.in  <|chunk_eos|> </unit> <unit> <|audio|>x10       out: <|speak
 
 Notes: the previous unit's terminator (`<|listen|>` / `<|chunk_eos|>`) is re-fed at the start of each unit; the reference-audio embeddings sit on `<unit>` placeholder ids (168 = 16.8 s at 10 per second); the `<|audio|>` ids are placeholders for the 10 audio embeddings of the 1 s unit. Talker input ids are summed with projected Thinker hidden states (the ids shown are the text ids); `<audio_bos>` (151687) is labelled explicitly because the Thinker tokenizer calls that id `<focus>`.
 
+### Several agent servers: the agent proxy
+
+A vLLM-Omni duplex server runs one Thinker: every current MiniCPM-o config has a single Stage-0 replica
+(`engine/orchestrator.py`: "single-replica thinker in all current configs"), Stage-1 replicas are experimental, and
+`--data-parallel-size` / `--api-server-count` are rejected under `--omni`. A server with several GPUs splits the
+*stages* across them (Thinker | Talker + Code2Wav) or shards one model (TP); it does not spread sessions. So more
+throughput means more servers, and since a duplex session is stateful (each unit continues its own KV cache), they
+are balanced per connection: `interaction_gym.agent_proxy` (run by the reference deployment on `:8009`) pins each
+session to the server with the fewest open sessions, queues sessions when every server is at its session limit,
+skips a server that refuses the connection, and relays messages unchanged (the extra hop is well under a millisecond
+per round trip, so it does not affect lockstep acknowledgements). Clients keep one `IG_AGENT_URL`.
+
+**Future: Thinker data parallelism.** The cleaner end state is one server spanning the GPUs itself: Stage-0
+`num_replicas > 1` with per-session affinity, so that every unit of a session goes to the Thinker replica holding
+its KV cache. vLLM-Omni's stage pools already route by affinity (`engine/stage_pool.py`, used for Stage-1
+replicas); what is missing is a multi-replica Thinker in the orchestrator (it assumes replica 0 in places) and a
+deploy config that exercises it. That is an upstream change (or a patch to maintain); once it exists, the agent proxy
+retires. Not scheduled.
+
 ### MiniCPM-o 4.5 protocol notes
 
 - First message `session.update`, which needs:

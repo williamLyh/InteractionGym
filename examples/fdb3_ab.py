@@ -41,6 +41,7 @@ from pathlib import Path
 
 from interaction_gym import AgentSpec, Env
 from interaction_gym.agents.cascaded import CascadedAgent, Endpointing, LatencyModel, ToolChat
+from interaction_gym.agent_proxy import servers_behind
 from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, check_output_mode, duplex_model, duplex_spec
 from interaction_gym.benchmarks import benchmark_user, fdb3
 from interaction_gym.benchmarks import fdb3_spoken as spoken
@@ -205,9 +206,11 @@ async def run(args) -> None:
     duplex = args.agent in DUPLEX_AGENTS
     for c in conds if duplex else ():
         check_output_mode(out / tag / c / "episodes.jsonl", AUDIO_OUT)  # never resume a run of the other output mode
-    if duplex and jobs:  # the first session after a server start returns no audio: one throw-away episode
-        env, agent, wall = await run_one(recs[0][1], "A", 0, args.agent, {}, a_idle_ms=args.a_idle_ms)
-        print(f"warm-up: {env.t / 1000:.1f}s sim in {wall:.1f}s wall, agent events {agent.events}", flush=True)
+    if duplex and jobs:  # the first session after a server start returns no audio: one throw-away episode per server
+        n = servers_behind(AGENT_URL)  # behind the agent proxy, at once: one lands on each server
+        warm = await asyncio.gather(*[run_one(recs[0][1], "A", 0, args.agent, {}, a_idle_ms=args.a_idle_ms) for _ in range(n)])
+        env, agent, wall = warm[0]
+        print(f"warm-up ({n} server{'s' * (n > 1)}): {env.t / 1000:.1f}s sim in {wall:.1f}s wall, agent events {agent.events}", flush=True)
     t_start, n_ok = time.monotonic(), 0
 
     async def pair(rec, task, seed):

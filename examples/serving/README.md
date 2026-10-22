@@ -6,7 +6,7 @@ Closed-loop episodes with real models need up to three kinds of servers, all Ope
 |---|---|---|---|
 | user simulator: words | a chat LLM (vLLM) | `POST /v1/chat/completions` | `IG_LLM_URL` |
 | user simulator: voice | TTS (vLLM-Omni Qwen3-TTS), optionally a voice-clone TTS | `POST /v1/audio/speech` | `IG_TTS_URL`, `IG_CLONE_URL` |
-| the agent | a full-duplex model on vLLM-Omni (MiniCPM-o 4.5, ...) | WebSocket `/v1/realtime?duplex=1` | `IG_AGENT_URL` (`IG_AGENT_URLS` for several) |
+| the agent | a full-duplex model on vLLM-Omni (MiniCPM-o 4.5, ...) | WebSocket `/v1/realtime?duplex=1` | `IG_AGENT_URL` (several servers: behind the agent proxy, still one URL) |
 
 Any server with these APIs works. [`reference/`](reference/) is an **example deployment** for one host with
 8 GPUs of 32 GB (we ran it on RTX 5090s): parameterised scripts that start every service in tmux, with paths and

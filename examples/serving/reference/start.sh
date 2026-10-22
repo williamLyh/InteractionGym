@@ -26,16 +26,22 @@ if [ -n "$CLONE_REPLICAS" ]; then
   start_session cloneproxy "TTS_BACKENDS=$(IFS=,; echo "${backends[*]}") PORT=$CLONE_PORT scripts/run_tts_proxy.sh"
 fi
 
-urls=() i=0
+backends=() i=0
 for a in $AGENT_SERVERS; do
   start_session "agent$i" "GPUS=${a%%:*} PORT=${a##*:} MAX_SESSIONS=$AGENT_MAX_SESSIONS scripts/run_minicpmo.sh"
-  urls+=("ws://127.0.0.1:${a##*:}/v1/realtime?duplex=1"); i=$((i + 1))
+  backends+=("ws://127.0.0.1:${a##*:}"); i=$((i + 1))
 done
+# duplex sessions are stateful, so they are balanced per connection: the proxy pins each one to the server with the
+# fewest open sessions (a server holds one Thinker on its GPU; vLLM-Omni has no data-parallel Thinker yet)
+if [ ${#backends[@]} -gt 0 ]; then
+  start_session agentproxy "AGENT_BACKENDS=$(IFS=,; echo "${backends[*]}") PORT=$AGENT_PORT MAX_SESSIONS=$AGENT_MAX_SESSIONS scripts/run_agent_proxy.sh"
+fi
 
 echo "ready in a few minutes (LLM ~3-5 min, TTS ~2 min, agent ~5 min); check with ./status.sh"
 echo "client environment:"
 echo "  export IG_LLM_URL=http://127.0.0.1:$LLM_PORT/v1 IG_TTS_URL=http://127.0.0.1:$TTS_PORT/v1"
 if [ -n "$CLONE_REPLICAS" ]; then echo "  export IG_CLONE_URL=http://127.0.0.1:$CLONE_PORT/v1"; fi
-if [ ${#urls[@]} -gt 0 ]; then
-  echo "  export IG_AGENT_URL='${urls[0]}' IG_AGENT_URLS='$(IFS=,; echo "${urls[*]}")' IG_MODEL_DIR=$IG_MODELS_DIR"
+if [ ${#backends[@]} -gt 0 ]; then
+  echo "  export IG_AGENT_URL='ws://127.0.0.1:$AGENT_PORT/v1/realtime?duplex=1' IG_MODEL_DIR=$IG_MODELS_DIR"
+  echo "  # ${#backends[@]} agent server(s) behind it, $AGENT_MAX_SESSIONS sessions each; open sessions: curl -s 127.0.0.1:$AGENT_PORT"
 fi

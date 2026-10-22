@@ -5,12 +5,13 @@ server in its own tmux session, bound to `127.0.0.1`. It is a template, not a tu
 Python environments and the model weights; the scripts take paths and the GPU layout from `serving.env`.
 
 ```
-start.sh stop.sh status.sh        core services: LLM, TTS (+ proxy), optional clone TTS (+ proxy), agent server(s)
+start.sh stop.sh status.sh        core services: LLM, TTS (+ proxy), optional clone TTS (+ proxy), agent server(s) (+ proxy)
 start_extras.sh stop_extras.sh    optional extra user-sim models (compatibility experiments)
 serving.env.example               every setting with its default: copy to serving.env and edit
 common.sh                         settings, caches and helpers sourced by every script
 scripts/run_*.sh                  one launcher per server (usable on their own)
 scripts/tts_proxy.py              least-in-flight balancer over TTS replicas
+scripts/run_agent_proxy.sh        one WebSocket address for every agent server (src/interaction_gym/agent_proxy.py)
 scripts/make_minicpmo_overlay.py  optional MiniCPM-o memory overlay (caps Code2Wav's lazy CUDA graphs)
 scripts/minicpmo_duplex_client.py, lockstep_check.py, token_trace_check.py   protocol smoke tests
 configs/*.yaml                    vLLM-Omni deploy configs (stage -> GPU placement, memory shares)
@@ -57,7 +58,8 @@ tmux capture-pane -pt dig_llm | tail      # a live log; full logs in logs/
 
 Default layout (`serving.env.example`): LLM TP2 on GPUs 0-1 (`:8000`), one TTS replica on each of 6 and 7 behind
 the proxy (`:8001`), and four Thinker-only MiniCPM-o servers, one per remaining GPU (2-5 on `:8010`-`:8013`, 16
-sessions each). Clients get all four in `IG_AGENT_URLS`.
+sessions each) behind the agent proxy (`:8009`): clients use that one `IG_AGENT_URL`, and the proxy pins each
+session to the server with the fewest open sessions (a session waits when all four have 16).
 
 ### Agent layouts
 
@@ -92,7 +94,7 @@ Startup takes a few minutes (LLM ~3-5 min, TTS ~2 min, MiniCPM-o ~5 min). On the
 duplex session after a start can return listen decisions only (no audio) while the Talker / Code2Wav finish lazy
 initialisation: send one throw-away session first, e.g. `python scripts/minicpmo_duplex_client.py basic --mode fast`.
 
-From another machine, tunnel the ports: `ssh -N -L 8000:localhost:8000 -L 8001:localhost:8001 -L 8010:localhost:8010 <gpu-host>`.
+From another machine, tunnel the ports: `ssh -N -L 8000:localhost:8000 -L 8001:localhost:8001 -L 8009:localhost:8009 <gpu-host>`.
 
 ## Service notes
 
@@ -111,7 +113,11 @@ vivian. Optional `language` and `instructions` (style / emotion).
 (`data:audio/wav;base64,...`) or `file://` URI, `ref_text` its transcript (or `x_vector_only_mode: true`).
 
 **MiniCPM-o 4.5** (`scripts/run_minicpmo.sh`): one server per GPU (Thinker-only) or GPU pair (audio); duplex
-sessions cannot be data-parallel across API servers, so throughput comes from more servers. Audio input only
+sessions cannot be data-parallel across API servers, so throughput comes from more servers, behind the agent proxy
+(`AGENT_PORT`, default 8009): a duplex session is stateful, so it is balanced per connection — each goes to the server
+with the fewest open sessions and stays there. `curl -s 127.0.0.1:8009` shows the open sessions per server. Runners
+that warm the servers up (the first audio-layout session after a start returns no audio) open one throw-away
+session per server behind the proxy (`agent_proxy.servers_behind`). Audio input only
 (`limit_mm_per_prompt: {video: 0, image: 1}`: the shipped video profiling runs out of memory on 32 GB).
 Thinker-only (`configs/minicpmo_4_5_thinker_1gpu.yaml`): Stage 0 alone, `max_num_batched_tokens: 4096`,
 `max_model_len: 16384` (a session grows ~16 tokens per second of conversation; Audio MultiChallenge episodes reach
