@@ -81,6 +81,26 @@ cloned from it by the clone TTS (`IG_CLONE_URL`, `IG_CLONE_MODEL`, default Qwen3
 voice, pace and manner for the whole call; each turn is also trimmed and loudness-normalised (`user.Voice`,
 docs/FORMAT.md §4.1.2). A `Voice` with a TTS but no clone TTS raises; `Voice(tts, clone=False)` opts out. The page shows what the user said, when, and why it barged in. The same LLM decides, at each phrase boundary of the agent, whether the user listens, backchannels or cuts in (`LLMInterrupt` = `LLMListener`); a persona with `surroundings` (e.g. `{"profile": {"surroundings": "cafe"}}`) also gets random noises, asides and a matching background track — every one a labelled user turn on the page (docs/FORMAT.md §4.4).
 
+**OpenAI instead of local servers.** Point a URL at `https://api.openai.com/v1` and put the key in
+`$OPENAI_API_KEY`; the clients switch to the hosted API by its host (in code: `OpenAIChat.openai(model)`,
+`OpenAISpeech.openai()`, `OpenAITranscribe.openai()`, `ToolChat.openai(model)`). For example, the user's words from
+OpenAI and its voice still from the local TTS and clone TTS:
+
+```bash
+IG_LLM_URL=https://api.openai.com/v1 IG_LLM_MODEL=gpt-5.4-mini \
+IG_TTS_URL=http://localhost:8001/v1 IG_CLONE_URL=http://localhost:8005/v1 \
+  uv run python examples/live_user.py --html runs/live_user.html
+```
+
+Rate limits are retried, request fields only local servers take are not sent, `max_tokens` is sent as
+`max_completion_tokens` (plus headroom for reasoning models), and a field a model refuses (`temperature` while it
+reasons) is dropped with a warning; `meta` records `provider: openai` and what was not sent, and each client's `usage`
+counts requests and tokens. OpenAI's TTS cannot clone: with it, use its preset voices
+(`Voice(OpenAISpeech.openai(), voices=OPENAI_TTS_VOICES, clone=False)`), or keep a local clone TTS. A cascaded agent on
+OpenAI parts still runs on the simulated clock (model calls happen while simulated time stands still; latency comes
+from its `LatencyModel`), so episodes do not depend on network speed. Hosted calls cost money: they are made only by
+runs you start.
+
 **Noise.** The background ambience is recorded by default. On first use the env fetches the DEMAND recordings
 (about 80 MB of range requests to Zenodo) into `~/.cache/interaction_gym/soundbank` (or `$XDG_CACHE_HOME/...`). It
 prints one line naming the dataset, its licence and the directory, and reuses that bank afterwards. Parallel workers

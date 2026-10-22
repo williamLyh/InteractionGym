@@ -1,6 +1,9 @@
 # Plan: hosted (closed) model backends
 
-Status: **planned, not implemented**. This is for a release after 0.1.0. Written 2026-10-08. Open decisions are listed at the end.
+Status: **phase 1 partly done (2026-10-22): OpenAI only** — chat, TTS (preset voices), ASR and tool calls through the
+existing clients (`api="openai"`; see `clients` and CHANGELOG), with retries, request adaptation and per-client usage
+counts. Not done: other providers, the registry, the disk cache, pricing and a budget cap, and everything realtime
+(phase 4). Written 2026-10-08. Open decisions are listed at the end.
 
 The goal is that the simulated user and the agent can each run on hosted model APIs (OpenAI, Anthropic, Gemini, ElevenLabs, …), in addition to the local OpenAI-compatible servers used today.
 

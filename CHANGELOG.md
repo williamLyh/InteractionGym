@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **OpenAI API backends (non-duplex).** `OpenAIChat`, `OpenAISpeech`, `OpenAITranscribe` and the cascaded agent's
+  `ToolChat` reach `api.openai.com` (by the URL's host, `api="openai"`, or `.openai(model)`): key from
+  `$OPENAI_API_KEY`; retries with backoff on 429 (not an exhausted quota), 5xx and dropped connections, honouring
+  `Retry-After`; local-server request fields not sent; `max_tokens` → `max_completion_tokens` with `reasoning_tokens`
+  headroom on reasoning models; a field the API refuses for a model (e.g. `temperature` while it reasons) dropped and
+  the request retried, then never sent again by that client; 4xx errors carry the API's message. `describe()` records
+  `provider` and `not_sent`; every client (local too) counts `usage` (requests, tokens incl. reasoning, TTS characters,
+  ASR seconds). Hosted TTS gets raw 24 kHz PCM, no `seed` / `language`, and raises on cloning;
+  `user.OPENAI_TTS_VOICES` is a preset-voice catalogue for `pick_voice`. `ToolChat` is always native on the hosted API
+  and takes `api_key_env` / `retries` / `timeout`. Realtime (full-duplex) agents are not covered yet.
 - **SOPs: one source format, pluggable presentation.** `interaction_gym.sop`: an SOP as data (actions whose conditions
   combine with `all` / `any` / `chain`, each `ask` or `look_up`, with `on_fail` alternatives), the logic to check an
   agent against it (`holds`, `witnessed`, `refuted`), and formats as plugins: `structured`, `list` (keeps the logic,

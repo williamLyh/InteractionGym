@@ -40,6 +40,7 @@ from array import array
 from dataclasses import dataclass, replace
 
 from ..audio import Audio
+from ..clients import OPENAI_URL, _client_http, _count_tokens, _post, openai_chat_payload, openai_post
 from ..core import SESSION, AgentSpec, Frame, Segment, Session
 from ..tools import CALL, ToolCall, ToolResult
 
@@ -116,27 +117,38 @@ def parse_tool_calls(text: str) -> tuple[str, list[dict]]:
 
 
 class ToolChat:
-    """Chat completions with tools against an OpenAI-compatible endpoint (vLLM). ``complete`` returns
-    ``{"content", "tool_calls": [{"name", "arguments"}], "completion_tokens", "wall_ms"}``."""
+    """Chat completions with tools against an OpenAI-compatible endpoint (vLLM), or the OpenAI API (``openai``;
+    ``clients`` docs the request changes). ``complete`` returns
+    ``{"content", "tool_calls": [{"name", "arguments"}], "completion_tokens", "wall_ms"}``; on a reasoning model
+    ``completion_tokens`` includes the reasoning tokens (they delay the reply too)."""
 
-    def __init__(self, base_url: str, model: str, native: bool = False, **defaults):
+    def __init__(self, base_url: str, model: str, native: bool = False, *, api_key_env: str | None = None,
+                 api: str | None = None, retries: int | None = None, timeout: float = 180, reasoning_tokens: int = 2048,
+                 **defaults):
         self.url = base_url.rstrip("/") + "/chat/completions"
-        self.model, self.native, self.defaults = model, native, defaults
+        self.model, self.defaults = model, defaults
+        _client_http(self, base_url, api, api_key_env, retries)
+        self.native = native or self.api == "openai"  # the hosted API calls tools natively; it renders no template
+        self.timeout, self.reasoning_tokens = timeout, reasoning_tokens
+
+    @classmethod
+    def openai(cls, model: str, **kw) -> "ToolChat":
+        return cls(OPENAI_URL, model, native=True, **kw)
 
     def _post(self, payload: dict) -> dict:
-        import urllib.request
-
-        req = urllib.request.Request(self.url, json.dumps(payload).encode(), {"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=180) as r:
-            return json.loads(r.read())
+        return json.loads(_post(self.url, payload, self.api_key, self.timeout, self.retries))
 
     async def complete(self, messages: list[dict], tools: list[dict], **kw) -> dict:
         payload = {"model": self.model, "messages": messages, **self.defaults, **kw}
         if tools:
             payload.update(tools=tools, tool_choice="auto" if self.native else "none")
         t0 = time.monotonic()
-        out = await asyncio.to_thread(self._post, payload)
+        if self.api == "openai":
+            out = await asyncio.to_thread(openai_post, self, openai_chat_payload(self, payload, self.reasoning_tokens), self.timeout)
+        else:
+            out = await asyncio.to_thread(self._post, payload)
         wall = round((time.monotonic() - t0) * 1000)
+        _count_tokens(self.usage, out.get("usage"))
         msg = out["choices"][0]["message"]
         if self.native:
             content = _THINK.sub("", msg.get("content") or "").strip()
@@ -148,8 +160,10 @@ class ToolChat:
                 "wall_ms": wall}
 
     def describe(self) -> dict:
-        return {"model": self.model, "tool_calls": "native" if self.native else "prompted (template-rendered, parsed from text)",
-                **({"params": self.defaults} if self.defaults else {})}
+        return {"model": self.model, **({"provider": "openai"} if self.api == "openai" else {}),
+                "tool_calls": "native" if self.native else "prompted (template-rendered, parsed from text)",
+                **({"params": self.defaults} if self.defaults else {}),
+                **({"not_sent": sorted(self.dropped)} if self.dropped else {})}
 
 
 @dataclass

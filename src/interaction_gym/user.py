@@ -109,6 +109,23 @@ QWEN3_TTS_VOICES = [
 ]
 
 
+# The preset voices of OpenAI's TTS (gpt-4o-mini-tts; tts-1 has the first nine of them minus ballad / verse). OpenAI
+# publishes no gender or age for them: these are how they are commonly perceived, adult, US English unless noted;
+# alloy is left without a gender (androgynous), so a gendered profile never picks it.
+OPENAI_TTS_VOICES = [
+    {"speaker": "alloy", "age": "adult", "language": "en", "description": "neutral, balanced voice"},
+    {"speaker": "ash", "gender": "male", "age": "adult", "language": "en", "description": "clear, confident male voice"},
+    {"speaker": "ballad", "gender": "male", "age": "adult", "language": "en", "accent": "british", "description": "soft, expressive male voice"},
+    {"speaker": "coral", "gender": "female", "age": "young", "language": "en", "description": "warm, friendly female voice"},
+    {"speaker": "echo", "gender": "male", "age": "young", "language": "en", "description": "smooth, even male voice"},
+    {"speaker": "fable", "gender": "male", "age": "adult", "language": "en", "accent": "british", "description": "animated, storyteller-like male voice"},
+    {"speaker": "nova", "gender": "female", "age": "young", "language": "en", "description": "bright, energetic female voice"},
+    {"speaker": "onyx", "gender": "male", "age": "senior", "language": "en", "description": "deep, low male voice"},
+    {"speaker": "sage", "gender": "female", "age": "adult", "language": "en", "description": "calm, measured female voice"},
+    {"speaker": "shimmer", "gender": "female", "age": "adult", "language": "en", "description": "soft, gentle female voice"},
+    {"speaker": "verse", "gender": "male", "age": "young", "language": "en", "description": "lively, expressive male voice"},
+]
+
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "fr": "French", "de": "German",
              "es": "Spanish", "it": "Italian", "pt": "Portuguese", "ru": "Russian"}
 
