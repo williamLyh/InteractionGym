@@ -12,7 +12,17 @@
   `provider` and `not_sent`; every client (local too) counts `usage` (requests, tokens incl. reasoning, TTS characters,
   ASR seconds). Hosted TTS gets raw 24 kHz PCM, no `seed` / `language`, and raises on cloning;
   `user.OPENAI_TTS_VOICES` is a preset-voice catalogue for `pick_voice`. `ToolChat` is always native on the hosted API
-  and takes `api_key_env` / `retries` / `timeout`. Realtime (full-duplex) agents are not covered yet.
+  and takes `api_key_env` / `retries` / `timeout`.
+- **OpenAI Realtime agent.** `agents.openai_realtime.OpenAIRealtimeAgent`: a `gpt-realtime*` model as the agent (server
+  or semantic VAD turns, interruptible, session tools as function tools). Probed first (gpt-realtime-mini): turn
+  detection counts received audio, not wall time (4x sending moved no boundary; 6 s send pauses, at a turn's end or
+  mid-word, detected nothing; 12 s idle kept the session). So the microphone is real-time paced and the env's stalls
+  are simply not sent; a reply starts at the simulated time the server began it plus its first-audio wall latency
+  (unaffected by stalls); playback is contiguous (`underrun="wait"` holds the env while a slow stream catches up —
+  0.7x real time was measured — or `"silence"`); user speech stops playback and the server's item is truncated to what
+  was heard (deleted if nothing was). `usage` from `response.done`, per-response timing in `trace()`;
+  `meta.agent.reproducible: false`. `examples/openai_realtime_demo.py` runs it against an all-OpenAI user. Tests
+  against a local stand-in with sample-based VAD and a slow stream.
 - **SOPs: one source format, pluggable presentation.** `interaction_gym.sop`: an SOP as data (actions whose conditions
   combine with `all` / `any` / `chain`, each `ask` or `look_up`, with `on_fail` alternatives), the logic to check an
   agent against it (`holds`, `witnessed`, `refuted`), and formats as plugins: `structured`, `list` (keeps the logic,

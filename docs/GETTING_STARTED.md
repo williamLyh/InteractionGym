@@ -168,6 +168,23 @@ Served model names default to the reference deployment's; override them with `IG
 voice (`MiniCPM-o-4_5/assets/system_ref_audio.wav`; or set `IG_AGENT_REF_AUDIO`). An example deployment for one
 8-GPU host is in [examples/serving/](../examples/serving/).
 
+### An OpenAI Realtime model as the agent
+
+```bash
+OPENAI_API_KEY=... uv run python examples/openai_realtime_demo.py --model gpt-realtime-mini --html runs/openai_realtime.html
+```
+
+`OpenAIRealtimeAgent` (agents/openai_realtime.py) runs a `gpt-realtime*` model against the simulated user (here all on
+OpenAI: gpt-5.4-mini for the words, gpt-4o-mini-tts for the voice). The API cannot be paused, but its turn detection
+counts the audio it receives, not wall time, so the adapter sends the microphone at real-time pace and simply sends
+nothing while the env stands still for the user simulator: the server never sees those pauses. A reply starts at the
+simulated time the server began it plus the wall time its first audio took (the model's real latency, network
+included); a reply that streams slower than real time is waited for rather than played with gaps
+(`underrun="silence"` plays the gaps, as a live client would); user speech during a reply stops it and the server is
+told how much was heard. Episodes take at least their own length in wall time (more while the user simulator
+computes), are not reproducible, and cost money (`agent.usage`); use it for evaluation, not RL. Session tools work if
+`AgentSpec.obs` includes `"tool.result"`.
+
 ## τ²-bench, AutomationBench and SOPBench
 
 τ²-bench (Sierra's tau2-bench, MIT; not the unrelated `tau2` package on PyPI) is installed from git at a pinned
