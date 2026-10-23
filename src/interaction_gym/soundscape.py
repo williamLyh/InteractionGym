@@ -328,11 +328,16 @@ def event_rates(surroundings: str, total: float | None = None, rates: dict | Non
     return {k: v * total / s for k, v in table.items()} if s > 0 and total > 0 else {}
 
 
-def event_clip(label: str, sr: int, rng: random.Random, bank=None) -> tuple[Audio, str]:
-    """(audio, source) of one noise occurrence: a recording from the bank's ``events/<label>/`` if there is one
+def event_clip(label: str, sr: int, rng: random.Random, bank=None, variant: str | None = None) -> tuple[Audio, str]:
+    """(audio, source) of one noise occurrence: a recording from the bank's ``events/<label>_<variant>/`` (e.g.
+    ``speech_zh``: third-party speech in the caller's language) or else ``events/<label>/`` if there is one
     (``file:<path>``), else a synthetic stand-in (``synthetic``)."""
     b = _bank(bank, fetch=False)  # events never trigger the DEMAND download (it has none): a bank already there only
-    path = b.pick("events", label, rng) if b is not None else None
+    path = None
+    if b is not None and variant and b.files("events", f"{label}_{variant}"):
+        path = b.pick("events", f"{label}_{variant}", rng)
+    if path is None and b is not None:
+        path = b.pick("events", label, rng)
     if path is not None:
         return _clip(str(path)), f"file:{path}"
     if label in RECORDED_ONLY:
@@ -357,11 +362,11 @@ def active_rms(samples, sr: int, frame_ms: int = 20, rel_db: float = -30.0) -> f
     return math.sqrt(sum(on) / len(on))
 
 
-def event_audio(ev: NoiseEvent, sr: int, rng: random.Random, bank=None) -> tuple[Audio, str, int]:
+def event_audio(ev: NoiseEvent, sr: int, rng: random.Random, bank=None, variant: str | None = None) -> tuple[Audio, str, int]:
     """(audio, source, occurrences) of a whole event: one clip (the same dog, the same phone) repeated ``ev.n`` times
     with the event's gaps — but no further once the burst would pass ``MAX_BURST_S`` (a recording may already hold
     several barks or rings) — at the event's level (active-part RMS = ``SPEECH_DBFS + ev.level_db``)."""
-    clip, source = event_clip(ev.label, sr, rng, bank)
+    clip, source = event_clip(ev.label, sr, rng, bank, variant)
     if clip.sr != sr:
         clip = clip.resample(sr)
     level = active_rms(clip.samples, sr)

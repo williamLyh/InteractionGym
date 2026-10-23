@@ -55,6 +55,8 @@ def musan_windows(tar_path: str, out: Path, n: int, seed: int = 0, per_file: int
                     continue
                 name = f"musan-{Path(m.name).stem}-{i0 // 16}.wav"
                 clip.write_wav(out / name)
+                (out.parent / "speech_en").mkdir(exist_ok=True)
+                clip.write_wav(out.parent / "speech_en" / name)  # MUSAN speech is English
                 recs.append({"file": name, "source": m.name, "start_ms": i0 // 16, "dataset": "MUSAN speech", "license": "CC BY 4.0"})
             if len(recs) >= n:
                 break

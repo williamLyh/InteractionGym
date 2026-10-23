@@ -83,4 +83,15 @@ def test_voice_packs_from_a_clip_bank(tmp_path):
     assert [p["id"] for p in packs] == ["HumDial-FDBench-en-0001-r0"]
     assert packs[0]["ref"]["text"].startswith("what are") and [c["text"] for c in packs[0]["backchannel"]] == ["of course"]
     assert speech_events(tmp_path / "manifest.jsonl", tmp_path / "bank") == 1
-    assert (tmp_path / "bank" / "events" / "speech" / "n1.wav").exists()
+    assert (tmp_path / "bank" / "events" / "speech" / "n1.wav").exists() and (tmp_path / "bank" / "events" / "speech_en" / "n1.wav").exists()
+
+
+def test_third_party_speech_in_the_callers_language_first(tmp_path):
+    import random
+
+    for d in ("speech", "speech_zh"):
+        (tmp_path / "events" / d).mkdir(parents=True)
+    tone(tmp_path / "events" / "speech" / "en.wav")
+    zh = tone(tmp_path / "events" / "speech_zh" / "zh.wav")
+    assert all(event_clip("speech", 16000, random.Random(i), bank=tmp_path, variant="zh")[1] == f"file:{zh}" for i in range(5))
+    assert event_clip("speech", 16000, random.Random(0), bank=tmp_path, variant="de")[1].endswith("en.wav")

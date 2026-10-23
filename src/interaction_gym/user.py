@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, replace
 from .audio import Audio, normalize_level, trim_silence
 from .clients import Speech, TextGen, describe
 from .core import Frame, Node, Segment, Task
-from .soundscape import EVENT_RATES
+from .soundscape import EVENT_RATES, RECORDED_ONLY
 
 STOP = "###STOP###"
 WORDS_PER_SEC = 3.4  # FDGym's speaking-rate estimate for text-only timelines
@@ -1585,7 +1585,9 @@ class UserSim(Node):
         while (ev := proc.peek()) is not None and ev.t <= t:
             proc.pop()
             sr = getattr(self.voice.speech, "sr", 16000)
-            audio, source, n = event_audio(ev, sr, st["erng"]["noise"], self.soundscape.bank)
+            # third-party speech in the caller's language where the bank has it (events/speech_<lang>/)
+            variant = _lang(st["task"]) if ev.label in RECORDED_ONLY else None
+            audio, source, n = event_audio(ev, sr, st["erng"]["noise"], self.soundscape.bank, variant)
             if self.voice.speech is None:  # a text-only timeline: just its length
                 turn = UserTurn("", kind="noise", expects="ignore", label=ev.label, dur=audio.dur_ms)
             else:

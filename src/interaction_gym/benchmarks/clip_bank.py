@@ -365,15 +365,18 @@ def voice_packs(manifest: str | Path, *, refs_per_speaker: int = 3, ref_ms: tupl
 def speech_events(manifest: str | Path, bank: str | Path, *, split: str = "material", langs: tuple[str, ...] | None = None) -> int:
     """Copy the bank's real third-party speech clips (``kind == "noise"``, not synthetic; HumDial's people talking to
     the user or near them) into a ``soundscape.SoundBank`` at ``bank`` as ``events/speech/<id>.wav`` (the noise
-    label "speech", ``user.Behaviors.third_party_per_min``). Returns the number of clips written."""
+    label "speech", ``user.Behaviors.third_party_per_min``) and by language as ``events/speech_<lang>/<id>.wav`` (the
+    env picks the caller's language first). Returns the number of clips written."""
     import shutil
 
-    out = Path(bank) / "events" / "speech"
-    out.mkdir(parents=True, exist_ok=True)
     n = 0
     for r in load_manifest(manifest, split=split, kind="noise"):
-        if (r.get("source") or {}).get("synthetic") or (langs is not None and r.get("lang", "en") not in langs):
+        lang = r.get("lang", "en")
+        if (r.get("source") or {}).get("synthetic") or (langs is not None and lang not in langs):
             continue
-        shutil.copyfile(r["audio"], out / f"{r['id']}.wav")
+        for d in ("speech", f"speech_{lang}"):
+            out = Path(bank) / "events" / d
+            out.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(r["audio"], out / f"{r['id']}.wav")
         n += 1
     return n
