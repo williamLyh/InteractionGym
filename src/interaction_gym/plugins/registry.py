@@ -12,11 +12,12 @@ Kinds (``KINDS``): what the composition expects back from the factory.
 
 - ``kernel``: configuration of the kernel itself (``kernel/env``)
 - ``role``: a participant: a ``Node`` (simulated / replayed), or ``Controlled`` — the role an external policy plays
+- ``source``: what a simulated role says (a script, an LLM, a benchmark's replanned script); a role names it
 - ``node``: any other node of the episode (a tool world, a soundscape, a watcher)
 - ``behaviour``: something a simulated role does besides its turns (barge-in, backchannel, noise, ...)
 - ``backend``: a model client: LLM / TTS / ASR / judge
 - ``tool``: a ``ToolBackend`` (the tools a world exposes)
-- ``agent``: how an external policy is attached to the controlled role: ``(seed) -> agent``
+- ``agent``: how an external policy is attached to the controlled role: ``(EpisodeContext) -> agent``
 - ``task``: where the episodes' tasks come from: an iterable of ``Task``
 - ``scorer``: ``(episode, env, agent) -> dict`` recorded under ``eval.<row id>``
 - ``sink``: receives finished episodes (``write(ep, env, agent)``, ``close()``): files, viewer pages, reports
@@ -29,6 +30,7 @@ names a module that registers its plugins when imported.
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import difflib
 import importlib
@@ -40,7 +42,7 @@ from dataclasses import dataclass, field
 from importlib import metadata
 from typing import Any
 
-KINDS = ("kernel", "role", "node", "behaviour", "backend", "tool", "agent", "task", "scorer", "sink", "driver", "latency", "mixer")
+KINDS = ("kernel", "role", "source", "node", "behaviour", "backend", "tool", "agent", "task", "scorer", "sink", "driver", "latency", "mixer")
 ENTRY_POINT_GROUP = "interaction_gym.plugins"
 BUILTIN = "interaction_gym.plugins.builtin"
 
@@ -209,3 +211,19 @@ class Controlled:
     spec: Any  # AgentSpec
     name: str = "agent"
     extra: dict = field(default_factory=dict)
+
+
+@dataclass
+class EpisodeContext:
+    """What an agent factory and episode-aware backends get to know about the episode being built: the task, the
+    seed, the arm (condition) of an A/B run, and a ``cache`` shared by the arms of one (task, seed) pair (a cascaded
+    agent memoizes its model calls in it, so arms with the same prefix make the same calls)."""
+
+    task: Any
+    seed: int = 0
+    arm: str | None = None
+    cache: dict = field(default_factory=dict)
+    episode_id: str = ""
+
+
+CURRENT_EPISODE: contextvars.ContextVar[EpisodeContext | None] = contextvars.ContextVar("ig_episode", default=None)

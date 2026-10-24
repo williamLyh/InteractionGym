@@ -7,13 +7,16 @@ each a YAML list of operations:
     - insert:                             # add rows (an existing id is an error: patch it instead)
         - {id: user, plugin: role/replay, config: {stream: user.speech}}
     - id: env                             # patch a row: `config` replaces the row's WHOLE config (no merging),
-      config: {max_ms: 60000}             # `disabled` / `requires` / `plugin` replace that field
+      config: {max_ms: 60000}             # `disabled` / `requires` replace that field; `plugin` swaps the plugin
+                                          # and drops the old config (give the new one in the same patch)
     - id: viewer
       disabled: true
     - remove: judge                       # drop a row
 
 ``--set row.key.sub=value`` is the one merging operation: it sets a single key inside a row's config (the value is
-parsed as YAML, so ``--set env.max_ms=60000`` is an int and ``--set agent.replies='[a, b]'`` a list).
+parsed as YAML, so ``--set env.max_ms=60000`` is an int and ``--set agent.replies='[a, b]'`` a list). String values
+may reference the environment: ``"${IG_LLM_URL:-http://127.0.0.1:8000/v1}"`` (expanded when resolving; the expanded
+value is what the run records).
 
 ``resolve()`` checks every enabled row against the registry (plugin exists, config valid, requirements met),
 orders rows so that requirements come first, and returns a ``Resolved`` composition whose ``dump()`` is the complete
@@ -27,6 +30,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import re
 from dataclasses import dataclass, field
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
@@ -34,6 +39,7 @@ from typing import Any
 
 import yaml
 
+from ..envvars import getenv
 from .registry import REGISTRY, Plugin, PluginError, Registry, config_refs, parse_config
 
 BUNDLES = Path(__file__).resolve().parent.parent / "bundles"
@@ -139,6 +145,7 @@ class Composition:
             raise PluginError(f"{source}: patch of {op['id']!r} has unknown fields {sorted(extra)}")
         if "plugin" in op:
             row.plugin = op["plugin"]
+            row.config = {}  # another plugin, another config: the old one would not fit
         if "config" in op:
             row.config = dict(op["config"] or {})
         if "disabled" in op:
@@ -172,6 +179,8 @@ class Composition:
 
     def resolve(self, registry: Registry = REGISTRY) -> "Resolved":
         rows = [copy.deepcopy(r) for r in self.rows.values() if not r.disabled]
+        for r in rows:
+            r.config = expand_env(r.config, f"row {r.id!r}")
         plugins: dict[str, Plugin] = {}
         configs: dict[str, Any] = {}
         provides: dict[str, str] = {}  # service key -> row id
@@ -214,6 +223,29 @@ class Composition:
         ordered = sorted(by_id.values(), key=lambda r: (_depth(r.id, deps), rank[r.id]))
         assert [r.id for r in ordered] and set(order) == set(by_id)
         return Resolved(ordered, plugins, configs, provides, tuple(self.layers))
+
+
+_ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def expand_env(value, where: str):
+    """``${NAME}`` / ``${NAME:-default}`` inside string config values, from the environment (``IG_*`` names also
+    accept the deprecated ``DIG_*``, see envvars). A name that is not set and has no default is an error. The
+    expanded value is what the run records, so a trajectory says which server it used."""
+    if isinstance(value, str):
+        def sub(m):
+            name, default = m.group(1), m.group(2)
+            v = getenv(name, default) if name.startswith(("IG_", "DIG_")) else os.environ.get(name, default)
+            if v is None:
+                raise PluginError(f"{where}: ${{{name}}} is not set and has no default")
+            return v
+        out = _ENV.sub(sub, value)
+        return yaml.safe_load(out) if out != value and _ENV.fullmatch(value) else out  # a whole-value reference keeps its type
+    if isinstance(value, dict):
+        return {k: expand_env(v, where) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env(v, where) for v in value]
+    return value
 
 
 def _depth(rid: str, deps: dict[str, set[str]], _seen=()) -> int:

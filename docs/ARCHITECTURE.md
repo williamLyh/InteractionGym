@@ -103,13 +103,14 @@ implementation is not made a plugin.
 | Kind | The question the interface answers | Implementations (existing or planned) | Consumer |
 |---|---|---|---|
 | `role` | who am I, what do I perceive and speak, when do I decide to speak, how should my utterances be treated | `controlled` (external policy), `replay`, `user` (LLM / script simulator); planned: `business` (an LLM following an SOP), `observer` (a read-only judge) | `Sim`, scorers, `meta.roles` |
+| `source` | what a simulated role says next | `script`, `llm`, `audiomc_script`, `audiomc_replan`; fdb2's examiner and fdb3's user source next | `role/user` |
 | `behaviour` | when, what, effect on self, labels, expected reaction | barge_in · backchannel · aside · noise · called_away · third_party · response_delay (today inside `UserSim`; split in step 4) | the role core |
 | `backend` | one LLM / TTS / ASR / judge call | `chat`, `tool_chat`, `tts`, `asr` (vLLM-compatible or hosted OpenAI), `fake_chat`, `tts_fake`; `Cached` as a wrapper | a role's source / voice / listener, the cascaded agent, judge scorers |
 | `tool` | one tool call: schema, execution, world state, latency | `functions`; `TauBackend`, fdb3 `MockAPIBackend`, AutomationBench's four sets, SOPBench's domain functions, BrowserGym / OpenApps (to be registered) | `node/tool_world` executes and advertises them in the session; the agent emits `tool.call` |
 | `agent` | how the external policy attaches to the controlled role | `canned`, `vllm_omni`, `openai_realtime`, `cascaded`; an RL framework's policy | the driver, through `Controlled` |
 | `task` | where the episodes come from | `inline`, `jsonl`; fdb2 · fdb3 · audiomc · tau · sopbench · browsergym · colbench · openapps (to be registered) | the driver, bundles |
 | `scorer` / `sink` | read one trajectory → `eval.*` / a side effect | `interaction`, `timing`; `jsonl`, `html`, `stdout`; SOP judge, content judges, reports (to be registered) | the driver, after each episode |
-| `driver` | how episodes are organised | `eval` (concurrency, resume); RL rollout (fork, logprobs), live | `ig run` |
+| `driver` | how episodes are organised | `eval` (concurrency, resume, retries, warm-up, A/B `arms` sharing a cache per (task, seed)); RL rollout (fork, logprobs), live | `ig run` |
 | `latency` / `mixer` | where an output lands on `t` / how concurrent segments of one stream combine | constant · distribution · replay / audio mix (`core._mix` today) · text interleave · video overlay | nodes, `Sim` delivery |
 
 ### How a plugin is written
@@ -173,8 +174,26 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
 
 1. **Registry, layered configuration, `ig run`, `--dump-config`** — done. Existing classes are wrapped, not changed.
    `tests/test_plugins.py` builds the same episode through the composition and by hand and compares the logs.
-2. **Scorers and sinks as plugins**, then the fdb2 / fdb3 / audiomc runners move onto `driver/eval` (their shared
-   concurrency, retry, warm-up and resume code goes into the driver); each benchmark becomes a bundle.
+2. **The benchmark runners move onto `driver/eval`**, each benchmark a bundle; the runners' shared concurrency,
+   retry, warm-up, resume and A/B code lives once, in the driver. **audiomc done** (bundles `audiomc`,
+   `audiomc_cascaded`); fdb2 and fdb3 next. Every migrated runner gets a parity check against its script on `main`:
+
+   | `examples/audiomc_ab.py run` on main | now | checked by |
+   |---|---|---|
+   | `audiomc.load(data, only, per_axis)` | `task/audiomc` | `test_plugins_audiomc` |
+   | condition A: `benchmark_user(audiomc.ScriptSource(), Voice(), TurnTaking(response_delay=ResponseDelay(), yield_after_ms=None, nudge_after_ms=10000))` | row `user` (`role/user`, `source/audiomc_script`, `benchmark: true`) | A episode equals the hand-built one frame for frame |
+   | condition B: `ReplanSource(llm(seed, 0.7, 600))`, voice cloned from the first recording with a plain-TTS fallback | arm B patch: `source/audiomc_replan`, `backend/clone_fallback`, `backend/chat` with `defaults` and `seed: episode` | B episode equals; the replanning call carries the episode seed |
+   | `Env(max_ms=900_000, end_idle_ms=8000)`, `duplex_spec(name, SR)` / `CASCADED_SPEC` | rows `env`, `controlled` (`preset: minicpmo`; `audiomc_cascaded` sets `chunk_ms: 100`) | dump-config |
+   | `make_agent`: `VllmOmniDuplexAgent(duplex_spec, AGENT_URL, audio_out, **duplex_model(name), out_sr, clock="input", trace_tokens, session.instructions)`; `CascadedAgent(..., ToolChat(native=False, max_tokens=300), voice="aiden", Endpointing(silence_ms=800), LatencyModel(), seed, cache)` | `agent/vllm_omni` (`preset`, `instructions`); `agent/cascaded` in `audiomc_cascaded` | signatures unchanged; constructed in tests with fakes |
+   | `--agent gander / personaplex`, `--audio-out` | `--set agent.preset=... --set controlled.preset=...`, `--set agent.audio_out=true` | bundle header |
+   | A and B of one (task, seed) share the cascaded agent's call `cache` | `EpisodeContext.cache` shared across arms | test: same cache object in both arms |
+   | resume: skip episode ids already in `out/<tag>/<cond>/episodes.jsonl` | the jsonl sink's `done()`, per arm | second run: "0 pairs to run" |
+   | `check_output_mode` (never append audio-output episodes to a text-only file) | driver, from the factory's `audio_out` | test raises `ValueError` |
+   | warm-up: one throw-away episode per server behind `IG_AGENT_URL` | `driver.warmup`, `servers_behind(factory.url)` | code path; servers not reachable in tests |
+   | `--retries` with 45–75 s waits, "GAVE UP" | `retries`, `retry_wait_s`, `retry_jitter_s` | test: two failures then success |
+   | meta: `run_id`, `agent` (describe + name), `condition`, `agent_name`, `agent_base`, `task_id`, `wall_s`; agent traces to `agent_traces.jsonl` | the driver writes them (`agent_base` is `meta.agent.name`, the agent row id); `sink/agent_traces` | the script's `report` runs unchanged on a bundle run |
+   | progress line with ep/h and the agent's final reply | ep/h, user turns, scores | — |
+   | `report` (rubric judge, validity, timing tables, consistency, bootstrap CIs) | still `examples/audiomc_ab.py report`, reading the bundle's output; becomes scorer / sink plugins in step 2b | test runs it on a bundle run |
 3. **Role table and expectation table.** `turns[].role` becomes a role name, `meta.roles` / `meta.controlled`; old
    files read as `user` / `agent`. This unlocks user-side evaluation and three-party tasks.
 4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. The largest

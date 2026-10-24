@@ -543,7 +543,9 @@ calibrated on closed-loop turns (its noise floor) and reported as the excess ove
 
 ## 13. Audio MultiChallenge: open vs closed loop
 
-Code: `benchmarks/audiomc.py`, runner `examples/audiomc_ab.py`, tests `tests/test_audiomc.py`. Data: `ScaleAI/audiomc`
+Code: `benchmarks/audiomc.py`, runner `examples/audiomc_ab.py` or the bundle `ig run audiomc` (the same run as a
+composition, [ARCHITECTURE.md](ARCHITECTURE.md); `audiomc_cascaded` for the cascaded agent; the script's `report`
+reads either run's output), tests `tests/test_audiomc.py`, `tests/test_plugins_audiomc.py`. Data: `ScaleAI/audiomc`
 (MIT), unpacked once with `audiomc.extract(parquet, out)` → `<out>/<id>/u<k>.wav`
 (16 kHz) + `index.json` (1.7 GB).
 

@@ -14,7 +14,7 @@ from typing import Any
 
 from ..core import AgentSpec, Env, Node, Task
 from .config import Resolved
-from .registry import Controlled, PluginError
+from .registry import Controlled, EpisodeContext, PluginError
 
 
 class Context:
@@ -76,10 +76,11 @@ class Run:
         c = self.env_config
         return Env(dict(self.nodes), self.spec, log=tuple(c.log), max_ms=c.max_ms, end_idle_ms=c.end_idle_ms, peek=c.peek)
 
-    def agent(self, seed: int = 0):
+    def agent(self, ep: EpisodeContext):
+        """The external policy for one episode (``ep``: task, seed, arm, shared cache)."""
         if self.agent_factory is None:
             raise PluginError("the composition has no agent row (kind agent): nothing plays the controlled role")
-        return self.agent_factory(seed)
+        return self.agent_factory(ep)
 
     def meta(self) -> dict:
         """What every episode of this run records in ``meta``."""
@@ -122,7 +123,7 @@ def _place(run: Run, rid: str, kind: str, obj: Any) -> None:
             raise PluginError(f"row {rid!r}: a {kind} plugin must return a Node or Controlled, got {type(obj).__name__}")
     elif kind == "agent":
         if not callable(obj):
-            raise PluginError(f"row {rid!r}: an agent plugin must return a factory (seed) -> agent")
+            raise PluginError(f"row {rid!r}: an agent plugin must return a factory (EpisodeContext) -> agent")
         if run.agent_factory is not None:
             raise PluginError(f"two agent rows ({run.agent_id!r}, {rid!r}); disable one")
         run.agent_factory, run.agent_id = obj, rid
@@ -142,7 +143,7 @@ def _place(run: Run, rid: str, kind: str, obj: Any) -> None:
         if run.driver is not None:
             raise PluginError(f"two driver rows ({run.driver_id!r}, {rid!r}); disable one")
         run.driver, run.driver_id = obj, rid
-    # backend / tool / behaviour / latency / mixer: used by the rows that require them, nothing to place
+    # backend / source / tool / behaviour / latency / mixer: used by the rows that require them, nothing to place
 
 
 def _tasks(rid: str, obj: Any) -> list[Task]:

@@ -359,6 +359,25 @@ class FakeSpeech:
         return Audio.silence(round(len(text.split()) / self.wps * 1000), self.sr)
 
 
+class CloneWithFallback:
+    """A cloning TTS with a safety net: a line the cloning model refuses is retried with a final period, then spoken
+    by ``plain`` in a preset ``voice`` (one bad line does not lose the episode). Used by the benchmark runners."""
+
+    clones = True
+
+    def __init__(self, clone, plain, voice: str = "ryan"):
+        self.inner, self.plain, self.voice = clone, plain, voice
+        self.model, self.sr = getattr(clone, "model", type(clone).__name__), clone.sr
+
+    async def synth(self, text, voice="default", instructions=None, ref_audio=None, ref_text=None, language=None, **kw):
+        for t in (text, text.rstrip(".!?") + "."):
+            try:
+                return await self.inner.synth(t, voice, instructions, ref_audio, ref_text, language, **kw)
+            except Exception:  # noqa: BLE001 — the cloning server refused this line; try the next form, then the plain voice
+                continue
+        return await self.plain.synth(text, self.voice, None, language=language)
+
+
 class Cached:
     """Memoizes ``chat`` / ``synth`` of a wrapped client by their arguments."""
 

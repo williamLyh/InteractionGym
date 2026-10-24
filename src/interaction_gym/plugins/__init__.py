@@ -13,7 +13,7 @@ Command line: ``ig run <bundle> [--patch f.yml] [--set row.key=v] [--dump-config
 
 from .compose import Context, EnvConfig, Run, compose
 from .config import Composition, Resolved, Row
-from .registry import KINDS, REGISTRY, Controlled, Plugin, PluginError, Registry, plugin
+from .registry import CURRENT_EPISODE, KINDS, REGISTRY, Controlled, EpisodeContext, Plugin, PluginError, Registry, plugin
 
-__all__ = ["KINDS", "REGISTRY", "Composition", "Context", "Controlled", "EnvConfig", "Plugin", "PluginError", "Registry",
-           "Resolved", "Row", "Run", "compose", "plugin"]
+__all__ = ["CURRENT_EPISODE", "KINDS", "REGISTRY", "Composition", "Context", "Controlled", "EnvConfig", "EpisodeContext", "Plugin",
+           "PluginError", "Registry", "Resolved", "Row", "Run", "compose", "plugin"]

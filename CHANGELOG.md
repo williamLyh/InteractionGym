@@ -17,6 +17,20 @@
   `html` / `stdout`, `driver/eval` (concurrency, resume from the jsonl sink). Bundles `core` and `minimal`. The
   existing classes are wrapped, not changed; `tests/test_plugins.py` checks the composed episode equals the one built
   by hand. New dependency: PyYAML.
+- **Audio MultiChallenge as a bundle** (`ig run audiomc`, `audiomc_cascaded`): `examples/audiomc_ab.py run` as a
+  composition, checked against the script frame for frame (`tests/test_plugins_audiomc.py`; the parity table is in
+  docs/ARCHITECTURE.md §8). For it: the `source` plugin kind (`script`, `llm`, `audiomc_script`, `audiomc_replan`; a
+  `role/user` names its source row), `task/audiomc`, `backend/clone_fallback` (`clients.CloneWithFallback`),
+  `backend/chat` `defaults` and `seed: episode` (every call carries the running episode's seed, what the runners did
+  by building one client per episode), `role/controlled` `preset` (a duplex model's chunk), `agent/vllm_omni`
+  `preset` / `instructions`, `agent/cascaded` with dict `endpointing` / `latency` and the shared per-pair cache,
+  `sink/agent_traces`, `role/user` `benchmark: true` and `soundscape`. `driver/eval` gained what the A/B scripts
+  shared: `arms` (each a patch layer; one (task, seed) runs through the arms in order sharing an
+  `EpisodeContext.cache`; output `out/<tag>/<arm>/`, episode ids `<tag>/<task>/s<seed>/<arm>`, the layout the
+  scripts' `report` commands read), `retries` / `retry_wait_s` / `retry_jitter_s`, `warmup` (one episode per server
+  behind the agent URL), the output-mode check on resume, `run_id`, and `meta.condition` / `task_id` / `agent_name`.
+  Config strings may reference the environment (`${IG_LLM_URL:-http://127.0.0.1:8000/v1}`); a patch that swaps a
+  row's `plugin` drops the old config.
 - **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
   TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
   `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,

@@ -22,6 +22,22 @@ def inline(ctx, cfg: InlineConfig) -> list:
 
 
 @dataclass
+class AudiomcConfig:
+    data: str  # the extracted dataset root (index.json + wav), see benchmarks.audiomc.extract
+    per_axis: int | None = 25  # conversations per axis (every k-th in index order); None: all
+    axes: list | None = None  # subset of benchmarks.audiomc.AXES
+    ids: list | None = None
+
+
+@plugin("task", "audiomc", config=AudiomcConfig)
+def audiomc(ctx, cfg: AudiomcConfig) -> list[Task]:
+    """Audio MultiChallenge conversations (docs/BENCHMARKS.md §13): recorded user turns + rubric."""
+    from ...benchmarks import audiomc as amc
+
+    return amc.load(cfg.data, axes=cfg.axes, only=cfg.ids, per_axis=cfg.per_axis)
+
+
+@dataclass
 class JsonlConfig:
     path: str
     ids: list | None = None  # only these task ids

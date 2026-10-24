@@ -1,0 +1,91 @@
+# audiomc: Audio MultiChallenge, open loop (A: recorded turns replayed) vs closed loop (B: the script replanned to the
+# agent), MiniCPM-o 4.5 in lockstep as the agent — examples/audiomc_ab.py `run` as a composition (docs/BENCHMARKS.md §13).
+#
+#   ig run audiomc --out runs/audiomc_ab --seeds 0                       # --tag names the agent folder (default: agent)
+#   ig run audiomc --set agent.audio_out=true                            # the talker's speech instead of text timed at speech_cps
+#   ig run audiomc --set agent.preset=gander --set controlled.preset=gander
+#   python examples/audiomc_ab.py report --data $IG_AUDIOMC_DATA --out runs/audiomc_ab    # rubric judge + tables
+#
+# Services: IG_AUDIOMC_DATA (extracted dataset), IG_LLM_URL (replanning user), IG_CLONE_URL / IG_TTS_URL (the user's
+# voice cloned from its first recording, plain TTS as fallback), IG_AGENT_URL (the duplex server or the agent proxy).
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/audiomc
+      config: {data: "${IG_AUDIOMC_DATA:-data/audiomc/wav}", per_axis: 25}
+
+    - id: user_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.7, max_tokens: 600}
+        seed: episode
+
+    - id: tts
+      plugin: backend/tts
+      config: {base_url: "${IG_TTS_URL:-http://127.0.0.1:8001/v1}", model: "${IG_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}", sr: 16000}
+
+    - id: clone_tts
+      plugin: backend/tts
+      config: {base_url: "${IG_CLONE_URL:-http://127.0.0.1:8005/v1}", model: "${IG_CLONE_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-Base}", sr: 16000}
+
+    - id: clone
+      plugin: backend/clone_fallback
+      config: {clone: clone_tts, plain: tts, voice: ryan}
+
+    - id: script
+      plugin: source/audiomc_script
+
+    - id: replan
+      plugin: source/audiomc_replan
+      config: {llm: user_llm}
+
+    # arm A: the recordings, as they are (the voice is the recording itself; nothing to synthesize)
+    - id: user
+      plugin: role/user
+      config:
+        source: script
+        benchmark: true
+        timing: {response_delay: {}, yield_after_ms: null, nudge_after_ms: 10000}
+
+    - id: agent
+      plugin: agent/vllm_omni
+      config:
+        preset: minicpmo
+        url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+        audio_out: false            # text timed at speech_cps (Thinker-only server); true: the talker's speech
+        out_sr: 16000
+        clock: input
+        trace_tokens: true
+        instructions: "You are a helpful AI assistant. Always speak in English."
+
+    - id: traces
+      plugin: sink/agent_traces
+
+- id: controlled
+  config: {name: agent, preset: minicpmo, sr: 16000, audio: user.audio}
+
+- id: env
+  config: {max_ms: 900000, end_idle_ms: 8000}
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config:
+    concurrency: 6
+    retries: 4
+    warmup: true
+    run_id: audiomc-ab
+    arms:
+      A: []
+      # arm B: the script replanned to the agent's replies, spoken in the caller's voice cloned from the first recording
+      B:
+        - id: user
+          config:
+            source: replan
+            benchmark: true
+            voice: {tts: clone, clone: clone}
+            timing: {response_delay: {}, yield_after_ms: null, nudge_after_ms: 10000}

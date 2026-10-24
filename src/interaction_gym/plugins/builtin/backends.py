@@ -1,14 +1,38 @@
 """Backends: model clients that roles and agents name by row id. ``base_url`` is an OpenAI-compatible server; with
 no ``base_url`` the hosted OpenAI API is used and the key comes from ``$OPENAI_API_KEY``. ``cached`` wraps the
-client in ``clients.Cached`` (same input → same output within the process).
+client in ``clients.Cached`` (same input → same output within the process). ``seed: episode`` makes every chat call
+carry the running episode's seed (what the runners did by building one client per episode), so a seed reproduces the
+user's lines on a server that honours it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from ...clients import Cached, FakeChat, FakeSpeech, OpenAIChat, OpenAISpeech, OpenAITranscribe
-from ..registry import plugin
+from ...clients import Cached, CloneWithFallback, FakeChat, FakeSpeech, OpenAIChat, OpenAISpeech, OpenAITranscribe
+from ..registry import CURRENT_EPISODE, PluginError, plugin
+
+
+class EpisodeSeeded:
+    """A chat client whose calls carry the current episode's seed (``CURRENT_EPISODE``) unless the call gives one."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def chat(self, messages, **kw):
+        ep = CURRENT_EPISODE.get()
+        if ep is not None:
+            kw.setdefault("seed", ep.seed)
+        return await self.inner.chat(messages, **kw)
+
+    def describe(self) -> dict | None:
+        from ...clients import describe
+
+        d = describe(self.inner)
+        return {**d, "seed": "episode"} if d else d
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
 
 
 @dataclass
@@ -20,29 +44,45 @@ class ChatConfig:
     timeout: float = 120
     retries: int | None = None
     reasoning_tokens: int = 2048
+    defaults: dict = field(default_factory=dict)  # request fields sent with every call: temperature, max_tokens, ...
+    seed: str | int | None = None  # "episode": the running episode's seed; an int: fixed; None: unseeded
     cached: bool = False
 
 
-def _wrap(client, cached: bool):
+def _seeded(client, seed, cached: bool):
+    if isinstance(seed, int) and not isinstance(seed, bool):
+        client.defaults["seed"] = seed
+    elif seed == "episode":
+        client = EpisodeSeeded(client)
+    elif seed is not None:
+        raise PluginError(f"backend: seed is 'episode', an int or null, got {seed!r}")
     return Cached(client) if cached else client
 
 
 @plugin("backend", "chat", config=ChatConfig)
 def chat(ctx, cfg: ChatConfig):
     """A chat-completions LLM (``OpenAIChat``): the user simulator's writer, listener, judges."""
-    kw = dict(api_key_env=cfg.api_key_env, timeout=cfg.timeout, retries=cfg.retries, reasoning_tokens=cfg.reasoning_tokens)
+    kw = dict(api_key_env=cfg.api_key_env, timeout=cfg.timeout, retries=cfg.retries, reasoning_tokens=cfg.reasoning_tokens, **cfg.defaults)
     client = OpenAIChat.openai(cfg.model, **kw) if cfg.base_url is None else OpenAIChat(cfg.base_url, cfg.model, api=cfg.api, **kw)
-    return _wrap(client, cfg.cached)
+    return _seeded(client, cfg.seed, cfg.cached)
 
 
-@plugin("backend", "tool_chat", config=ChatConfig)
-def tool_chat(ctx, cfg: ChatConfig):
+@dataclass
+class ToolChatConfig(ChatConfig):
+    native: bool = False  # native tool calling (forced on the hosted API) or prompted
+
+
+@plugin("backend", "tool_chat", config=ToolChatConfig)
+def tool_chat(ctx, cfg: ToolChatConfig):
     """A chat LLM with tool calling (``agents.cascaded.ToolChat``), for the cascaded agent."""
     from ...agents.cascaded import ToolChat
 
     base = cfg.base_url or "https://api.openai.com/v1"
-    return ToolChat(base, cfg.model, api_key_env=cfg.api_key_env, api=cfg.api, retries=cfg.retries, timeout=cfg.timeout,
-                    reasoning_tokens=cfg.reasoning_tokens)
+    client = ToolChat(base, cfg.model, cfg.native, api_key_env=cfg.api_key_env, api=cfg.api, retries=cfg.retries, timeout=cfg.timeout,
+                      reasoning_tokens=cfg.reasoning_tokens, **cfg.defaults)
+    if cfg.seed == "episode":
+        raise PluginError("backend/tool_chat: the cascaded agent seeds its own calls per episode; use seed: null")
+    return _seeded(client, cfg.seed, cfg.cached)
 
 
 @dataclass
@@ -60,7 +100,21 @@ def tts(ctx, cfg: SpeechConfig):
     """A text-to-speech backend (``OpenAISpeech``): voices roles; a cloning model (Qwen3-TTS Base) can be the ``clone``."""
     client = OpenAISpeech.openai(cfg.model, sr=cfg.sr, api_key_env=cfg.api_key_env) if cfg.base_url is None \
         else OpenAISpeech(cfg.base_url, cfg.model, sr=cfg.sr, api_key_env=cfg.api_key_env, api=cfg.api)
-    return _wrap(client, cfg.cached)
+    return Cached(client) if cfg.cached else client
+
+
+@dataclass
+class CloneFallbackConfig:
+    clone: str  # row id of the cloning TTS
+    plain: str  # row id of the preset-voice TTS used when cloning fails
+    voice: str = "ryan"  # the plain TTS's speaker
+
+
+@plugin("backend", "clone_fallback", config=CloneFallbackConfig, refs=("clone", "plain"))
+def clone_fallback(ctx, cfg: CloneFallbackConfig) -> CloneWithFallback:
+    """Voice cloning with a fallback: a line the cloning TTS refuses is retried with a final period, then spoken by
+    the plain TTS in a preset voice (so one bad line does not lose the episode)."""
+    return CloneWithFallback(ctx[cfg.clone], ctx[cfg.plain], cfg.voice)
 
 
 @dataclass
@@ -83,12 +137,13 @@ def asr(ctx, cfg: TranscribeConfig):
 @dataclass
 class FakeChatConfig:
     replies: list
+    seed: str | int | None = None
 
 
 @plugin("backend", "fake_chat", config=FakeChatConfig)
 def fake_chat(ctx, cfg: FakeChatConfig):
     """Fixed replies in order, no server: tests and dry runs."""
-    return FakeChat(list(cfg.replies))
+    return _seeded(FakeChat(list(cfg.replies)), cfg.seed, False) if cfg.seed == "episode" else FakeChat(list(cfg.replies))
 
 
 @dataclass

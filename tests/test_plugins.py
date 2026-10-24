@@ -102,7 +102,7 @@ def test_configuration_mistakes_fail_at_resolve_with_the_row_named():
         fresh().apply("- insert: [{id: z, plugin: role/replay, plugn: 1}]", "p")
     c = fresh()
     c.apply("- id: user\n  plugin: role/user\n  config: {source: llmm}", "p")
-    with pytest.raises(PluginError, match="row 'user': source names 'llmm', which is not the id of an enabled row or one of script"):
+    with pytest.raises(PluginError, match="row 'user': source names 'llmm', which is not the id of an enabled row$"):
         c.resolve()
     c = fresh()
     c.apply("- id: agent\n  config: {replies: [a], yield_afte: 1}", "p")
@@ -132,7 +132,7 @@ def test_configuration_mistakes_fail_at_resolve_with_the_row_named():
     c.apply("- insert: [{id: second, plugin: role/controlled}]", "p")
     with pytest.raises(PluginError, match="both provide 'controlled'"):
         c.resolve()
-    with pytest.raises(PluginError, match="no bundle 'nope'; built-in bundles: core, minimal"):
+    with pytest.raises(PluginError, match="no bundle 'nope'; built-in bundles: .*core, minimal"):
         Composition.bundle("nope")
 
 
@@ -175,11 +175,14 @@ def test_tools_and_fake_backends_compose_into_the_session():
     - {id: tts, plugin: backend/tts_fake}
     - {id: lookup, plugin: tool/functions, config: {functions: {check: "tests.test_plugins:check_availability"}, name: tables}}
     - {id: tools, plugin: node/tool_world, config: {backends: [lookup], latency_ms: 250}}
+    - {id: lines, plugin: source/llm, config: {llm: llm}}
 - id: user
   plugin: role/user
-  config: {source: llm, voice: {tts: tts, clone: false}, timing: {respond_after_ms: 500, response_delay: {median_ms: 200}}, behaviors: {noise_per_min: 0}}
+  config: {source: lines, voice: {tts: tts, clone: false}, timing: {respond_after_ms: 500, response_delay: {median_ms: 200}}, behaviors: {noise_per_min: 0}}
 """, "p")
     run = compose(c.resolve())
+    ids = [r.id for r in run.resolved.rows]
+    assert ids.index("llm") < ids.index("lines") < ids.index("user") and ids.index("lookup") < ids.index("tools")  # refs order the build
     assert set(run.nodes) == {"user", "tools"}
     env = run.make_env()
     asyncio.run(env.reset(Task("t", {"persona": "a caller", "instructions": "ask for a table"}), 0))
@@ -209,8 +212,7 @@ def test_ig_run_writes_episodes_with_the_config_and_resumes(tmp_path, capsys):
     assert roles == [("user", False), ("agent", True), ("user", False), ("agent", False)]  # the first reply is cut
     # the same command again: nothing to do (resumed from episodes.jsonl)
     assert main(["run", "minimal", "--out", str(out), "--set", "viewer.disabled=true"]) == 0
-    assert "1 to run (0 done)" in capsys.readouterr().out.split("\n")[0]
-    out2 = capsys.readouterr()
+    assert "0 pairs to run (1 episodes done)" in [x for x in capsys.readouterr().out.splitlines() if x.startswith("ig:")][-1]
     assert len((out / "episodes.jsonl").read_text().splitlines()) == 1
 
 
@@ -227,9 +229,10 @@ def test_ig_run_dump_config_and_errors(tmp_path, capsys):
 def test_the_composed_run_matches_the_same_episode_built_by_hand():
     run = compose(fresh().resolve())
     task = run.tasks[0]
+    from interaction_gym.plugins import EpisodeContext
     from interaction_gym.plugins.builtin.drivers import run_episode
 
-    ep, env, agent = asyncio.run(run_episode(run, task, 0, "x"))
+    ep, env, agent = asyncio.run(run_episode(run, EpisodeContext(task, 0, episode_id="x")))
 
     turns = run.resolved.configs["user"].turns
     spec = AgentSpec(chunk_ms=200)

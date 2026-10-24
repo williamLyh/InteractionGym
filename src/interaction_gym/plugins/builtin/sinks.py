@@ -76,6 +76,30 @@ def html(ctx, cfg: HtmlSinkConfig) -> HtmlSink:
     return HtmlSink(cfg)
 
 
+@dataclass
+class TracesSinkConfig:
+    path: str = "agent_traces.jsonl"
+
+
+class TracesSink(Sink):
+    """The agent adapter's own trace of each episode (docs/AGENT_TRACE.md), when it has one."""
+
+    def __init__(self, cfg: TracesSinkConfig):
+        self.cfg = cfg
+
+    def write(self, ep, env, agent) -> None:
+        trace = getattr(agent, "trace", None)
+        tr = trace(ep["meta"]["episode_id"]) if callable(trace) else None
+        if tr:
+            save([tr], self.out / self.cfg.path, append=True)
+
+
+@plugin("sink", "agent_traces", config=TracesSinkConfig)
+def agent_traces(ctx, cfg: TracesSinkConfig) -> TracesSink:
+    """Appends ``agent.trace(episode_id)`` (unit-level internals of a server adapter) to a JSON-lines file."""
+    return TracesSink(cfg)
+
+
 class StdoutSink(Sink):
     def write(self, ep, env, agent) -> None:
         print(f"== {ep['meta']['episode_id']}  reward {ep['eval']['reward']['total']}  scores {ep['eval']['scores']['total']}")
