@@ -132,6 +132,14 @@ def test_run_layout_and_meta_match_the_script_and_its_report_reads_them(tmp_path
     summary = (out / "summary.md").read_text()
     rows = json.loads((out / "rows.json").read_text())
     assert "| minicpmo | all | 4 |" in summary and len(rows) == 8 and all(r["rubric_rate"] == 1.0 for r in rows)
+    # `ig report` (report/audiomc with a fake judge row) writes the same files as the script's report
+    (out / "summary.md").rename(out / "summary.script.md")
+    (out / "rows.json").rename(out / "rows.script.json")
+    judge = tmp_path / "judge.yml"
+    judge.write_text('- id: judge_llm\n  plugin: backend/fake_chat\n  config: {replies: [\'{"criteria_met": true}\']}\n')
+    assert main(["report", "audiomc", "--set", f"tasks.data={data}", "--set", "tasks.per_axis=null", "--patch", str(patch), "--patch", str(judge),
+                 "--out", str(out), "--tag", "minicpmo"]) == 0
+    assert (out / "summary.md").read_text() == summary and (out / "rows.json").read_text() == (out / "rows.script.json").read_text()
     # resume: nothing left to run
     assert main(["run", "audiomc", "--set", f"tasks.data={data}", "--set", "tasks.per_axis=null", "--patch", str(patch),
                  "--out", str(out), "--seeds", "0,1", "--limit", "2", "--tag", "minicpmo"]) == 0

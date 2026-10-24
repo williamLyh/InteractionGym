@@ -109,7 +109,8 @@ implementation is not made a plugin.
 | `tool` | one tool call: schema, execution, world state, latency | `functions`; `TauBackend`, fdb3 `MockAPIBackend`, AutomationBench's four sets, SOPBench's domain functions, BrowserGym / OpenApps (to be registered) | `node/tool_world` executes and advertises them in the session; the agent emits `tool.call` |
 | `agent` | how the external policy attaches to the controlled role | `canned`, `vllm_omni`, `openai_realtime`, `cascaded`; an RL framework's policy | the driver, through `Controlled` |
 | `task` | where the episodes come from | `inline`, `jsonl`; fdb2 · fdb3 · audiomc · tau · sopbench · browsergym · colbench · openapps (to be registered) | the driver, bundles |
-| `scorer` / `sink` | read one trajectory → `eval.*` / a side effect | `interaction`, `timing`; `jsonl`, `html`, `stdout`; SOP judge, content judges, reports (to be registered) | the driver, after each episode |
+| `scorer` / `sink` | read one trajectory → `eval.*` / a side effect | `interaction`, `timing`, `fdb3_quick`; `jsonl`, `html`, `agent_traces`, `stdout`; SOP judge, content judges (to be registered) | the driver, after each episode |
+| `report` | post-hoc scoring of a whole run from its files: judges, tables, pages | `audiomc`, `fdb2`, `fdb3` (`interaction_gym.benchmarks.reports`, the code the scripts' `report` commands run) | `ig report` |
 | `driver` | how episodes are organised | `eval` (concurrency, resume, retries, warm-up, A/B `arms` sharing a cache per (task, seed)); RL rollout (fork, logprobs), live | `ig run` |
 | `latency` / `mixer` | where an output lands on `t` / how concurrent segments of one stream combine | constant · distribution · replay / audio mix (`core._mix` today) · text interleave · video overlay | nodes, `Sim` delivery |
 
@@ -181,8 +182,10 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
 2. **The benchmark runners move onto `driver/eval`**, each benchmark a bundle; the runners' shared concurrency,
    retry, warm-up, resume and A/B code lives once, in the driver. **audiomc done** (bundles `audiomc`,
    `audiomc_cascaded`), **fdb2 done** (`fdb2`, `fdb2_confirm`, `fdb2_cascaded`; `ig prepare` for its reference
-   scripts), **fdb3 done** (`fdb3`, `fdb3_natural`, `fdb3_duplex`). The scripts' `report` commands still read the
-   bundles' output (step 2b turns them into scorers and sinks). Every migrated runner gets a parity check against
+   scripts), **fdb3 done** (`fdb3`, `fdb3_natural`, `fdb3_duplex`), and **2b done**: the scripts' `report`
+   commands moved into `interaction_gym.benchmarks.reports` (verbatim) and run as `report/*` rows through
+   `ig report <bundle> --out DIR`; the scripts' `report` subcommands call the same functions, and the tests check
+   that both write identical `rows.json` / `summary.md` on one run. Every migrated runner gets a parity check against
    its script on `main`:
 
    | `examples/audiomc_ab.py run` on main | now | checked by |
@@ -200,7 +203,7 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | `--retries` with 45–75 s waits, "GAVE UP" | `retries`, `retry_wait_s`, `retry_jitter_s` | test: two failures then success |
    | meta: `run_id`, `agent` (describe + name), `condition`, `agent_name`, `agent_base`, `task_id`, `wall_s`; agent traces to `agent_traces.jsonl` | the driver writes them (`agent_base` is `meta.agent.name`, the agent row id); `sink/agent_traces` | the script's `report` runs unchanged on a bundle run |
    | progress line with ep/h and the agent's final reply | ep/h, user turns, scores | — |
-   | `report` (rubric judge, validity, timing tables, consistency, bootstrap CIs) | still `examples/audiomc_ab.py report`, reading the bundle's output; becomes scorer / sink plugins in step 2b | test runs it on a bundle run |
+   | `report` (rubric judge, validity, timing tables, consistency, bootstrap CIs) | `report/audiomc` (`ig report audiomc`) | identical `rows.json` / `summary.md` from the script and the plugin |
 
    | `examples/fdb2_ab.py` on main | now | checked by |
    |---|---|---|
@@ -215,7 +218,7 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | task reloaded per episode (its scenario was mutated) | `prepare` deep-copies; the run's task stays untouched | test |
    | meta: `run_id=fdb2-ab-<tag>`, `agent`, `agent_events`, `condition`, `agent_name`, `agent_base`, `task_id`, `wall_s`, `max_ms` (A: `A_MAX_MS`, B: `MAX_MS`), `closing`, `examiner_log` (when non-empty); agent traces | the driver (`agent_events` from `agent.events`, `examiner_log` / `closing` from the source's `episode_meta()`, `max_ms` / `closing` for A from `prepare`); `sink/agent_traces` | the script's `report` runs unchanged on a bundle run |
    | warm-up on the first job's A script; resume; `check_output_mode`; retries; shared cache | as for audiomc (the driver) | audiomc tests |
-   | `report` (official judge, TT / IF / task tables, A = B consistency, coherence, pacing, cap diagnosis) | still `examples/fdb2_ab.py report` on the bundle's output | test runs it with a fake judge |
+   | `report` (official judge, TT / IF / task tables, A = B consistency, coherence, pacing, cap diagnosis) | `report/fdb2` (`ig report fdb2`) | identical `rows.json` / `summary.md` from the script and the plugin |
 
    | `examples/fdb3_ab.py run` on main | now | checked by |
    |---|---|---|
@@ -228,7 +231,11 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | `ep.eval.benchmark = quick_metrics(ep)` (calls, `u1_ms`, timing vs the request's end, user turns) | `scorer/fdb3_quick` as row `benchmark` | test: same keys, same calls as the hand-built episode |
    | meta: `run_id=fdb3-ab-<tag>`, `agent` (+ `url`, `system_prompt` for duplex), `agent_events`, `condition`, `agent_name` (the agent's name; the folder is the tag), `recording`, `wall_s`; agent traces | the driver (`agent_name` is the tag — identical unless a `-ep` suffix is used; the report does not read it); `task/fdb3.prepare` sets `recording`; `sink/agent_traces` in `fdb3_duplex` | test |
    | A and B share the cascaded agent's cache; resume; `check_output_mode`; warm-up (duplex); retries 6 | the driver | audiomc tests |
-   | `report` (pass@1, corrections, timing, pages) | still `examples/fdb3_ab.py report --tags <tag>` on the bundle's output | episode ids and `eval.benchmark` are what it keys on (test) |
+   | `report` (pass@1, corrections, timing, pages) | `report/fdb3` (`ig report fdb3 --tag <tag>`; `interaction_gym.benchmarks.reports.fdb3`, also what the script's `report` runs) | identical `rows.json` / `summary.md` from both |
+
+   The `report` rows of audiomc and fdb2 are the same shape (`report/audiomc`, `report/fdb2`; the shared judge,
+   validity and timing tables in `interaction_gym.benchmarks.reports`). What stays in the example scripts is the
+   command-line surface and the `prepare` / `run` loops they always had.
 
    Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
    the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep

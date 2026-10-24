@@ -124,6 +124,25 @@ def test_run_layout_and_meta_match_the_script(tmp_path, capsys):
     assert m["task"]["scenario"]["benchmark"]["user_end_ms"] and "benchmark" in eps[0]["eval"]
     assert main(cmd) == 0
     assert "0 pairs to run (4 episodes done)" in [x for x in capsys.readouterr().out.splitlines() if x.startswith("ig:")][-1]
+    # the script's report and `ig report` (report/fdb3 with a fake judge row) write the same files
+    import sys
+    from types import SimpleNamespace
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
+    import fdb3_ab
+
+    verdict = '{"correct": true, "asks": false, "claims": false, "labels": ["close"]}'
+    fdb3_ab.OpenAIChat = lambda *a, **k: FakeChat([verdict])
+    asyncio.run(fdb3_ab.report(SimpleNamespace(out=str(out), tags="cascaded-official", pages=False, agent="cascaded-official", endpoint_ms=800)))
+    script_summary = (out / "summary.md").read_text()
+    script_rows = (out / "cascaded-official" / "rows.json").read_text()
+    rows = json.loads(script_rows)
+    assert len(rows) == 2 and all(r["A"]["pass"] and r["B"]["pass_final"] and r["consistency"]["ok"] for r in rows)
+    assert "### Pass@1" in script_summary and "| all | 2 | 1.000 (2/2) |" in script_summary
+    judge = tmp_path / "judge.yml"
+    judge.write_text("- id: judge_llm\n  plugin: backend/fake_chat\n  config: {replies: [%s]}\n" % json.dumps(verdict))
+    assert main(["report", "fdb3", "--set", f"tasks.data={data}", "--patch", str(patch), "--patch", str(judge), "--out", str(out), "--tag", "cascaded-official"]) == 0
+    assert (out / "summary.md").read_text() == script_summary and (out / "cascaded-official" / "rows.json").read_text() == script_rows
 
 
 def test_duplex_bundle_names_the_caller_s_domain_in_the_prompt(tmp_path):

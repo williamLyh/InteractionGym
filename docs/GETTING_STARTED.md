@@ -49,7 +49,10 @@ uv run ig plugins                                              # what can go in 
 ```
 
 Rows are patched by id (`--set row.key=value`, or a `--patch file.yml` with `- id: env` / `config: {...}` entries);
-the resolved configuration and its digest are written into every episode's `meta.config`.
+the resolved configuration and its digest are written into every episode's `meta.config`. The benchmark runs of
+§5 are bundles too (`ig bundles`): `ig prepare fdb2` (its reference scripts), `ig run fdb2 --out runs/fdb2_ab`,
+`ig report fdb2 --out runs/fdb2_ab` (the official judge and tables), the same for `audiomc` and `fdb3`
+([BENCHMARKS.md](BENCHMARKS.md)).
 
 ## 3. The viewer
 

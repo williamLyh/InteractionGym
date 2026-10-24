@@ -4,7 +4,7 @@
 #
 #   ig prepare fdb2 --out runs/fdb2_ab --seeds 0                 # 1. agent-free reference scripts, one per (task, seed), rendered once
 #   ig run fdb2 --out runs/fdb2_ab --seeds 0                     # 2. A and B episodes (--tag names the agent folder; default: agent)
-#   python examples/fdb2_ab.py report --data $IG_FDB2_DATA --out runs/fdb2_ab    # 3. official judge, tables, A = B check
+#   ig report fdb2 --out runs/fdb2_ab                            # 3. official judge, tables, A = B check (= examples/fdb2_ab.py report)
 #
 #   --set examiner.closing=true                                  # stage-progress-aware closing rules for the live examiner
 #   --set tasks.scripts=DIR                                      # scripts shared by several agents' runs (default <out>/scripts)
@@ -85,6 +85,17 @@
 
     - id: traces
       plugin: sink/agent_traces
+
+    - id: judge_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.0, max_tokens: 1500}
+
+    - id: report
+      plugin: report/fdb2
+      config: {judge: judge_llm}
 
 - id: controlled
   config: {name: agent, preset: minicpmo, sr: 16000, audio: user.audio}

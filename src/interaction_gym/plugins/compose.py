@@ -77,6 +77,7 @@ class Run:
     task_sources: list[Any] = field(default_factory=list)  # objects with tasks() and optionally prepare / build
     scorers: dict[str, Any] = field(default_factory=dict)  # row id -> (ep, env, agent) -> dict
     sinks: dict[str, Any] = field(default_factory=dict)  # row id -> object with write / close
+    reports: dict[str, Any] = field(default_factory=dict)  # row id -> object with async run(out, tag, log)
     driver: Any = None
     driver_id: str | None = None
     env_config: EnvConfig = field(default_factory=EnvConfig)
@@ -170,6 +171,10 @@ def _place(run: Run, rid: str, kind: str, obj: Any) -> None:
         if not callable(getattr(obj, "write", None)):
             raise PluginError(f"row {rid!r}: a sink plugin must return an object with write(ep, env, agent)")
         run.sinks[rid] = obj
+    elif kind == "report":
+        if not inspect.iscoroutinefunction(getattr(obj, "run", None)):
+            raise PluginError(f"row {rid!r}: a report plugin must return an object with async run(out, tag, log)")
+        run.reports[rid] = obj
     elif kind == "driver":
         if not inspect.iscoroutinefunction(getattr(obj, "run", None)):
             raise PluginError(f"row {rid!r}: a driver plugin must return an object with async run(run, **options)")

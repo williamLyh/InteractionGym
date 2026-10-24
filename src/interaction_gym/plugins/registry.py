@@ -20,7 +20,8 @@ Kinds (``KINDS``): what the composition expects back from the factory.
 - ``agent``: how an external policy is attached to the controlled role: ``(EpisodeContext) -> agent``
 - ``task``: where the episodes' tasks come from: an iterable of ``Task``
 - ``scorer``: ``(episode, env, agent) -> dict`` recorded under ``eval.<row id>``
-- ``sink``: receives finished episodes (``write(ep, env, agent)``, ``close()``): files, viewer pages, reports
+- ``sink``: receives finished episodes (``write(ep, env, agent)``, ``close()``): files, viewer pages
+- ``report``: post-hoc scoring of a whole run from its files (judges, tables, pages): ``async run(out, tag, log)``, by ``ig report``
 - ``driver``: how episodes are organised (an evaluation runner, an RL rollout, a live session)
 - ``latency``: where in simulated time an output lands; ``mixer``: how concurrent segments of one stream combine
 
@@ -42,7 +43,7 @@ from dataclasses import dataclass, field
 from importlib import metadata
 from typing import Any
 
-KINDS = ("kernel", "role", "source", "node", "behaviour", "backend", "tool", "agent", "task", "scorer", "sink", "driver", "latency", "mixer")
+KINDS = ("kernel", "role", "source", "node", "behaviour", "backend", "tool", "agent", "task", "scorer", "sink", "report", "driver", "latency", "mixer")
 ENTRY_POINT_GROUP = "interaction_gym.plugins"
 BUILTIN = "interaction_gym.plugins.builtin"
 

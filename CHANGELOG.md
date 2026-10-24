@@ -50,6 +50,11 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **`ig report`.** The benchmark scripts' `report` commands (judges, tables, confidence intervals, pages) moved into
+  `interaction_gym.benchmarks.reports` (`audiomc`, `fdb2`, `fdb3`, plus the shared memoized judge, validity and
+  timing tables) and run as the `report` plugin kind (`report/audiomc`, `report/fdb2`, `report/fdb3`; a row of each
+  benchmark bundle with a `judge_llm` backend row): `ig report fdb2 --out runs/fdb2_ab`. `examples/*_ab.py report`
+  call the same functions; the tests check both write identical `rows.json` / `summary.md` on one run.
 - **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
   TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
   `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,

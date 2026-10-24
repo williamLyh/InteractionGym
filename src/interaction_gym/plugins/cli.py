@@ -4,6 +4,7 @@
     ig run fdb3 --patch my.yml --set env.max_ms=60000 --out runs/x --seeds 0,1
     ig run my_bundle.yml --dump-config               # print the complete configuration and stop
     ig prepare fdb2 --out runs/fdb2_ab --seeds 0     # a benchmark's preparation stage (reference scripts)
+    ig report fdb2 --out runs/fdb2_ab                # the run's post-hoc report (judge, tables) on those files
     ig plugins [kind]                                # what can go in a row, with each plugin's config fields
     ig bundles                                       # the built-in bundles
 """
@@ -63,6 +64,18 @@ def cmd_prepare(args) -> int:
     return 0
 
 
+def cmd_report(args) -> int:
+    """The run's report rows (post-hoc judges and tables) on the files under --out."""
+    run = compose(_composition(args).resolve())
+    if not run.reports:
+        raise PluginError("nothing to report: no report row in this composition (e.g. {id: report, plugin: report/fdb2, config: {judge: judge_llm}})")
+    tag = args.tag or (run.agent_id if getattr(getattr(run.driver, "cfg", None), "arms", None) else "")
+    for rid, rep in run.reports.items():
+        print(f"ig: report {rid} on {args.out}" + (f" (tag {tag})" if tag else ""), flush=True)
+        asyncio.run(rep.run(Path(args.out), tag))
+    return 0
+
+
 def cmd_plugins(args) -> int:
     for p in REGISTRY.all(args.kind):
         print(f"{p.key}" + (f"  (provides {p.provides})" if p.provides else "") + (f"  requires {', '.join(p.requires)}" if p.requires else ""))
@@ -102,6 +115,11 @@ def main(argv=None) -> int:
         pr._add_action(act)
     pr.add_argument("--concurrency", type=int, default=4)
     pr.set_defaults(fn=cmd_prepare)
+    rp = sub.add_parser("report", help="the run's post-hoc report (judges, tables, pages) on the files under --out")
+    for a in ("bundle", "--patch", "--set", "--out", "--tag"):
+        act = next(x for x in r._actions if a in x.option_strings or x.dest == a)
+        rp._add_action(act)
+    rp.set_defaults(fn=cmd_report)
     p = sub.add_parser("plugins", help="list the plugins")
     p.add_argument("kind", nargs="?", choices=KINDS)
     p.set_defaults(fn=cmd_plugins)

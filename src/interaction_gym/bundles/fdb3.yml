@@ -5,7 +5,7 @@
 #   ig run fdb3 --out runs/fdb3_ab --seeds 0 --tag cascaded-official
 #   ig run fdb3 --set agent.endpointing.silence_ms=600 --tag cascaded-official-ep600     # the script's --endpoint-ms
 #   ig run fdb3_natural ... / ig run fdb3_duplex ...                                     # the other prompt / MiniCPM-o
-#   python examples/fdb3_ab.py report --out runs/fdb3_ab --tags cascaded-official        # pass@1, timing, pages
+#   ig report fdb3 --out runs/fdb3_ab --tag cascaded-official                            # pass@1, timing (= examples/fdb3_ab.py report)
 #
 # Services: IG_FDB3_DATA (recordings root), IG_ASR_URL, IG_LLM_URL (agent and caller), IG_TTS_URL, IG_CLONE_URL.
 - extends: core
@@ -72,6 +72,17 @@
 
     - id: benchmark
       plugin: scorer/fdb3_quick
+
+    - id: judge_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.0, max_tokens: 300}
+
+    - id: report
+      plugin: report/fdb3
+      config: {judge: judge_llm}
 
 - id: controlled
   config: {name: agent, chunk_ms: 100, obs: [user.speech, tool.result], audio: user.audio, sr: 16000}

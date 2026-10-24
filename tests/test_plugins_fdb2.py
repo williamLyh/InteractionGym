@@ -181,6 +181,12 @@ def test_run_layout_and_meta_match_the_script_and_the_run_needs_scripts(tmp_path
     rows = json.loads((out / "rows.json").read_text())
     assert len(rows) == 8 and {r["cond"] for r in rows} == {"A", "B"} and all(r["agent"] == "minicpmo" for r in rows)
     assert (out / "summary.md").exists() and "| minicpmo | all |" in (out / "summary.md").read_text()
+    # `ig report` (report/fdb2 with a fake judge row) writes the same files as the script's report
+    script_summary, script_rows = (out / "summary.md").read_text(), (out / "rows.json").read_text()
+    judge = tmp_path / "judge.yml"
+    judge.write_text("- id: judge_llm\n  plugin: backend/fake_chat\n  config: {replies: [%s]}\n" % json.dumps(judgement))
+    assert main(["report", "fdb2", "--set", f"tasks.data={data}", "--patch", str(patch), "--patch", str(judge), "--out", str(out), "--tag", "minicpmo"]) == 0
+    assert (out / "summary.md").read_text() == script_summary and (out / "rows.json").read_text() == script_rows
     # a run without scripts says what to do
     run = compose(bundle(data).resolve())
     with pytest.raises(PluginError, match="no reference script for .*run `ig prepare` first"):

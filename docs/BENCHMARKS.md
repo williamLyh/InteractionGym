@@ -401,7 +401,7 @@ N-th user turn" is everything that starts before cut(N).
 ## 11. Full-Duplex-Bench v3 (tool use): data → tasks, agent, open vs closed loop
 
 Code: `benchmarks/fdb3.py`, `agents/cascaded.py`, runner `examples/fdb3_ab.py` or the bundles `ig run fdb3` /
-`fdb3_natural` / `fdb3_duplex` (the script's `report` reads their output; [ARCHITECTURE.md](ARCHITECTURE.md)), tests
+`fdb3_natural` / `fdb3_duplex` (`ig report fdb3` or the script's `report` score their output, identically; [ARCHITECTURE.md](ARCHITECTURE.md)), tests
 `tests/test_fdb3.py`, `tests/test_plugins_fdb3.py`. License
 **CC BY-NC 4.0** (the mock APIs, tool descriptions, agent instructions and judge prompts are ported from the
 official repository and live in the optional component `extras/fdbench/`): non-commercial research only.
@@ -478,7 +478,7 @@ seeds vary only the simulated user; A runs of different seeds are reproducibilit
 ## 12. Full-Duplex-Bench v2 (automated examiner): open vs closed loop
 
 Code: `benchmarks/fdb2.py`, runner `examples/fdb2_ab.py` (`prepare` → `run` → `report`) or the bundle (`ig prepare
-fdb2` → `ig run fdb2` → the script's `report`; `fdb2_confirm`, `fdb2_cascaded`; [ARCHITECTURE.md](ARCHITECTURE.md)),
+fdb2` → `ig run fdb2` → `ig report fdb2`; `fdb2_confirm`, `fdb2_cascaded`; [ARCHITECTURE.md](ARCHITECTURE.md)),
 tests `tests/test_fdb2.py`, `tests/test_plugins_fdb2.py`.
 License **CC BY-NC 4.0** (examiner prompts, staged goals, judge prompts ported from the official repository; the
 ported judge rubric prompts live in the optional component `extras/fdbench/`).
@@ -548,8 +548,9 @@ calibrated on closed-loop turns (its noise floor) and reported as the excess ove
 ## 13. Audio MultiChallenge: open vs closed loop
 
 Code: `benchmarks/audiomc.py`, runner `examples/audiomc_ab.py` or the bundle `ig run audiomc` (the same run as a
-composition, [ARCHITECTURE.md](ARCHITECTURE.md); `audiomc_cascaded` for the cascaded agent; the script's `report`
-reads either run's output), tests `tests/test_audiomc.py`, `tests/test_plugins_audiomc.py`. Data: `ScaleAI/audiomc`
+composition, [ARCHITECTURE.md](ARCHITECTURE.md); `audiomc_cascaded` for the cascaded agent; `ig report audiomc` or
+the script's `report` score either run's output, identically), tests `tests/test_audiomc.py`,
+`tests/test_plugins_audiomc.py`. Data: `ScaleAI/audiomc`
 (MIT), unpacked once with `audiomc.extract(parquet, out)` → `<out>/<id>/u<k>.wav`
 (16 kHz) + `index.json` (1.7 GB).
 
