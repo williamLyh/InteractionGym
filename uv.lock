@@ -227,55 +227,6 @@ wheels = [
 ]
 
 [[package]]
-name = "interaction-gym"
-version = "0.1.0"
-source = { editable = "." }
-
-[package.optional-dependencies]
-automationbench = [
-    { name = "pydantic" },
-]
-fdbench = [
-    { name = "interaction-gym-fdbench" },
-]
-tau = [
-    { name = "tau2" },
-    { name = "websockets" },
-]
-vllm-omni = [
-    { name = "websockets" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "interaction-gym-fdbench" },
-    { name = "jsonschema" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "interaction-gym-fdbench", marker = "extra == 'fdbench'", editable = "extras/fdbench" },
-    { name = "pydantic", marker = "extra == 'automationbench'", specifier = ">=2" },
-    { name = "tau2", marker = "extra == 'tau'", git = "https://github.com/sierra-research/tau2-bench?rev=5bfa7e37b36656b37dc6d022156be6563c1007f3" },
-    { name = "websockets", marker = "extra == 'tau'", specifier = ">=13.0" },
-    { name = "websockets", marker = "extra == 'vllm-omni'", specifier = ">=13.0" },
-]
-provides-extras = ["vllm-omni", "tau", "automationbench", "fdbench"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "interaction-gym-fdbench", editable = "extras/fdbench" },
-    { name = "jsonschema", specifier = ">=4" },
-    { name = "pytest", specifier = ">=8" },
-]
-
-[[package]]
-name = "interaction-gym-fdbench"
-version = "0.1.0"
-source = { editable = "extras/fdbench" }
-
-[[package]]
 name = "fastapi"
 version = "0.142.1"
 source = { registry = "https://pypi.org/simple" }
@@ -495,6 +446,59 @@ sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
 ]
+
+[[package]]
+name = "interaction-gym"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+automationbench = [
+    { name = "pydantic" },
+]
+fdbench = [
+    { name = "interaction-gym-fdbench" },
+]
+tau = [
+    { name = "tau2" },
+    { name = "websockets" },
+]
+vllm-omni = [
+    { name = "websockets" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "interaction-gym-fdbench" },
+    { name = "jsonschema" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "interaction-gym-fdbench", marker = "extra == 'fdbench'", editable = "extras/fdbench" },
+    { name = "pydantic", marker = "extra == 'automationbench'", specifier = ">=2" },
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "tau2", marker = "extra == 'tau'", git = "https://github.com/sierra-research/tau2-bench?rev=5bfa7e37b36656b37dc6d022156be6563c1007f3" },
+    { name = "websockets", marker = "extra == 'tau'", specifier = ">=13.0" },
+    { name = "websockets", marker = "extra == 'vllm-omni'", specifier = ">=13.0" },
+]
+provides-extras = ["vllm-omni", "tau", "automationbench", "fdbench"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "interaction-gym-fdbench", editable = "extras/fdbench" },
+    { name = "jsonschema", specifier = ">=4" },
+    { name = "pytest", specifier = ">=8" },
+]
+
+[[package]]
+name = "interaction-gym-fdbench"
+version = "0.1.0"
+source = { editable = "extras/fdbench" }
 
 [[package]]
 name = "jinja2"

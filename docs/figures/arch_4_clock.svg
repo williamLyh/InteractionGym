@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 250" role="img" aria-label="时间源是内核开关，只有 SimClock 和 WallClock 两个实现；延迟模型是插件接口；agent 的耦合方式是适配器自报的属性；三者都写进轨迹的 meta.clock">
+<style>
+  text { font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; fill: #1d2326; }
+  .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+  .small { font-size: 11px; fill: #5d6a70; }
+  .kernel { fill: #e3e8e6; stroke: #1d2326; stroke-width: 1.4; }
+  .plugin { fill: #ffffff; stroke: #1d2326; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  .config { fill: #fbf6e6; stroke: #1d2326; stroke-width: 1; stroke-dasharray: 1.5 3; }
+  .edge { stroke: #1d2326; stroke-width: 1.2; fill: none; }
+  .hot { stroke: #b2451a; }
+  .hotfill { fill: #b2451a; }
+  .hottext { fill: #b2451a; font-weight: 600; }
+  .faint { stroke: #c9d1d2; }
+</style>
+<rect width="100%" height="100%" fill="#f6f7f4"/>
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d2326"/></marker>
+  </defs>
+  <rect x="20" y="20" width="290" height="140" class="kernel" rx="3"/>
+  <text x="165" y="44" text-anchor="middle" font-weight="600">时间源：内核开关</text>
+  <text x="165" y="62" text-anchor="middle" class="small">谁决定 t 往前走多少</text>
+  <g class="mono">
+    <text x="36" y="90">SimClock  advance_to 直接跳；节点计算免费</text>
+    <text x="36" y="110">WallClock advance_to 等墙钟；晚到的输出</text>
+    <text x="36" y="128">          按到达时刻打戳并记录（v3）</text>
+  </g>
+  <text x="36" y="152" class="small">两个实现都在内核里，不开放给第三方</text>
+
+  <rect x="335" y="20" width="290" height="140" class="plugin" rx="3"/>
+  <text x="480" y="44" text-anchor="middle" font-weight="600">延迟模型：插件</text>
+  <text x="480" y="62" text-anchor="middle" class="small">这个节点的输出放在 t 轴哪里</text>
+  <g class="mono">
+    <text x="351" y="90">constant(ms)</text>
+    <text x="351" y="110">distribution(LatencyModel)</text>
+    <text x="351" y="130">replay(实测 wall_ms 记录)</text>
+  </g>
+  <text x="351" y="152" class="small">工具结果、级联 agent、用户反应间隔都用它</text>
+
+  <rect x="650" y="20" width="290" height="140" class="plugin hot" rx="3" stroke-width="2"/>
+  <text x="795" y="44" text-anchor="middle" font-weight="600">agent 耦合：适配器自报</text>
+  <text x="795" y="62" text-anchor="middle" class="small">外部策略怎么跟 t 对齐</text>
+  <g class="mono">
+    <text x="666" y="90">lockstep  时间 = 送入的音频；可复现</text>
+    <text x="666" y="110">realtime  墙钟权威；音频节拍藏住</text>
+    <text x="666" y="128">          env 停顿；不可复现</text>
+  </g>
+  <text x="666" y="152" class="small">describe() 必须报 clock 与 reproducible</text>
+
+  <line x1="165" y1="160" x2="440" y2="200" class="edge" marker-end="url(#a4)"/>
+  <line x1="480" y1="160" x2="480" y2="200" class="edge" marker-end="url(#a4)"/>
+  <line x1="795" y1="160" x2="520" y2="200" class="edge" marker-end="url(#a4)"/>
+  <rect x="250" y="202" width="460" height="34" class="kernel" rx="2"/>
+  <text x="480" y="224" text-anchor="middle" class="mono">meta.clock = {source, latency: {...}, agent_coupling, reproducible}</text>
+</svg>

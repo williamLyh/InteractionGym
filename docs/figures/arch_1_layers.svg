@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="五层结构：用户 patch、benchmark bundle、core bundle 三层是配置；七类插件是可换代码；最底层内核由 Sim 调度、帧协议、信息边界、轨迹格式和时钟源组成">
+<style>
+  text { font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; fill: #1d2326; }
+  .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+  .small { font-size: 11px; fill: #5d6a70; }
+  .kernel { fill: #e3e8e6; stroke: #1d2326; stroke-width: 1.4; }
+  .plugin { fill: #ffffff; stroke: #1d2326; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  .config { fill: #fbf6e6; stroke: #1d2326; stroke-width: 1; stroke-dasharray: 1.5 3; }
+  .edge { stroke: #1d2326; stroke-width: 1.2; fill: none; }
+  .hot { stroke: #b2451a; }
+  .hotfill { fill: #b2451a; }
+  .hottext { fill: #b2451a; font-weight: 600; }
+  .faint { stroke: #c9d1d2; }
+</style>
+<rect width="100%" height="100%" fill="#f6f7f4"/>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d2326"/></marker>
+  </defs>
+  <!-- left gutter labels -->
+  <text x="20" y="62" class="small">配置</text>
+  <text x="20" y="80" class="small">YAML</text>
+  <text x="20" y="222" class="small">代码</text>
+  <text x="20" y="240" class="small">插件</text>
+  <text x="20" y="338" class="small">代码</text>
+  <text x="20" y="356" class="small">内核</text>
+  <!-- config layers -->
+  <rect x="90" y="16" width="850" height="40" class="config" rx="2"/>
+  <text x="104" y="41" font-weight="500">用户 patch</text>
+  <text x="230" y="41" class="small">ig run fdb3 --patch my.yml --set roles.caller.voice.clone=false　　按行 id 整体替换 config，不合并</text>
+  <rect x="90" y="66" width="850" height="40" class="config" rx="2"/>
+  <text x="104" y="91" font-weight="500">benchmark bundle</text>
+  <text x="260" y="91" class="small">fdb2 · fdb3 · audiomc · tau · sopbench · browsergym　　钉住：任务来源、角色表、行为集与速率、打分器、agent 规格</text>
+  <rect x="90" y="116" width="850" height="40" class="config" rx="2"/>
+  <text x="104" y="141" font-weight="500">core bundle</text>
+  <text x="210" y="141" class="small">有主张的默认：角色 user / agent、标准期望表、默认行为库、默认后端、默认延迟模型。内核本身什么都不预设</text>
+  <!-- arrow: layers resolve into one config -->
+  <line x1="515" y1="156" x2="515" y2="186" class="edge" marker-end="url(#a1)"/>
+  <text x="528" y="176" class="small">解析为一份完整配置，写进轨迹 meta.config，--dump-config 可打印</text>
+  <!-- plugin seams -->
+  <g>
+    <rect x="90" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="138" y="214" text-anchor="middle" font-weight="500">role</text>
+    <text x="138" y="232" text-anchor="middle" class="small">caller · assistant</text>
+    <text x="138" y="246" text-anchor="middle" class="small">business · observer</text>
+    <rect x="197" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="245" y="214" text-anchor="middle" font-weight="500">behaviour</text>
+    <text x="245" y="232" text-anchor="middle" class="small">barge_in · backch.</text>
+    <text x="245" y="246" text-anchor="middle" class="small">noise · aside · away</text>
+    <rect x="304" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="352" y="214" text-anchor="middle" font-weight="500">backend</text>
+    <text x="352" y="232" text-anchor="middle" class="small">llm · tts · asr · judge</text>
+    <text x="352" y="246" text-anchor="middle" class="small">vllm · openai · fake</text>
+    <rect x="411" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="459" y="214" text-anchor="middle" font-weight="500">tool</text>
+    <text x="459" y="232" text-anchor="middle" class="small">functions · tau · fdb3</text>
+    <text x="459" y="246" text-anchor="middle" class="small">browser · SOP 领域</text>
+    <rect x="518" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="566" y="214" text-anchor="middle" font-weight="500">agent</text>
+    <text x="566" y="232" text-anchor="middle" class="small">vllm_omni · realtime</text>
+    <text x="566" y="246" text-anchor="middle" class="small">cascaded · canned</text>
+    <rect x="625" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="673" y="214" text-anchor="middle" font-weight="500">task</text>
+    <text x="673" y="232" text-anchor="middle" class="small">fdb2 · fdb3 · audiomc</text>
+    <text x="673" y="246" text-anchor="middle" class="small">tau · sopbench · …</text>
+    <rect x="732" y="190" width="97" height="64" class="plugin" rx="2"/>
+    <text x="780" y="214" text-anchor="middle" font-weight="500">scorer · sink</text>
+    <text x="780" y="232" text-anchor="middle" class="small">期望评分 · judge</text>
+    <text x="780" y="246" text-anchor="middle" class="small">轨迹落盘 · viewer</text>
+    <rect x="839" y="190" width="101" height="64" class="plugin" rx="2"/>
+    <text x="889" y="214" text-anchor="middle" font-weight="500">driver</text>
+    <text x="889" y="232" text-anchor="middle" class="small">eval · RL rollout</text>
+    <text x="889" y="246" text-anchor="middle" class="small">live（真人）</text>
+  </g>
+  <text x="90" y="276" class="small">另两个小插件点：stream mixer（同一 stream 上并发片段怎么合成：音频混音 / 文字交错）、latency model（常数 / 分布 / 实测回放）</text>
+  <!-- kernel -->
+  <rect x="90" y="296" width="850" height="88" class="kernel" rx="2"/>
+  <text x="104" y="320" font-weight="600">内核</text>
+  <g class="mono">
+    <text x="104" y="344">Sim：整数 ms 时钟，事件堆，同一时刻固定顺序</text>
+    <text x="104" y="364">Frame / Segment / Chunk：插件之间唯一的协议</text>
+    <text x="470" y="344">信息边界：订阅即边界；只能看到已播放的内容</text>
+    <text x="470" y="364">轨迹格式 (FORMAT.md, schema vN) · 时钟源开关 sim | wall</text>
+  </g>
+</svg>

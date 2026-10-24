@@ -12,7 +12,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "pyyaml>=6",
+]
 
 [project.optional-dependencies]
 # agents.vllm_omni: full-duplex models served by vLLM-Omni (WebSocket client)
@@ -29,6 +31,9 @@ fdbench = ["interaction-gym-fdbench"]
 
 [dependency-groups]
 dev = ["pytest>=8", "jsonschema>=4", "interaction-gym-fdbench"]  # the tests cover the FD-Bench loaders too
+
+[project.scripts]
+ig = "interaction_gym.plugins.cli:main"
 
 [build-system]
 requires = ["hatchling"]

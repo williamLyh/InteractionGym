@@ -197,6 +197,7 @@ ToolWorld(backend, latency_ms=0 | (call -> ms))          # generic node: routes 
 | `traj.episode` / `save` / `load` | `traj.py` | the trajectory record ([docs/FORMAT.md](docs/FORMAT.md), [schema](docs/trajectory.schema.json)) |
 | `eval.scores` | `eval.py` | one rule-based duplex score per user turn and their mean (metric and reward) |
 | viewer | `viewer/` | `export_html`, `export_run`, `export_agent_trace_html`; `python -m interaction_gym.viewer` |
+| plugins, bundles | `plugins/`, `bundles/` | the composition layer above the kernel: registry, layered YAML rows, `ig run` ([ARCHITECTURE.md](ARCHITECTURE.md)) |
 
 ## 3. Repository layout
 

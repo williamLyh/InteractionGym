@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 230" role="img" aria-label="配置层解析成一份完整配置，driver 据此并发跑多个 episode，每个 episode 的日志存成版本化轨迹，打分器和输出器并行读取；轨迹可以回放成 ReplayUser 用于回归测试">
+<style>
+  text { font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; fill: #1d2326; }
+  .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+  .small { font-size: 11px; fill: #5d6a70; }
+  .kernel { fill: #e3e8e6; stroke: #1d2326; stroke-width: 1.4; }
+  .plugin { fill: #ffffff; stroke: #1d2326; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  .config { fill: #fbf6e6; stroke: #1d2326; stroke-width: 1; stroke-dasharray: 1.5 3; }
+  .edge { stroke: #1d2326; stroke-width: 1.2; fill: none; }
+  .hot { stroke: #b2451a; }
+  .hotfill { fill: #b2451a; }
+  .hottext { fill: #b2451a; font-weight: 600; }
+  .faint { stroke: #c9d1d2; }
+</style>
+<rect width="100%" height="100%" fill="#f6f7f4"/>
+  <defs>
+    <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d2326"/></marker>
+  </defs>
+  <rect x="20" y="40" width="120" height="70" class="config" rx="2"/>
+  <text x="80" y="66" text-anchor="middle" font-weight="500">配置层</text>
+  <text x="80" y="84" text-anchor="middle" class="small">bundle + patch</text>
+  <text x="80" y="100" text-anchor="middle" class="small">+ --set</text>
+  <line x1="140" y1="75" x2="168" y2="75" class="edge" marker-end="url(#a5)"/>
+  <text x="154" y="66" text-anchor="middle" class="small">校验</text>
+
+  <rect x="170" y="40" width="130" height="70" class="kernel" rx="2"/>
+  <text x="235" y="66" text-anchor="middle" font-weight="500">完整配置</text>
+  <text x="235" y="84" text-anchor="middle" class="small">缺引用即报错</text>
+  <text x="235" y="100" text-anchor="middle" class="small">hash → meta.config</text>
+  <line x1="300" y1="75" x2="328" y2="75" class="edge" marker-end="url(#a5)"/>
+
+  <rect x="330" y="40" width="130" height="70" class="plugin" rx="2"/>
+  <text x="395" y="66" text-anchor="middle" font-weight="500">driver</text>
+  <text x="395" y="84" text-anchor="middle" class="small">eval runner · RL rollout</text>
+  <text x="395" y="100" text-anchor="middle" class="small">live（真人）</text>
+  <line x1="460" y1="75" x2="488" y2="75" class="edge" marker-end="url(#a5)"/>
+  <text x="474" y="66" text-anchor="middle" class="small">× N</text>
+
+  <rect x="490" y="40" width="130" height="70" class="kernel" rx="2"/>
+  <text x="555" y="66" text-anchor="middle" font-weight="500">Sim episode</text>
+  <text x="555" y="84" text-anchor="middle" class="small">并发 / 预热每台 server</text>
+  <text x="555" y="100" text-anchor="middle" class="small">seed → 确定性</text>
+  <line x1="620" y1="75" x2="648" y2="75" class="edge" marker-end="url(#a5)"/>
+
+  <rect x="650" y="40" width="130" height="70" class="kernel" rx="2"/>
+  <text x="715" y="66" text-anchor="middle" font-weight="500">轨迹</text>
+  <text x="715" y="84" text-anchor="middle" class="small">schema vN · 媒体引用</text>
+  <text x="715" y="100" text-anchor="middle" class="small">meta.config · meta.clock</text>
+  <line x1="780" y1="75" x2="808" y2="75" class="edge" marker-end="url(#a5)"/>
+
+  <rect x="810" y="20" width="130" height="50" class="plugin" rx="2"/>
+  <text x="875" y="40" text-anchor="middle" font-weight="500">scorers</text>
+  <text x="875" y="58" text-anchor="middle" class="small">期望评分 · judge → eval.*</text>
+  <rect x="810" y="80" width="130" height="50" class="plugin" rx="2"/>
+  <text x="875" y="100" text-anchor="middle" font-weight="500">sinks</text>
+  <text x="875" y="118" text-anchor="middle" class="small">落盘 · viewer · 报告 · reward</text>
+
+  <!-- replay loop -->
+  <path d="M715,110 L715,170 L555,170 L555,112" class="edge" marker-end="url(#a5)"/>
+  <text x="635" y="188" text-anchor="middle" class="small">回放：turns → ReplayUser / 对手角色；固定 seed 下新旧轨迹逐帧一致 = 回归测试</text>
+  <text x="635" y="206" text-anchor="middle" class="small">（DSH 的录制回放快照，同一思路）</text>
+</svg>

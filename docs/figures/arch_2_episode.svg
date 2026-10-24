@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-label="Sim 居中，各角色和工具节点通过带名字的 stream 与它交换帧；assistant 角色绑定到外部策略，经 Env 的 step 边界每 chunk_ms 交换一次；观察者角色只读特权 stream；日志流出到轨迹">
+<style>
+  text { font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; fill: #1d2326; }
+  .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+  .small { font-size: 11px; fill: #5d6a70; }
+  .kernel { fill: #e3e8e6; stroke: #1d2326; stroke-width: 1.4; }
+  .plugin { fill: #ffffff; stroke: #1d2326; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  .config { fill: #fbf6e6; stroke: #1d2326; stroke-width: 1; stroke-dasharray: 1.5 3; }
+  .edge { stroke: #1d2326; stroke-width: 1.2; fill: none; }
+  .hot { stroke: #b2451a; }
+  .hotfill { fill: #b2451a; }
+  .hottext { fill: #b2451a; font-weight: 600; }
+  .faint { stroke: #c9d1d2; }
+</style>
+<rect width="100%" height="100%" fill="#f6f7f4"/>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d2326"/></marker>
+    <marker id="a2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hotfill"/></marker>
+  </defs>
+  <!-- Sim centre -->
+  <rect x="360" y="170" width="240" height="180" class="kernel" rx="3"/>
+  <text x="480" y="196" text-anchor="middle" font-weight="600">Sim（一个 episode）</text>
+  <g class="mono">
+    <text x="376" y="222">t = 整数 ms，只向前跳</text>
+    <text x="376" y="240">heap: (t, seq, Frame)</text>
+    <text x="376" y="258">同一时刻：先投递，再按</text>
+    <text x="376" y="276">固定顺序 step 各节点</text>
+    <text x="376" y="300">每个节点一个独立 rng</text>
+    <text x="376" y="318">fork(n)：复制状态和队列</text>
+  </g>
+  <!-- caller role (simulated) -->
+  <rect x="30" y="150" width="230" height="220" class="plugin" rx="3"/>
+  <text x="145" y="176" text-anchor="middle" font-weight="600">Role: caller（模拟）</text>
+  <g class="small">
+    <text x="46" y="200">policy = Simulated(LLM source)</text>
+    <text x="46" y="218">voice = TTS（克隆首句）</text>
+    <text x="46" y="236">perceives = assistant.speech</text>
+    <text x="46" y="254">speaks = caller.speech</text>
+  </g>
+  <rect x="46" y="268" width="198" height="86" class="plugin" rx="2"/>
+  <text x="145" y="288" text-anchor="middle" class="small">behaviours（固定顺序）</text>
+  <g class="mono">
+    <text x="60" y="308">barge_in · backchannel</text>
+    <text x="60" y="326">noise(bank) · aside · away</text>
+    <text x="60" y="344">每个自带 expects 标签</text>
+  </g>
+  <!-- caller -> Sim -->
+  <line x1="260" y1="205" x2="358" y2="205" class="edge" marker-end="url(#a2)"/>
+  <text x="309" y="198" text-anchor="middle" class="mono">caller.speech</text>
+  <text x="309" y="222" text-anchor="middle" class="small">Segment{kind, expects}</text>
+  <!-- Sim -> caller -->
+  <line x1="358" y1="300" x2="262" y2="300" class="edge" marker-end="url(#a2)"/>
+  <text x="309" y="293" text-anchor="middle" class="mono">assistant.speech</text>
+  <text x="309" y="316" text-anchor="middle" class="small">按 t 切片，只读已播放</text>
+  <!-- assistant role (controlled) -->
+  <rect x="700" y="150" width="230" height="220" class="plugin hot" rx="3" stroke-width="2"/>
+  <text x="815" y="176" text-anchor="middle" font-weight="600" class="hottext">Role: assistant（受控）</text>
+  <g class="small">
+    <text x="716" y="200">policy = Controlled(AgentSpec)</text>
+    <text x="716" y="218">perceives = caller.speech,</text>
+    <text x="716" y="236">　　　　　tool.result, session</text>
+    <text x="716" y="254">speaks = assistant.speech</text>
+  </g>
+  <rect x="716" y="268" width="198" height="86" class="plugin" rx="2"/>
+  <text x="815" y="288" text-anchor="middle" class="small">同样可以挂 behaviours</text>
+  <g class="mono">
+    <text x="730" y="308">latency model（锁步时）</text>
+    <text x="730" y="326">expects 表：对方该怎么</text>
+    <text x="730" y="344">对待我的话</text>
+  </g>
+  <!-- Sim -> assistant: chunks -->
+  <line x1="600" y1="205" x2="698" y2="205" class="edge" marker-end="url(#a2)"/>
+  <text x="649" y="198" text-anchor="middle" class="mono">Chunk 每 chunk_ms</text>
+  <text x="649" y="222" text-anchor="middle" class="small">只含该窗口内已播放的部分</text>
+  <!-- assistant -> Sim -->
+  <line x1="698" y1="300" x2="602" y2="300" class="edge" marker-end="url(#a2)"/>
+  <text x="649" y="293" text-anchor="middle" class="mono">assistant.speech</text>
+  <text x="649" y="316" text-anchor="middle" class="small">Segment 或逐 chunk 追加</text>
+  <!-- Env boundary to external policy -->
+  <rect x="700" y="400" width="230" height="90" class="plugin hot" rx="3" stroke-width="2"/>
+  <text x="815" y="424" text-anchor="middle" font-weight="600">外部策略 / agent 适配器</text>
+  <g class="small">
+    <text x="716" y="446">vllm_omni · openai_realtime</text>
+    <text x="716" y="464">cascaded · RL 训练框架的 policy</text>
+    <text x="716" y="482">声明 clock 与 reproducible</text>
+  </g>
+  <line x1="815" y1="370" x2="815" y2="398" class="edge hot" marker-end="url(#a2h)" marker-start="url(#a2h)"/>
+  <text x="828" y="388" class="small">Env.step(action) → obs, reward, done</text>
+  <!-- tools / world node -->
+  <rect x="380" y="30" width="200" height="90" class="plugin" rx="3"/>
+  <text x="480" y="54" text-anchor="middle" font-weight="600">Node: tools / world</text>
+  <g class="small">
+    <text x="396" y="76">ToolWorld · 浏览器 · 屏幕共享</text>
+    <text x="396" y="94">结果按 latency model 延后投递</text>
+    <text x="396" y="112">world.state 只写给特权订阅者</text>
+  </g>
+  <line x1="450" y1="120" x2="450" y2="168" class="edge" marker-end="url(#a2)"/>
+  <text x="440" y="148" text-anchor="end" class="mono">tool.result</text>
+  <line x1="510" y1="168" x2="510" y2="122" class="edge" marker-end="url(#a2)"/>
+  <text x="520" y="148" class="mono">tool.call</text>
+  <!-- observer role -->
+  <rect x="30" y="400" width="230" height="90" class="plugin" rx="3"/>
+  <text x="145" y="424" text-anchor="middle" font-weight="600">Role: observer / judge</text>
+  <g class="small">
+    <text x="46" y="446">不说话；perceives 含特权 stream</text>
+    <text x="46" y="464">（数据库事实、隐藏偏好）</text>
+    <text x="46" y="482">把判断写到 reward / verdict 流</text>
+  </g>
+  <line x1="360" y1="340" x2="262" y2="420" class="edge" marker-end="url(#a2)"/>
+  <text x="290" y="372" class="mono">world.state, *.speech</text>
+  <!-- log -->
+  <rect x="380" y="400" width="200" height="90" class="kernel" rx="3"/>
+  <text x="480" y="424" text-anchor="middle" font-weight="600">运行时日志 → 轨迹</text>
+  <g class="small">
+    <text x="396" y="446">每个投递的 Frame 追加一条</text>
+    <text x="396" y="464">保存时按 FORMAT §7 合并成 turns</text>
+    <text x="396" y="482">meta.config · meta.clock · roles</text>
+  </g>
+  <line x1="480" y1="350" x2="480" y2="398" class="edge" marker-end="url(#a2)"/>
+  <text x="490" y="378" class="small">append-only</text>
+</svg>

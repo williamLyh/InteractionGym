@@ -37,6 +37,7 @@ The patch carries open upstream PRs ([vllm-omni#8485](https://github.com/vllm-pr
 
 ```bash
 uv run python examples/minimal.py --html runs/minimal.html    # scripted user and agent, open the HTML in a browser
+uv run ig run minimal --out runs/minimal                      # the same kind of episode from a configuration (docs/ARCHITECTURE.md)
 ```
 
 ```python
@@ -211,7 +212,8 @@ The repository ships loaders only, no benchmark data, and several datasets are n
 | | |
 |---|---|
 | [GETTING_STARTED](docs/GETTING_STARTED.md) | install, extras, first episodes, real models, τ²-bench / AutomationBench |
-| [DESIGN](docs/DESIGN.md) | architecture and concepts |
+| [DESIGN](docs/DESIGN.md) | the simulation model and its concepts |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | kernel vs plugins, layered configuration, `ig run`, the migration plan |
 | [FORMAT](docs/FORMAT.md) | output data: trajectory format, scoring ([schema](docs/trajectory.schema.json)) |
 | [BENCHMARKS](docs/BENCHMARKS.md) | benchmark loaders, open vs closed loop, metrics |
 | [agent_server](docs/agent_server.md), [AGENT_TRACE](docs/AGENT_TRACE.md) | agent-server protocol, token trace |

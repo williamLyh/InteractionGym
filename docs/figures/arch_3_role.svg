@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" role="img" aria-label="角色由身份、感知与发声流、voice、policy 四个槽位，一个负责轮次调度与仲裁的核心，以及一列按固定顺序询问的行为插件组成；行为插件产出的片段带 expects 标签进入轨迹，打分器据此评判对方">
+<style>
+  text { font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; fill: #1d2326; }
+  .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+  .small { font-size: 11px; fill: #5d6a70; }
+  .kernel { fill: #e3e8e6; stroke: #1d2326; stroke-width: 1.4; }
+  .plugin { fill: #ffffff; stroke: #1d2326; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  .config { fill: #fbf6e6; stroke: #1d2326; stroke-width: 1; stroke-dasharray: 1.5 3; }
+  .edge { stroke: #1d2326; stroke-width: 1.2; fill: none; }
+  .hot { stroke: #b2451a; }
+  .hotfill { fill: #b2451a; }
+  .hottext { fill: #b2451a; font-weight: 600; }
+  .faint { stroke: #c9d1d2; }
+</style>
+<rect width="100%" height="100%" fill="#f6f7f4"/>
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d2326"/></marker>
+  </defs>
+  <rect x="20" y="16" width="920" height="246" class="plugin" rx="3"/>
+  <text x="36" y="40" font-weight="600">Role（插件）</text>
+  <!-- slots -->
+  <g>
+    <rect x="36" y="56" width="200" height="40" class="config" rx="2"/>
+    <text x="48" y="74" font-weight="500">identity</text>
+    <text x="48" y="90" class="small">persona · 目标 · SOP · 隐藏偏好</text>
+    <rect x="36" y="104" width="200" height="40" class="config" rx="2"/>
+    <text x="48" y="122" font-weight="500">perceives / speaks</text>
+    <text x="48" y="138" class="small">订阅与发出的 stream 名</text>
+    <rect x="36" y="152" width="200" height="40" class="plugin" rx="2"/>
+    <text x="48" y="170" font-weight="500">voice</text>
+    <text x="48" y="186" class="small">TTS 后端 · 克隆 · 预渲染 · 纯文字</text>
+    <rect x="36" y="200" width="200" height="48" class="plugin" rx="2"/>
+    <text x="48" y="218" font-weight="500">policy</text>
+    <text x="48" y="236" class="mono">Simulated | Controlled | Replay</text>
+  </g>
+  <!-- core -->
+  <rect x="268" y="56" width="250" height="192" class="kernel" rx="2"/>
+  <text x="393" y="80" text-anchor="middle" font-weight="600">角色核心（core bundle）</text>
+  <g class="small">
+    <text x="284" y="104">轮次调度：什么时候轮到我说</text>
+    <text x="284" y="122">决策点：对方的停顿处，或</text>
+    <text x="284" y="140">　max_decision_gap 之后</text>
+    <text x="284" y="164">仲裁：按固定顺序问每个行为，</text>
+    <text x="284" y="182">　第一个要动作的赢（bail）</text>
+    <text x="284" y="206">预算：跨行为的频率上限</text>
+    <text x="284" y="224">只用 Sim 发给本角色的 rng</text>
+  </g>
+  <line x1="236" y1="224" x2="266" y2="224" class="edge" marker-end="url(#a3)"/>
+  <!-- behaviours column -->
+  <text x="560" y="74" class="small">behaviours，固定顺序</text>
+  <g class="mono">
+    <rect x="560" y="82" width="150" height="26" class="plugin" rx="2"/><text x="570" y="99">barge_in</text>
+    <rect x="560" y="114" width="150" height="26" class="plugin" rx="2"/><text x="570" y="131">backchannel</text>
+    <rect x="560" y="146" width="150" height="26" class="plugin" rx="2"/><text x="570" y="163">called_away</text>
+    <rect x="560" y="178" width="150" height="26" class="plugin" rx="2"/><text x="570" y="195">noise(bank, rates)</text>
+    <rect x="560" y="210" width="150" height="26" class="plugin" rx="2"/><text x="570" y="227">… 用户自定义</text>
+  </g>
+  <line x1="518" y1="152" x2="558" y2="152" class="edge" marker-end="url(#a3)" marker-start="url(#a3)"/>
+  <text x="538" y="144" text-anchor="middle" class="small">问 / 答</text>
+  <!-- behaviour anatomy -->
+  <rect x="740" y="56" width="184" height="192" class="plugin" rx="2"/>
+  <text x="832" y="78" text-anchor="middle" font-weight="500">一个行为插件提供</text>
+  <g class="small">
+    <text x="752" y="102">when：事件过程（用给定 rng）</text>
+    <text x="752" y="122">what：声音 / 台词 / 静音</text>
+    <text x="752" y="142">self：打断自己、暂停回应</text>
+    <text x="752" y="162">label：kind · label · intent</text>
+    <text x="752" y="182" class="hottext">expects：对方应有的反应</text>
+    <text x="752" y="202">rates：由 persona/环境映射</text>
+    <text x="752" y="222">　（映射表本身也可换）</text>
+  </g>
+  <line x1="710" y1="100" x2="738" y2="100" class="edge faint"/>
+  <!-- expectation flow out -->
+  <line x1="480" y1="262" x2="480" y2="292" class="edge" marker-end="url(#a3)"/>
+  <rect x="200" y="294" width="560" height="36" class="kernel" rx="2"/>
+  <text x="480" y="317" text-anchor="middle" class="mono">Segment{kind, expects, label} → 轨迹 turns[] → scorer 按 (说话方, 听话方) 的标准评判对方的反应</text>
+</svg>

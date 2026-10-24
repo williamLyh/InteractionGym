@@ -1,0 +1,26 @@
+# core: the shared first layer — kernel limits, the controlled role (what the trajectory calls "agent"), the
+# default scorers, sinks and driver. It names no user, no agent and no tasks: a benchmark bundle extends it with
+# those, and a patch replaces any row by id (its config as a whole).
+- insert:
+    - id: env
+      plugin: kernel/env
+      config: {max_ms: 300000, end_idle_ms: 3000}
+
+    - id: controlled
+      plugin: role/controlled
+      config: {name: agent, chunk_ms: 200, obs: [user.speech], out: policy.speech}
+
+    - id: interaction
+      plugin: scorer/interaction
+
+    - id: episodes
+      plugin: sink/jsonl
+      config: {path: episodes.jsonl}
+
+    - id: viewer
+      plugin: sink/html
+      config: {path: index.html}
+
+    - id: driver
+      plugin: driver/eval
+      config: {concurrency: 4}

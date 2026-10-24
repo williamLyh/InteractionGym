@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- **Plugin layer and `ig run`** ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). Everything above the kernel is a
+  plugin of one kind (`role`, `node`, `behaviour`, `backend`, `tool`, `agent`, `task`, `scorer`, `sink`, `driver`,
+  `latency`, `mixer`): a factory registered with `@plugin("kind", "name", requires=..., config=Dataclass)`; third
+  parties add theirs through the entry point group `interaction_gym.plugins`. A run is a list of rows
+  `{id, plugin, config}` layered from bundles (`interaction_gym/bundles/*.yml`, `extends:`) and patches that replace a
+  row's config by id, plus `--set row.key=value`; resolving validates every row (plugin exists, config fields known
+  and typed, requirements and config `refs` to other rows satisfied) and orders rows by their requirements. The
+  resolved configuration goes into each episode's `meta.config` with a digest; `ig run <bundle> --dump-config` prints
+  it. Built-in wrappers: `kernel/env`, `role/controlled` / `replay` / `user`, `agent/canned` / `vllm_omni` /
+  `openai_realtime` / `cascaded`, `backend/chat` / `tool_chat` / `tts` / `asr` / `fake_chat` / `tts_fake`,
+  `tool/functions` + `node/tool_world`, `task/inline` / `jsonl`, `scorer/interaction` / `timing`, `sink/jsonl` /
+  `html` / `stdout`, `driver/eval` (concurrency, resume from the jsonl sink). Bundles `core` and `minimal`. The
+  existing classes are wrapped, not changed; `tests/test_plugins.py` checks the composed episode equals the one built
+  by hand. New dependency: PyYAML.
 - **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
   TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
   `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,

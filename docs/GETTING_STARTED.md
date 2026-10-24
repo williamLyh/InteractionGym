@@ -38,6 +38,19 @@ segment span, transcript), the reward, and response / yield latencies.
 Things to try in `examples/minimal.py`: `AgentSpec(chunk_ms=80)` (a finer agent step), `CannedAgent(...,
 yield_after=None)` (an agent that never yields), `streaming=True` (the agent emits its reply in chunks).
 
+The same episode can be run from a configuration instead of a script. A run is a list of rows (`{id, plugin,
+config}`), layered from bundles and patches; every part above the kernel is a plugin ([ARCHITECTURE.md](ARCHITECTURE.md)):
+
+```bash
+uv run ig run minimal --out runs/minimal                       # the built-in bundle: a replayed user, a canned agent
+uv run ig run minimal --set controlled.chunk_ms=80 --set agent.yield_after=null --out runs/minimal-80
+uv run ig run minimal --dump-config                            # the complete configuration the run would use
+uv run ig plugins                                              # what can go in a row, with each plugin's config fields
+```
+
+Rows are patched by id (`--set row.key=value`, or a `--patch file.yml` with `- id: env` / `config: {...}` entries);
+the resolved configuration and its digest are written into every episode's `meta.config`.
+
 ## 3. The viewer
 
 ```bash
@@ -233,6 +246,7 @@ case to decline under SOPBench's verifier.
 ## Next
 
 - [DESIGN.md](DESIGN.md): the simulation model and its design choices
+- [ARCHITECTURE.md](ARCHITECTURE.md): kernel vs plugins, layered configuration, the migration plan
 - [FORMAT.md](FORMAT.md): the trajectory format
 - [BENCHMARKS.md](BENCHMARKS.md): benchmark loaders, open- vs. closed-loop evaluation
 - [GPU_TUNER.md](GPU_TUNER.md): splitting GPUs between agent, user LLM and TTS

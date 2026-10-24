@@ -1,0 +1,35 @@
+# minimal: a replayed user and a scripted agent, no models — the smoke test of the composition (examples/minimal.py
+# with the rule-based user replaced by fixed turn times; the second user turn cuts into the agent's first reply).
+- extends: core
+
+- insert:
+    - id: user
+      plugin: role/replay
+      config:
+        stream: user.speech
+        turns:
+          - {t: 0, text: "What's the weather like tomorrow?"}
+          - {t: 4000, text: "Sorry, I meant the day after tomorrow."}
+
+    - id: agent
+      plugin: agent/canned
+      config:
+        replies:
+          - "Tomorrow will be sunny with a high of twenty four degrees and a light breeze from the west."
+          - "Got it, the day after tomorrow looks rainy, so bring an umbrella."
+        yield_after: 160
+
+    - id: tasks
+      plugin: task/inline
+      config:
+        tasks:
+          - {id: weather-correction, scenario: {}}
+
+    - id: stdout
+      plugin: sink/stdout
+
+- id: env
+  config: {max_ms: 60000, end_idle_ms: 3000}
+
+- id: driver
+  config: {concurrency: 1, media: false}
