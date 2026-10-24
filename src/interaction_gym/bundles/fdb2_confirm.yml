@@ -1,0 +1,17 @@
+# fdb2_confirm: FD-Bench v2 with MiniCPM-o under a voice-assistant prompt that confirms details back
+# (examples/fdb2_ab.py `--agent minicpmo-confirm`). Run with --tag minicpmo-confirm to keep its folder apart.
+- extends: fdb2
+
+- id: agent
+  config:
+    preset: minicpmo
+    url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+    audio_out: false
+    out_sr: 16000
+    clock: input
+    trace_tokens: true
+    instructions: >-
+      You are a helpful voice assistant on a live phone call. Always speak in English. Let the caller finish speaking
+      before you reply. Help them with what they ask; when they give details (items, names, times, numbers), confirm
+      them back with the latest values, and if they change something, use the new value from then on. Ask only for
+      what you still need. Keep every reply short and natural: it is spoken aloud.

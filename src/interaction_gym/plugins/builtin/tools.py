@@ -45,10 +45,19 @@ def functions(ctx, cfg: FunctionsConfig) -> FunctionBackend:
                            context=_import(cfg.context, where) if cfg.context else None)
 
 
+@plugin("tool", "fdb3_mock")
+def fdb3_mock(ctx, kw: dict):
+    """Full-Duplex-Bench v3's mock APIs (flights, exchange rates, apartments, products, identity documents)."""
+    from ...benchmarks import fdb3
+
+    return fdb3.MockAPIBackend()
+
+
 @dataclass
 class ToolWorldConfig:
     backends: list = field(default_factory=list)  # row ids of tool/* rows
     latency_ms: int = 0
+    latency_by_task: str | None = None  # "module:function(task) -> ms | (call) -> ms": the world is then built per episode
     mode: str = "all"  # "all" | "discover"
     callers: tuple[str, ...] = ("agent", "user")
     screen: str | None = None
@@ -56,10 +65,18 @@ class ToolWorldConfig:
 
 
 @plugin("node", "tool_world", config=ToolWorldConfig, refs=("backends[]",))
-def tool_world(ctx, cfg: ToolWorldConfig) -> ToolWorld:
-    """Executes tool calls through the named backends; results land ``latency_ms`` later."""
+def tool_world(ctx, cfg: ToolWorldConfig):
+    """Executes tool calls through the named backends; results land ``latency_ms`` later (or what
+    ``latency_by_task`` gives for the episode's task)."""
     if not cfg.backends:
         raise PluginError("node/tool_world: name at least one tool row in backends")
     backends = {rid: ctx[rid] for rid in cfg.backends}
-    return ToolWorld(backends if len(backends) > 1 else next(iter(backends.values())), cfg.latency_ms, callers=tuple(cfg.callers),
-                     mode=cfg.mode, screen=cfg.screen, serial=cfg.serial)
+    backends = backends if len(backends) > 1 else next(iter(backends.values()))
+
+    def make(latency):
+        return ToolWorld(backends, latency, callers=tuple(cfg.callers), mode=cfg.mode, screen=cfg.screen, serial=cfg.serial)
+
+    if cfg.latency_by_task is None:
+        return make(cfg.latency_ms)
+    by_task = _import(cfg.latency_by_task, "node/tool_world")
+    return lambda ep: make(by_task(ep.task) if ep is not None else cfg.latency_ms)

@@ -400,7 +400,9 @@ N-th user turn" is everything that starts before cut(N).
 
 ## 11. Full-Duplex-Bench v3 (tool use): data → tasks, agent, open vs closed loop
 
-Code: `benchmarks/fdb3.py`, `agents/cascaded.py`, runner `examples/fdb3_ab.py`, tests `tests/test_fdb3.py`. License
+Code: `benchmarks/fdb3.py`, `agents/cascaded.py`, runner `examples/fdb3_ab.py` or the bundles `ig run fdb3` /
+`fdb3_natural` / `fdb3_duplex` (the script's `report` reads their output; [ARCHITECTURE.md](ARCHITECTURE.md)), tests
+`tests/test_fdb3.py`, `tests/test_plugins_fdb3.py`. License
 **CC BY-NC 4.0** (the mock APIs, tool descriptions, agent instructions and judge prompts are ported from the
 official repository and live in the optional component `extras/fdbench/`): non-commercial research only.
 
@@ -475,7 +477,9 @@ seeds vary only the simulated user; A runs of different seeds are reproducibilit
 
 ## 12. Full-Duplex-Bench v2 (automated examiner): open vs closed loop
 
-Code: `benchmarks/fdb2.py`, runner `examples/fdb2_ab.py` (`prepare` → `run` → `report`), tests `tests/test_fdb2.py`.
+Code: `benchmarks/fdb2.py`, runner `examples/fdb2_ab.py` (`prepare` → `run` → `report`) or the bundle (`ig prepare
+fdb2` → `ig run fdb2` → the script's `report`; `fdb2_confirm`, `fdb2_cascaded`; [ARCHITECTURE.md](ARCHITECTURE.md)),
+tests `tests/test_fdb2.py`, `tests/test_plugins_fdb2.py`.
 License **CC BY-NC 4.0** (examiner prompts, staged goals, judge prompts ported from the official repository; the
 ported judge rubric prompts live in the optional component `extras/fdbench/`).
 

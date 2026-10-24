@@ -135,6 +135,10 @@ def echo(ctx, cfg: EchoConfig):
   checks them and orders the build; a value that is neither a row id nor an allowed literal is an error.
 - A plugin without a `Config` receives the config dict as keyword arguments (the thin wrappers around server
   adapters work this way: the adapter's signature is the contract).
+- A `role` / `node` / `source` plugin returns a shared object (a `Node` keeps its state in `init_state`'s state, as
+  the kernel requires) or a factory `(EpisodeContext) -> object` when the object keeps per-episode state on itself;
+  the run builds factories afresh for every episode. A `task` plugin returns tasks, or a task source with `tasks()`,
+  `prepare(task, ep)` (the episode's view of a task) and `build(...)` (a preparation stage run by `ig prepare`).
 - Third-party packages register plugins with an entry point in the group `interaction_gym.plugins` pointing at a
   module that imports and registers them.
 
@@ -176,7 +180,10 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    `tests/test_plugins.py` builds the same episode through the composition and by hand and compares the logs.
 2. **The benchmark runners move onto `driver/eval`**, each benchmark a bundle; the runners' shared concurrency,
    retry, warm-up, resume and A/B code lives once, in the driver. **audiomc done** (bundles `audiomc`,
-   `audiomc_cascaded`); fdb2 and fdb3 next. Every migrated runner gets a parity check against its script on `main`:
+   `audiomc_cascaded`), **fdb2 done** (`fdb2`, `fdb2_confirm`, `fdb2_cascaded`; `ig prepare` for its reference
+   scripts), **fdb3 done** (`fdb3`, `fdb3_natural`, `fdb3_duplex`). The scripts' `report` commands still read the
+   bundles' output (step 2b turns them into scorers and sinks). Every migrated runner gets a parity check against
+   its script on `main`:
 
    | `examples/audiomc_ab.py run` on main | now | checked by |
    |---|---|---|
@@ -194,6 +201,40 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | meta: `run_id`, `agent` (describe + name), `condition`, `agent_name`, `agent_base`, `task_id`, `wall_s`; agent traces to `agent_traces.jsonl` | the driver writes them (`agent_base` is `meta.agent.name`, the agent row id); `sink/agent_traces` | the script's `report` runs unchanged on a bundle run |
    | progress line with ep/h and the agent's final reply | ep/h, user turns, scores | — |
    | `report` (rubric judge, validity, timing tables, consistency, bootstrap CIs) | still `examples/audiomc_ab.py report`, reading the bundle's output; becomes scorer / sink plugins in step 2b | test runs it on a bundle run |
+
+   | `examples/fdb2_ab.py` on main | now | checked by |
+   |---|---|---|
+   | `prepare`: one agent-free script per (task, seed) — `fdb2.make_script(task, llm(seed), llm(seed+10000), 12)`, examiner lines rendered once with `Voice(tts, voice="serena", clone=clone_tts())`, `fdb2.schedule`, `script.json` + `eNN.wav` under `<out>/scripts/<task>/s<seed>` (or `--scripts`); 4 attempts with 20–40 s waits | `ig prepare fdb2`: `task/fdb2.build` (the task source's preparation stage); `backend/chat` rows `examiner_llm` (`seed: episode`) and `reference_llm` (`seed_offset: 10000`); `tasks.scripts` | `test_plugins_fdb2`: same files, fields, schedule; a second prepare writes nothing |
+   | A: `ReplayUser(voice=Voice())` on the script's examiner lines with `t < A_MAX_MS` (`final` on the last), `max_ms = min(script_end + 15 s, A_MAX_MS)`, `end_idle_ms=8000` | `task/fdb2.prepare` for the arm mapped to `replay`: sets `scenario.turns`, `ep.env.max_ms`; env row `end_idle_ms: 8000` | A episode equals the hand-built one frame for frame |
+   | B: `benchmark_user(fdb2.ExaminerSource(llm(seed), 12, closing), Voice(tts(), voice="serena", clone=clone_tts()), TurnTaking(response_delay=ResponseDelay(), yield_after_ms=1000, nudge_after_ms=10000))`, `scenario.first_turn` = the script's first line, `max_ms=MAX_MS`, `end_idle_ms=3000` | arm B patch: `role/user` with `source/fdb2_examiner`, the env row with `end_idle_ms: 3000`; `prepare` for the arm mapped to `live` sets `first_turn` | B episode equals |
+   | one `ExaminerSource` per episode (its `log`, the `StageClosing` counters) | roles and sources may be per-episode factories (`role/user`, `source/fdb2_examiner`); `make_env(ep)` builds them | two episodes, two examiners: equal logs |
+   | `--closing` (`fdb2.StageClosing(llm(seed, 0.0, 60))`) | `--set examiner.closing=true` with the `closing_llm` row | test: the tracker runs, `meta.closing` |
+   | `--max-ms`, `--a-max-ms` | `tasks.max_ms` + `env.max_ms`, `tasks.a_max_ms` | config |
+   | `--limit N`: every k-th task (a spread over the splits) | `driver.limit_stride: true` | test: `--limit 2` picks tasks `[::2]` |
+   | agents `minicpmo` (official examinee prompt), `minicpmo-confirm`, `gander`, `personaplex`, `cascaded` | `instructions: !py interaction_gym.benchmarks.fdb2:EXAMINEE_PROMPT`; bundles `fdb2_confirm`, `fdb2_cascaded`; `--set agent.preset=gander --set controlled.preset=gander` | `!py` resolves and is recorded expanded |
+   | task reloaded per episode (its scenario was mutated) | `prepare` deep-copies; the run's task stays untouched | test |
+   | meta: `run_id=fdb2-ab-<tag>`, `agent`, `agent_events`, `condition`, `agent_name`, `agent_base`, `task_id`, `wall_s`, `max_ms` (A: `A_MAX_MS`, B: `MAX_MS`), `closing`, `examiner_log` (when non-empty); agent traces | the driver (`agent_events` from `agent.events`, `examiner_log` / `closing` from the source's `episode_meta()`, `max_ms` / `closing` for A from `prepare`); `sink/agent_traces` | the script's `report` runs unchanged on a bundle run |
+   | warm-up on the first job's A script; resume; `check_output_mode`; retries; shared cache | as for audiomc (the driver) | audiomc tests |
+   | `report` (official judge, TT / IF / task tables, A = B consistency, coherence, pacing, cap diagnosis) | still `examples/fdb2_ab.py report` on the bundle's output | test runs it with a fake judge |
+
+   | `examples/fdb3_ab.py run` on main | now | checked by |
+   |---|---|---|
+   | `fdb3.load(data, only)` (one task per recording, `profile.language=en`), `--limit` first N | `task/fdb3` | `test_plugins_fdb3` |
+   | A: `ReplayUser(voice=Voice())` + `ToolWorld(MockAPIBackend(), fdb3.latency_ms(task))`, `max_ms = user_end_ms + 60 s`, `end_idle_ms=3000` (8000 for duplex, no tools) | `role/replay`; `tool/fdb3_mock` + `node/tool_world` with `latency_by_task` (a world per episode); `task/fdb3.prepare` sets `ep.env.max_ms`; `fdb3_duplex` disables the tools row and sets `end_idle_ms: 8000` | A episode equals the hand-built one frame for frame, for both latency profiles |
+   | B: `benchmark_user(fdb3.UserSource(llm(seed, 0.7, 200), 8), Voice(clone, clone=clone), TurnTaking(response_delay=ResponseDelay(), yield_after_ms=None, nudge_after_ms=10000))`, `max_ms=180 s`, `end_idle_ms=3000` | arm B patch with `source/fdb3_user`, `backend/clone_fallback`; `prepare` sets `max_ms` | B episode equals |
+   | `SPEC = AgentSpec(100 ms, obs=(user.speech, tool.result), audio)` / `duplex_spec` | row `controlled` (`obs: [user.speech, tool.result]`; `preset` in `fdb3_duplex`) | config |
+   | cascaded agents: `ToolChat(native=False, max_tokens=512)`, `Endpointing(silence_ms=--endpoint-ms)`, prompts `cascaded-official` (`fdb3.AGENT_INSTRUCTIONS`) / `cascaded-natural`; tag suffix `-ep<ms>` | `agent/cascaded` with `!py interaction_gym.benchmarks.fdb3:AGENT_INSTRUCTIONS`; `fdb3_natural`; `--set agent.endpointing.silence_ms=600 --tag cascaded-official-ep600` | the composed agent's `describe()` (`endpointing.silence_ms`) |
+   | duplex agents: `session.instructions = DUPLEX_PROMPT.format(domain=DOMAINS[benchmark.domain])` per task | `agent/vllm_omni` `instructions` template + `instructions_vars` (`path`, `map`, `default`) | test: the prompt names the recording's domain, the default for an unknown one |
+   | `ep.eval.benchmark = quick_metrics(ep)` (calls, `u1_ms`, timing vs the request's end, user turns) | `scorer/fdb3_quick` as row `benchmark` | test: same keys, same calls as the hand-built episode |
+   | meta: `run_id=fdb3-ab-<tag>`, `agent` (+ `url`, `system_prompt` for duplex), `agent_events`, `condition`, `agent_name` (the agent's name; the folder is the tag), `recording`, `wall_s`; agent traces | the driver (`agent_name` is the tag — identical unless a `-ep` suffix is used; the report does not read it); `task/fdb3.prepare` sets `recording`; `sink/agent_traces` in `fdb3_duplex` | test |
+   | A and B share the cascaded agent's cache; resume; `check_output_mode`; warm-up (duplex); retries 6 | the driver | audiomc tests |
+   | `report` (pass@1, corrections, timing, pages) | still `examples/fdb3_ab.py report --tags <tag>` on the bundle's output | episode ids and `eval.benchmark` are what it keys on (test) |
+
+   Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
+   the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep
+   their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes
+   by name instead would remove this dependence; it would change every existing trajectory, so it waits for a format
+   version bump.
 3. **Role table and expectation table.** `turns[].role` becomes a role name, `meta.roles` / `meta.controlled`; old
    files read as `user` / `agent`. This unlocks user-side evaluation and three-party tasks.
 4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. The largest

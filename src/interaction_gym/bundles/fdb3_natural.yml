@@ -1,0 +1,16 @@
+# fdb3_natural: FD-Bench v3 with the cascaded agent under a conversational prompt (examples/fdb3_ab.py
+# `--agent cascaded-natural`). Run with --tag cascaded-natural.
+- extends: fdb3
+
+- id: agent
+  config:
+    asr: asr
+    llm: agent_llm
+    tts: tts
+    instructions: >-
+      You are a helpful voice AI assistant on a phone line. Keep your responses concise and conversational since they
+      will be spoken aloud. Use the provided tools to carry out the caller's requests and answer from their results;
+      never make up data. If something you need is missing or unclear, ask briefly.
+    voice: aiden
+    endpointing: {silence_ms: 800}
+    latency: {}

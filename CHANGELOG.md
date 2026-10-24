@@ -31,6 +31,25 @@
   behind the agent URL), the output-mode check on resume, `run_id`, and `meta.condition` / `task_id` / `agent_name`.
   Config strings may reference the environment (`${IG_LLM_URL:-http://127.0.0.1:8000/v1}`); a patch that swaps a
   row's `plugin` drops the old config.
+- **Full-Duplex-Bench v2 as a bundle** (`ig prepare fdb2` + `ig run fdb2`; `fdb2_confirm`, `fdb2_cascaded`):
+  `examples/fdb2_ab.py` `prepare` + `run` as a composition, checked against the script (`tests/test_plugins_fdb2.py`;
+  parity table in docs/ARCHITECTURE.md §8). For it: task sources — a `task` plugin may return an object with
+  `tasks()`, `prepare(task, ep)` (the episode's view of a task: an arm's turns or first line, `ep.env` / `ep.meta`
+  overrides) and `build(...)` (a preparation stage, `ig prepare`); `task/fdb2` (reference scripts, per-arm views);
+  per-episode roles and sources (a `role` / `node` / `source` plugin may return a factory `(EpisodeContext) ->
+  object`; `role/user` is one, so an examiner with a line log or a closing tracker starts fresh each episode);
+  `source/fdb2_examiner` (`closing`); `backend/chat` `seed_offset`; `!py module:NAME` config values (a prompt
+  constant, recorded expanded); `driver/eval` `limit_stride`, `run_id` with `{tag}`, `meta.agent_events`, and a
+  node's or source's `episode_meta()` merged into `meta`; a `PluginError` inside an episode (e.g. a missing reference
+  script) aborts the run instead of being retried. `backend/fake_chat` `per_episode` (the reply sequence restarts per
+  episode, as the scripts' per-episode clients did).
+- **Full-Duplex-Bench v3 as a bundle** (`ig run fdb3`; `fdb3_natural`, `fdb3_duplex`): `examples/fdb3_ab.py run` as a
+  composition, checked against the script (`tests/test_plugins_fdb3.py`; parity table in docs/ARCHITECTURE.md §8).
+  For it: `task/fdb3` (per-recording caps, `meta.recording`), `source/fdb3_user`, `tool/fdb3_mock`, `node/tool_world`
+  `latency_by_task` (a world per episode, the latency from the recording's profile), `agent/vllm_omni`
+  `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
+  `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
+  its rng in the order nodes are given, so the order is part of the configuration.
 - **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
   TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
   `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,

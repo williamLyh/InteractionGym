@@ -3,6 +3,7 @@
     ig run minimal                                   # a built-in bundle
     ig run fdb3 --patch my.yml --set env.max_ms=60000 --out runs/x --seeds 0,1
     ig run my_bundle.yml --dump-config               # print the complete configuration and stop
+    ig prepare fdb2 --out runs/fdb2_ab --seeds 0     # a benchmark's preparation stage (reference scripts)
     ig plugins [kind]                                # what can go in a row, with each plugin's config fields
     ig bundles                                       # the built-in bundles
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from .compose import compose
 from .config import BUNDLES, Composition
@@ -38,6 +40,26 @@ def cmd_run(args) -> int:
         raise PluginError("the composition has no driver row (kind driver), e.g. {id: driver, plugin: driver/eval}")
     seeds = [int(s) for s in args.seeds.split(",")]
     asyncio.run(run.driver.run(run, out=args.out, seeds=seeds, limit=args.limit, ids=args.ids.split(",") if args.ids else (), tag=args.tag))
+    return 0
+
+
+def cmd_prepare(args) -> int:
+    """A task source's preparation stage (reference scripts, caches) for the tasks and seeds a run would use."""
+    from .builtin.drivers import select_tasks
+
+    run = compose(_composition(args).resolve())
+    sources = [s for s in run.task_sources if callable(getattr(s, "build", None))]
+    if not sources:
+        raise PluginError("nothing to prepare: no task row of this composition has a preparation stage")
+    seeds = [int(s) for s in args.seeds.split(",")]
+    stride = bool(getattr(getattr(run.driver, "cfg", None), "limit_stride", False))
+    tasks = select_tasks(run.tasks, args.ids.split(",") if args.ids else (), args.limit, stride)
+    for src in sources:
+        if hasattr(src, "out"):
+            src.out = Path(args.out)
+        print(f"ig: preparing {len(tasks)} tasks × {len(seeds)} seeds -> {args.out}", flush=True)
+        n = asyncio.run(src.build(tasks, seeds, concurrency=args.concurrency))
+        print(f"ig: {n} prepared", flush=True)
     return 0
 
 
@@ -74,6 +96,12 @@ def main(argv=None) -> int:
     r.add_argument("--tag", default="", help="prefix of the episode ids")
     r.add_argument("--dump-config", action="store_true", help="print the resolved configuration and exit")
     r.set_defaults(fn=cmd_run)
+    pr = sub.add_parser("prepare", help="a benchmark's preparation stage (e.g. FD-Bench v2 reference scripts) for the run's tasks and seeds")
+    for a in ("bundle", "--patch", "--set", "--out", "--seeds", "--limit", "--ids"):
+        act = next(x for x in r._actions if a in x.option_strings or x.dest == a)
+        pr._add_action(act)
+    pr.add_argument("--concurrency", type=int, default=4)
+    pr.set_defaults(fn=cmd_prepare)
     p = sub.add_parser("plugins", help="list the plugins")
     p.add_argument("kind", nargs="?", choices=KINDS)
     p.set_defaults(fn=cmd_plugins)

@@ -1,0 +1,117 @@
+# fdb2: Full-Duplex-Bench v2, open loop (A: the static reference script replayed) vs closed loop (B: the live examiner,
+# the official protocol) with MiniCPM-o 4.5 in lockstep — examples/fdb2_ab.py `prepare` + `run` as a composition
+# (docs/BENCHMARKS.md §12).
+#
+#   ig prepare fdb2 --out runs/fdb2_ab --seeds 0                 # 1. agent-free reference scripts, one per (task, seed), rendered once
+#   ig run fdb2 --out runs/fdb2_ab --seeds 0                     # 2. A and B episodes (--tag names the agent folder; default: agent)
+#   python examples/fdb2_ab.py report --data $IG_FDB2_DATA --out runs/fdb2_ab    # 3. official judge, tables, A = B check
+#
+#   --set examiner.closing=true                                  # stage-progress-aware closing rules for the live examiner
+#   --set tasks.scripts=DIR                                      # scripts shared by several agents' runs (default <out>/scripts)
+#   --set tasks.a_max_ms=60000                                   # a shorter cap for the replayed arm only
+#   --set agent.audio_out=true                                   # the talker's speech instead of text timed at speech_cps
+#   ig run fdb2_confirm ... / ig run fdb2_cascaded ...           # the confirm-back prompt / the cascaded agent
+#
+# Services: IG_FDB2_DATA (prompts_staged_200.json), IG_LLM_URL (examiner, reference assistant, closing tracker),
+# IG_TTS_URL (the examiner's voice), IG_CLONE_URL (its later lines cloned from the first), IG_AGENT_URL.
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/fdb2
+      config:
+        data: "${IG_FDB2_DATA:-prompts_staged_200.json}"
+        max_turns: 12
+        max_ms: 120000
+        arms: {A: replay, B: live}
+        examiner_llm: examiner_llm
+        assistant_llm: reference_llm
+        tts: tts
+        clone: clone_tts
+        voice: serena
+
+    - id: examiner_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.7, max_tokens: 200}
+        seed: episode
+
+    # the reference assistant of the scripts: the same model on another sampling stream (seed + 10000)
+    - id: reference_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.7, max_tokens: 200}
+        seed: episode
+        seed_offset: 10000
+
+    - id: closing_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.0, max_tokens: 60}
+        seed: episode
+
+    - id: tts
+      plugin: backend/tts
+      config: {base_url: "${IG_TTS_URL:-http://127.0.0.1:8001/v1}", model: "${IG_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}", sr: 16000}
+
+    - id: clone_tts
+      plugin: backend/tts
+      config: {base_url: "${IG_CLONE_URL:-http://127.0.0.1:8005/v1}", model: "${IG_CLONE_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-Base}", sr: 16000}
+
+    - id: examiner
+      plugin: source/fdb2_examiner
+      config: {llm: examiner_llm, max_turns: 12, closing: false, closing_llm: closing_llm}
+
+    # arm A: the script's examiner lines at their scheduled times (task/fdb2 sets them per episode)
+    - id: user
+      plugin: role/replay
+
+    - id: agent
+      plugin: agent/vllm_omni
+      config:
+        preset: minicpmo
+        url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+        audio_out: false
+        out_sr: 16000
+        clock: input
+        trace_tokens: true
+        instructions: !py interaction_gym.benchmarks.fdb2:EXAMINEE_PROMPT
+
+    - id: traces
+      plugin: sink/agent_traces
+
+- id: controlled
+  config: {name: agent, preset: minicpmo, sr: 16000, audio: user.audio}
+
+- id: env
+  config: {max_ms: 120000, end_idle_ms: 8000}
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config:
+    concurrency: 6
+    retries: 4
+    warmup: true
+    run_id: fdb2-ab-{tag}
+    limit_stride: true
+    arms:
+      A: []
+      # arm B: the live examiner from the script's first line, its voice cloned from that line
+      B:
+        - id: user
+          plugin: role/user
+          config:
+            source: examiner
+            benchmark: true
+            voice: {tts: tts, voice: serena, clone: clone_tts}
+            timing: {response_delay: {}, yield_after_ms: 1000, nudge_after_ms: 10000}
+        - id: env
+          config: {max_ms: 120000, end_idle_ms: 3000}

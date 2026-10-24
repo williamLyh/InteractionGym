@@ -224,6 +224,8 @@ class EpisodeContext:
     arm: str | None = None
     cache: dict = field(default_factory=dict)
     episode_id: str = ""
+    env: dict = field(default_factory=dict)  # per-episode Env overrides a task source sets (``max_ms``, ``end_idle_ms``)
+    meta: dict = field(default_factory=dict)  # extra ``meta`` fields for the trajectory
 
 
 CURRENT_EPISODE: contextvars.ContextVar[EpisodeContext | None] = contextvars.ContextVar("ig_episode", default=None)

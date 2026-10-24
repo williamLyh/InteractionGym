@@ -1,0 +1,100 @@
+# fdb3: Full-Duplex-Bench v3 (recorded tool-use requests), open loop (A: the recording replayed) vs closed loop (B: a
+# live caller from the recording on), with the official cascaded agent — examples/fdb3_ab.py `run --agent
+# cascaded-official` as a composition (docs/BENCHMARKS.md §11).
+#
+#   ig run fdb3 --out runs/fdb3_ab --seeds 0 --tag cascaded-official
+#   ig run fdb3 --set agent.endpointing.silence_ms=600 --tag cascaded-official-ep600     # the script's --endpoint-ms
+#   ig run fdb3_natural ... / ig run fdb3_duplex ...                                     # the other prompt / MiniCPM-o
+#   python examples/fdb3_ab.py report --out runs/fdb3_ab --tags cascaded-official        # pass@1, timing, pages
+#
+# Services: IG_FDB3_DATA (recordings root), IG_ASR_URL, IG_LLM_URL (agent and caller), IG_TTS_URL, IG_CLONE_URL.
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/fdb3
+      config: {data: "${IG_FDB3_DATA:-data/fdb3}", arms: {A: replay, B: live}, replay_tail_ms: 60000, live_max_ms: 180000}
+
+    - id: user_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {temperature: 0.7, max_tokens: 200}
+        seed: episode
+
+    - id: tts
+      plugin: backend/tts
+      config: {base_url: "${IG_TTS_URL:-http://127.0.0.1:8001/v1}", model: "${IG_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}", sr: 16000}
+
+    - id: clone_tts
+      plugin: backend/tts
+      config: {base_url: "${IG_CLONE_URL:-http://127.0.0.1:8005/v1}", model: "${IG_CLONE_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-Base}", sr: 16000}
+
+    - id: clone
+      plugin: backend/clone_fallback
+      config: {clone: clone_tts, plain: tts, voice: ryan}
+
+    - id: caller
+      plugin: source/fdb3_user
+      config: {llm: user_llm, max_turns: 8}
+
+    # arm A: the recording itself
+    - id: user
+      plugin: role/replay
+
+    - id: mock_api
+      plugin: tool/fdb3_mock
+
+    # one world per episode: the result latency follows the recording's latency profile
+    - id: tools
+      plugin: node/tool_world
+      config: {backends: [mock_api], latency_by_task: "interaction_gym.benchmarks.fdb3:latency_ms"}
+
+    - id: asr
+      plugin: backend/asr
+      config: {base_url: "${IG_ASR_URL:-http://127.0.0.1:8006/v1}", model: "${IG_ASR_MODEL:-Qwen3-ASR-1.7B}"}
+
+    - id: agent_llm
+      plugin: backend/tool_chat
+      config: {base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}", model: "${IG_LLM_MODEL:-Qwen3.8-27B}", native: false, defaults: {max_tokens: 512}}
+
+    - id: agent
+      plugin: agent/cascaded
+      config:
+        asr: asr
+        llm: agent_llm
+        tts: tts
+        instructions: !py interaction_gym.benchmarks.fdb3:AGENT_INSTRUCTIONS
+        voice: aiden
+        endpointing: {silence_ms: 800}
+        latency: {}
+
+    - id: benchmark
+      plugin: scorer/fdb3_quick
+
+- id: controlled
+  config: {name: agent, chunk_ms: 100, obs: [user.speech, tool.result], audio: user.audio, sr: 16000}
+
+- id: env
+  config: {max_ms: 180000, end_idle_ms: 3000}   # the replayed arm's cap is per recording (task/fdb3)
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config:
+    concurrency: 16
+    retries: 6
+    run_id: fdb3-ab-{tag}
+    arms:
+      A: []
+      # arm B: the live caller (the recording first, then an LLM on the scenario card), its voice cloned from the recording
+      B:
+        - id: user
+          plugin: role/user
+          config:
+            source: caller
+            benchmark: true
+            voice: {tts: clone, clone: clone}
+            timing: {response_delay: {}, yield_after_ms: null, nudge_after_ms: 10000}

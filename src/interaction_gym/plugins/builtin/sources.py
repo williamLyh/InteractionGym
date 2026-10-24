@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...user import LLMSource, ScriptSource
-from ..registry import plugin
+from ..registry import PluginError, plugin
 
 
 @dataclass
@@ -45,6 +45,53 @@ def audiomc_script(ctx, kw: dict):
     from ...benchmarks import audiomc
 
     return audiomc.ScriptSource()
+
+
+@dataclass
+class ExaminerConfig:
+    llm: str  # row id of a backend/chat (the official examiner prompts on it)
+    max_turns: int = 12
+    closing: bool = False  # stage-progress-aware closing rules (fdb2.StageClosing) on closing_llm
+    closing_llm: str | None = None
+    max_per_stage: int = 3
+    max_stall: int = 5
+
+
+@plugin("source", "fdb2_examiner", config=ExaminerConfig, refs=("llm", "closing_llm"))
+def fdb2_examiner(ctx, cfg: ExaminerConfig):
+    """Full-Duplex-Bench v2's live examiner (closed loop): the official prompts on a text LLM; the first line can be
+    the open-loop script's (``task.scenario["first_turn"]``). One examiner per episode: its line log goes to
+    ``meta.examiner_log``."""
+    from ...benchmarks import fdb2
+
+    if cfg.closing and not cfg.closing_llm:
+        raise PluginError("source/fdb2_examiner: closing needs closing_llm (a backend/chat row)")
+
+    class Examiner(fdb2.ExaminerSource):
+        def episode_meta(self) -> dict:
+            return {**({"examiner_log": self.log} if self.log else {}), "closing": self.closing is not None}
+
+    llm, closing_llm = ctx[cfg.llm], ctx.get(cfg.closing_llm)
+
+    def make(ep):
+        closing = fdb2.StageClosing(closing_llm, cfg.max_per_stage, cfg.max_stall) if cfg.closing else None
+        return Examiner(llm, cfg.max_turns, closing=closing)
+    return make
+
+
+@dataclass
+class Fdb3UserConfig:
+    llm: str  # row id of a backend/chat
+    max_turns: int = 8
+    system: str | None = None  # default: fdb3.USER_SYSTEM
+
+
+@plugin("source", "fdb3_user", config=Fdb3UserConfig, refs=("llm",))
+def fdb3_user(ctx, cfg: Fdb3UserConfig):
+    """Full-Duplex-Bench v3's closed-loop caller: the recording first, then an LLM on the scenario card."""
+    from ...benchmarks import fdb3
+
+    return fdb3.UserSource(ctx[cfg.llm], cfg.max_turns, system=cfg.system)
 
 
 @dataclass

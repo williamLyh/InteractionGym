@@ -15,8 +15,9 @@ each a YAML list of operations:
 
 ``--set row.key.sub=value`` is the one merging operation: it sets a single key inside a row's config (the value is
 parsed as YAML, so ``--set env.max_ms=60000`` is an int and ``--set agent.replies='[a, b]'`` a list). String values
-may reference the environment: ``"${IG_LLM_URL:-http://127.0.0.1:8000/v1}"`` (expanded when resolving; the expanded
-value is what the run records).
+may reference the environment: ``"${IG_LLM_URL:-http://127.0.0.1:8000/v1}"``, and a value may be a module attribute:
+``!py interaction_gym.benchmarks.fdb2:EXAMINEE_PROMPT`` (both expanded when resolving; the expanded value is what the
+run records).
 
 ``resolve()`` checks every enabled row against the registry (plugin exists, config valid, requirements met),
 orders rows so that requirements come first, and returns a ``Resolved`` composition whose ``dump()`` is the complete
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -65,8 +67,36 @@ class Row:
         return d
 
 
+class PyRef:
+    """``!py package.module:NAME`` in a config: the named attribute of a module (a prompt constant, a table), resolved
+    when the composition is resolved — no expressions, no calls. The resolved value is what the run records."""
+
+    def __init__(self, path: str):
+        self.path = path
+
+    def resolve(self, where: str):
+        if ":" not in self.path:
+            raise PluginError(f"{where}: !py takes 'package.module:NAME', got {self.path!r}")
+        mod, attr = self.path.split(":", 1)
+        try:
+            return getattr(importlib.import_module(mod), attr)
+        except (ImportError, AttributeError) as e:
+            raise PluginError(f"{where}: !py {self.path}: {e}") from None
+
+
+class _Loader(yaml.SafeLoader):
+    pass
+
+
+_Loader.add_constructor("!py", lambda loader, node: PyRef(loader.construct_scalar(node)))
+
+
+def load_yaml(text: str):
+    return yaml.load(text, Loader=_Loader)  # noqa: S506 — SafeLoader plus the !py tag
+
+
 def _ops(text_or_ops, source: str) -> list:
-    ops = yaml.safe_load(text_or_ops) if isinstance(text_or_ops, str) else text_or_ops
+    ops = load_yaml(text_or_ops) if isinstance(text_or_ops, str) else text_or_ops
     if ops is None:
         return []
     if not isinstance(ops, list):
@@ -165,14 +195,14 @@ class Composition:
         if row is None:
             raise PluginError(f"--set: unknown row {parts[0]!r}; rows: {', '.join(self.rows) or '(none)'}")
         if parts[1] == "disabled" and len(parts) == 2:
-            row.disabled = bool(yaml.safe_load(text))
+            row.disabled = bool(load_yaml(text))
         else:
             d = row.config
             for k in parts[1:-1]:
                 d = d.setdefault(k, {})
                 if not isinstance(d, dict):
                     raise PluginError(f"--set: {'.'.join(parts[:-1])} is not a mapping")
-            d[parts[-1]] = yaml.safe_load(text)
+            d[parts[-1]] = load_yaml(text)
         self.layers.append(f"--set {assignment}")
 
     # ---------------------------------------------------------------- resolving
@@ -222,7 +252,7 @@ class Composition:
         rank = {rid: i for i, rid in enumerate(by_id)}
         ordered = sorted(by_id.values(), key=lambda r: (_depth(r.id, deps), rank[r.id]))
         assert [r.id for r in ordered] and set(order) == set(by_id)
-        return Resolved(ordered, plugins, configs, provides, tuple(self.layers))
+        return Resolved(ordered, plugins, configs, provides, tuple(self.layers), rank)
 
 
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -230,8 +260,11 @@ _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 def expand_env(value, where: str):
     """``${NAME}`` / ``${NAME:-default}`` inside string config values, from the environment (``IG_*`` names also
-    accept the deprecated ``DIG_*``, see envvars). A name that is not set and has no default is an error. The
-    expanded value is what the run records, so a trajectory says which server it used."""
+    accept the deprecated ``DIG_*``, see envvars), and ``!py module:NAME`` references. A name that is not set and
+    has no default is an error. The expanded value is what the run records, so a trajectory says which server it
+    used and which prompt it sent."""
+    if isinstance(value, PyRef):
+        return value.resolve(where)
     if isinstance(value, str):
         def sub(m):
             name, default = m.group(1), m.group(2)
@@ -240,7 +273,7 @@ def expand_env(value, where: str):
                 raise PluginError(f"{where}: ${{{name}}} is not set and has no default")
             return v
         out = _ENV.sub(sub, value)
-        return yaml.safe_load(out) if out != value and _ENV.fullmatch(value) else out  # a whole-value reference keeps its type
+        return load_yaml(out) if out != value and _ENV.fullmatch(value) else out  # a whole-value reference keeps its type
     if isinstance(value, dict):
         return {k: expand_env(v, where) for k, v in value.items()}
     if isinstance(value, list):
@@ -254,20 +287,26 @@ def _depth(rid: str, deps: dict[str, set[str]], _seen=()) -> int:
 
 @dataclass
 class Resolved:
-    rows: list[Row]  # enabled rows, requirements first
+    rows: list[Row]  # enabled rows, requirements first (the build order)
     plugins: dict[str, Plugin]
     configs: dict[str, Any]
     provides: dict[str, str]  # service key / row id / plugin key -> row id
     layers: tuple[str, ...] = ()
+    rank: dict[str, int] = field(default_factory=dict)  # row id -> position in the layers (the order rows were written)
+
+    def in_layer_order(self) -> list[Row]:
+        """The rows as the layers wrote them. This order is part of the configuration: the kernel seeds nodes in
+        the order they are given, so it must survive a dump and a reload."""
+        return sorted(self.rows, key=lambda r: self.rank.get(r.id, 0))
 
     def dump(self) -> str:
-        """The complete configuration as YAML (one insert of the resolved rows): what ``--dump-config`` prints and
-        what a run records."""
-        return yaml.safe_dump([{"insert": [r.as_dict() for r in self.rows]}], sort_keys=False, allow_unicode=True, width=120)
+        """The complete configuration as YAML (one insert of the resolved rows, in layer order): what
+        ``--dump-config`` prints and what a run records."""
+        return yaml.safe_dump([{"insert": [r.as_dict() for r in self.in_layer_order()]}], sort_keys=False, allow_unicode=True, width=120)
 
     def digest(self) -> str:
-        return hashlib.sha256(json.dumps([r.as_dict() for r in self.rows], sort_keys=True, default=str).encode()).hexdigest()[:12]
+        return hashlib.sha256(json.dumps([r.as_dict() for r in self.in_layer_order()], sort_keys=True, default=str).encode()).hexdigest()[:12]
 
     def meta(self) -> dict:
         """What the trajectory records: the rows, their digest and the layers they came from."""
-        return {"digest": self.digest(), "layers": list(self.layers), "rows": [r.as_dict() for r in self.rows]}
+        return {"digest": self.digest(), "layers": list(self.layers), "rows": [r.as_dict() for r in self.in_layer_order()]}

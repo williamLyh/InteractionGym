@@ -22,6 +22,20 @@ def interaction(ctx, cfg: InteractionConfig):
     return lambda ep, env, agent: metrics(ep, cfg.nudge_gap_ms, cfg.repeat_overlap)
 
 
+@plugin("scorer", "fdb3_quick")
+def fdb3_quick(ctx, kw: dict):
+    """Full-Duplex-Bench v3's per-episode facts for its report (``eval.<row id>``, the runner's ``eval.benchmark``):
+    the agent's tool calls, the user's second turn, timing against the recorded request's end, user turns."""
+    from ...benchmarks import fdb3
+
+    def quick(ep, env, agent) -> dict:
+        b = ep["meta"]["task"]["scenario"]["benchmark"]
+        users = fdb3.user_turns(ep)
+        u1 = users[1]["start_time"] if len(users) > 1 else None
+        return {"calls": fdb3.agent_calls(ep), "u1_ms": u1, "timing": fdb3.timing(ep, b["user_end_ms"], before_ms=u1), "user_turns": len(users)}
+    return quick
+
+
 @plugin("scorer", "timing")
 def timing(ctx, kw: dict):
     """Duplex timing summary of the episode (``eval.timing_counts`` / ``timing_summary``)."""

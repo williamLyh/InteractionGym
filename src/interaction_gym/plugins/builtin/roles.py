@@ -100,9 +100,11 @@ class UserConfig:
 
 
 @plugin("role", "user", config=UserConfig, refs={"source": (), "listener": (), **VOICE_REFS})
-def user(ctx, cfg: UserConfig) -> UserSim:
-    """The reactive simulated user: content from its ``source``, timing from ``timing``, sounds from ``behaviors``."""
+def user(ctx, cfg: UserConfig):
+    """The reactive simulated user: content from its ``source``, timing from ``timing``, sounds from ``behaviors``.
+    Built per episode (a factory), so a source that keeps per-episode state (an examiner's log) starts fresh."""
     from ...soundscape import Soundscape
+    from ..compose import is_factory
 
     timing = dict(cfg.timing)
     rd = timing.pop("response_delay", None)
@@ -120,6 +122,10 @@ def user(ctx, cfg: UserConfig) -> UserSim:
         soundscape = soundscape or benchmark_soundscape()
         beh = beh or benchmark_behaviors()
     listener = LLMListener(ctx[cfg.listener]) if cfg.listener else None
-    return UserSim(ctx[cfg.source], voice=_voice(ctx, cfg.voice), timing=tt, interrupt=listener, stream=cfg.stream,
-                   agent_stream=cfg.listens_to, behaviors=beh if beh is not None else Behaviors(), soundscape=soundscape,
-                   aside_writer=cfg.aside_writer)
+    voice, source = _voice(ctx, cfg.voice), ctx[cfg.source]
+
+    def make(ep) -> UserSim:
+        return UserSim(source(ep) if is_factory(source) else source, voice=voice, timing=tt, interrupt=listener, stream=cfg.stream,
+                       agent_stream=cfg.listens_to, behaviors=beh if beh is not None else Behaviors(), soundscape=soundscape,
+                       aside_writer=cfg.aside_writer)
+    return make

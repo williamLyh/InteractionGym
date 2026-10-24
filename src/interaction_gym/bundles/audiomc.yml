@@ -78,7 +78,7 @@
     concurrency: 6
     retries: 4
     warmup: true
-    run_id: audiomc-ab
+    run_id: audiomc-ab-{tag}
     arms:
       A: []
       # arm B: the script replanned to the agent's replies, spoken in the caller's voice cloned from the first recording

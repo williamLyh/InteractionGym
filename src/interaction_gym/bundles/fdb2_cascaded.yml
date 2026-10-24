@@ -1,0 +1,29 @@
+# fdb2_cascaded: FD-Bench v2 with the cascaded agent (energy-VAD endpointing, ASR, LLM, TTS; no tools) —
+# examples/fdb2_ab.py `--agent cascaded`. Services: IG_ASR_URL, IG_LLM_URL, IG_TTS_URL.
+- extends: fdb2
+
+- insert:
+    - id: asr
+      plugin: backend/asr
+      config: {base_url: "${IG_ASR_URL:-http://127.0.0.1:8006/v1}", model: "${IG_ASR_MODEL:-Qwen3-ASR-1.7B}"}
+
+    - id: agent_llm
+      plugin: backend/tool_chat
+      config: {base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}", model: "${IG_LLM_MODEL:-Qwen3.8-27B}", native: false, defaults: {max_tokens: 300}}
+
+- id: controlled
+  config: {name: agent, chunk_ms: 100, obs: [user.speech], audio: user.audio, sr: 16000}
+
+- id: agent
+  plugin: agent/cascaded
+  config:
+    asr: asr
+    llm: agent_llm
+    tts: tts
+    instructions: "You are a helpful AI assistant. Always speak in English. Your replies are spoken aloud on a live call: keep them short and conversational."
+    voice: aiden
+    endpointing: {silence_ms: 800}
+    latency: {}
+
+- id: traces
+  disabled: true

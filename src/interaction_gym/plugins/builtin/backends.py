@@ -14,22 +14,24 @@ from ..registry import CURRENT_EPISODE, PluginError, plugin
 
 
 class EpisodeSeeded:
-    """A chat client whose calls carry the current episode's seed (``CURRENT_EPISODE``) unless the call gives one."""
+    """A chat client whose calls carry the current episode's seed (``CURRENT_EPISODE``) plus ``offset`` unless the
+    call gives one (an offset keeps two clients of one episode on different sampling streams, e.g. an examiner and the
+    reference assistant it talks to)."""
 
-    def __init__(self, inner):
-        self.inner = inner
+    def __init__(self, inner, offset: int = 0):
+        self.inner, self.offset = inner, offset
 
     async def chat(self, messages, **kw):
         ep = CURRENT_EPISODE.get()
         if ep is not None:
-            kw.setdefault("seed", ep.seed)
+            kw.setdefault("seed", ep.seed + self.offset)
         return await self.inner.chat(messages, **kw)
 
     def describe(self) -> dict | None:
         from ...clients import describe
 
         d = describe(self.inner)
-        return {**d, "seed": "episode"} if d else d
+        return {**d, "seed": "episode" + (f"+{self.offset}" if self.offset else "")} if d else d
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -46,14 +48,15 @@ class ChatConfig:
     reasoning_tokens: int = 2048
     defaults: dict = field(default_factory=dict)  # request fields sent with every call: temperature, max_tokens, ...
     seed: str | int | None = None  # "episode": the running episode's seed; an int: fixed; None: unseeded
+    seed_offset: int = 0  # with seed: episode, added to the episode's seed
     cached: bool = False
 
 
-def _seeded(client, seed, cached: bool):
+def _seeded(client, seed, cached: bool, offset: int = 0):
     if isinstance(seed, int) and not isinstance(seed, bool):
-        client.defaults["seed"] = seed
+        client.defaults["seed"] = seed + offset
     elif seed == "episode":
-        client = EpisodeSeeded(client)
+        client = EpisodeSeeded(client, offset)
     elif seed is not None:
         raise PluginError(f"backend: seed is 'episode', an int or null, got {seed!r}")
     return Cached(client) if cached else client
@@ -64,7 +67,7 @@ def chat(ctx, cfg: ChatConfig):
     """A chat-completions LLM (``OpenAIChat``): the user simulator's writer, listener, judges."""
     kw = dict(api_key_env=cfg.api_key_env, timeout=cfg.timeout, retries=cfg.retries, reasoning_tokens=cfg.reasoning_tokens, **cfg.defaults)
     client = OpenAIChat.openai(cfg.model, **kw) if cfg.base_url is None else OpenAIChat(cfg.base_url, cfg.model, api=cfg.api, **kw)
-    return _seeded(client, cfg.seed, cfg.cached)
+    return _seeded(client, cfg.seed, cfg.cached, cfg.seed_offset)
 
 
 @dataclass
@@ -134,16 +137,37 @@ def asr(ctx, cfg: TranscribeConfig):
     return OpenAITranscribe(cfg.base_url, cfg.model, api_key_env=cfg.api_key_env, language=cfg.language, api=cfg.api)
 
 
+class EpisodeFakeChat(FakeChat):
+    """``FakeChat`` whose reply cursor restarts for every episode (``CURRENT_EPISODE``): what a script that built one
+    client per episode saw, with one shared row."""
+
+    def __init__(self, replies):
+        super().__init__(replies)
+        self._cursors: dict[int, list] = {}  # id(episode) -> [episode, calls so far]
+
+    async def chat(self, messages, **kw):
+        ep = CURRENT_EPISODE.get()
+        if ep is None:
+            return await super().chat(messages, **kw)
+        slot = self._cursors.setdefault(id(ep), [ep, 0])
+        slot[1] += 1
+        self.calls.append(messages)
+        return self.replies[min(slot[1], len(self.replies)) - 1]
+
+
 @dataclass
 class FakeChatConfig:
     replies: list
     seed: str | int | None = None
+    seed_offset: int = 0
+    per_episode: bool = False  # the reply sequence restarts for every episode
 
 
 @plugin("backend", "fake_chat", config=FakeChatConfig)
 def fake_chat(ctx, cfg: FakeChatConfig):
     """Fixed replies in order, no server: tests and dry runs."""
-    return _seeded(FakeChat(list(cfg.replies)), cfg.seed, False) if cfg.seed == "episode" else FakeChat(list(cfg.replies))
+    client = EpisodeFakeChat(list(cfg.replies)) if cfg.per_episode else FakeChat(list(cfg.replies))
+    return _seeded(client, cfg.seed, False, cfg.seed_offset) if cfg.seed == "episode" else client
 
 
 @dataclass

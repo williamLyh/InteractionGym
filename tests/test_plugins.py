@@ -132,7 +132,7 @@ def test_configuration_mistakes_fail_at_resolve_with_the_row_named():
     c.apply("- insert: [{id: second, plugin: role/controlled}]", "p")
     with pytest.raises(PluginError, match="both provide 'controlled'"):
         c.resolve()
-    with pytest.raises(PluginError, match="no bundle 'nope'; built-in bundles: .*core, minimal"):
+    with pytest.raises(PluginError, match="no bundle 'nope'; built-in bundles: .*core, .*minimal"):
         Composition.bundle("nope")
 
 
@@ -187,7 +187,8 @@ def test_tools_and_fake_backends_compose_into_the_session():
     env = run.make_env()
     asyncio.run(env.reset(Task("t", {"persona": "a caller", "instructions": "ask for a table"}), 0))
     assert [t.name for t in env.initial_session(Task("t")).tools] == ["check"]
-    assert run.nodes["user"].timing.respond_after_ms == 500 and run.nodes["user"].timing.response_delay.median_ms == 200
+    user = env.nodes["user"]  # built per episode (a factory): the same configuration, a fresh object each time
+    assert user.timing.respond_after_ms == 500 and user.timing.response_delay.median_ms == 200 and run.make_env().nodes["user"] is not user
 
 
 def check_availability(party: int) -> dict:

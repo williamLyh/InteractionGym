@@ -34,7 +34,8 @@ from ..registry import CURRENT_EPISODE, EpisodeContext, PluginError, plugin
 async def run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, Env, object]:
     token = CURRENT_EPISODE.set(ep)
     try:
-        env, agent = run.make_env(), run.agent(ep)
+        ep.task = run.prepare_task(ep.task, ep)  # the episode's view of the task (its arm's turns, overrides)
+        env, agent = run.make_env(ep), run.agent(ep)
         wall = time.monotonic()
         try:
             obs = await env.reset(ep.task, ep.seed)
@@ -53,9 +54,16 @@ async def run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, E
                     await r
     finally:
         CURRENT_EPISODE.reset(token)
-    meta = {**run.meta(), "task_id": ep.task.id, "wall_s": round(time.monotonic() - wall, 2)}
+    meta = {**run.meta(), "task_id": ep.task.id, "wall_s": round(time.monotonic() - wall, 2), **ep.meta}
     if ep.arm is not None:
         meta["condition"] = ep.arm
+    if hasattr(agent, "events"):  # a cascaded agent's model-call events
+        meta["agent_events"] = agent.events
+    for node in env.nodes.values():  # a node's or its source's own record of the episode (an examiner's line log)
+        for obj in (node, getattr(node, "source", None)):
+            em = getattr(obj, "episode_meta", None)
+            if callable(em):
+                meta.update(em())
     record = make_episode(env, ep.episode_id, media=media, agent=agent if hasattr(agent, "describe") else None, meta=meta)
     for rid, scorer in run.scorers.items():
         record["eval"][rid] = scorer(record, env, agent)
@@ -71,7 +79,8 @@ class EvalConfig:
     retry_wait_s: float = 45.0  # before another attempt, plus up to retry_jitter_s at random
     retry_jitter_s: float = 30.0
     warmup: bool = False  # one throw-away episode per agent server before the run (duplex servers)
-    run_id: str | None = None  # meta.run_id (default: the tag)
+    run_id: str | None = None  # meta.run_id; "{tag}" is replaced (default: the tag)
+    limit_stride: bool = False  # --limit N: every k-th task across the list (a spread sample) instead of the first N
 
 
 class EvalDriver:
@@ -94,7 +103,7 @@ class EvalDriver:
         cfg, out = self.cfg, Path(out)
         arms = self.arms(run)
         tag = tag or (run.agent_id if cfg.arms else "")
-        run_id = cfg.run_id or tag or None
+        run_id = cfg.run_id.format(tag=tag) if cfg.run_id else (tag or None)
         media = None
         if cfg.media:
             from ...media import MediaStore
@@ -105,6 +114,9 @@ class EvalDriver:
             d = out / tag / arm if cfg.arms else out
             d.mkdir(parents=True, exist_ok=True)
             done[arm] = set()
+            for src in r.task_sources:
+                if hasattr(src, "out"):
+                    src.out = out
             for sink in r.sinks.values():
                 sink.out = d
                 if hasattr(sink, "done"):
@@ -114,9 +126,7 @@ class EvalDriver:
                         from ...agents.vllm_omni import check_output_mode
 
                         check_output_mode(sink.path, audio_out)
-        tasks = [t for t in run.tasks if not ids or t.id in ids]
-        if limit:
-            tasks = tasks[:limit]
+        tasks = select_tasks(run.tasks, ids, limit, cfg.limit_stride)
         eid = lambda t, s, a: "/".join(x for x in (tag, t.id, f"s{s}", a) if x)  # noqa: E731
         jobs = [(t, s) for s in seeds for t in tasks if any(eid(t, s, a) not in done[a] for a in arms)]
         n_done = sum(len(d) for d in done.values())
@@ -137,6 +147,8 @@ class EvalDriver:
                         try:
                             record, env, agent = await run_episode(r, ep, media)
                             break
+                        except PluginError:  # a configuration or preparation error: no retry would help
+                            raise
                         except Exception as ex:  # noqa: BLE001 — a server hiccup: wait, retry, give up after `retries`
                             log(f"  {e} attempt {attempt + 1}: {type(ex).__name__}: {str(ex)[:200]}", flush=True)
                             if attempt + 1 >= max(1, cfg.retries):
@@ -167,13 +179,20 @@ class EvalDriver:
     async def _warmup(self, arms: dict[str, Run], job, log) -> None:
         from ...agent_proxy import servers_behind
 
-        first = next(iter(arms.values()))
+        arm, first = next(iter(arms.items()))
         url = getattr(first.agent_factory, "url", None)
         n = servers_behind(url) if url else 1
         task, seed = job
         t0 = time.monotonic()
-        warm = await asyncio.gather(*[run_episode(first, EpisodeContext(task, seed, None, {}, "warmup")) for _ in range(n)])
+        warm = await asyncio.gather(*[run_episode(first, EpisodeContext(task, seed, arm or None, {}, "warmup")) for _ in range(n)])
         log(f"ig: warm-up ({n} server{'s' * (n > 1)}): {warm[0][1].t / 1000:.1f}s sim in {time.monotonic() - t0:.1f}s wall", flush=True)
+
+
+def select_tasks(tasks: list[Task], ids=(), limit: int = 0, stride: bool = False) -> list[Task]:
+    tasks = [t for t in tasks if not ids or t.id in ids]
+    if limit and len(tasks) > limit:
+        tasks = tasks[:: max(1, len(tasks) // limit)][:limit] if stride else tasks[:limit]
+    return tasks
 
 
 @plugin("driver", "eval", config=EvalConfig)

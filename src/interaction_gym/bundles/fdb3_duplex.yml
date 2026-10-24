@@ -1,0 +1,64 @@
+# fdb3_duplex: FD-Bench v3 with a native duplex model (no tools: the model hears the microphone and confirms the
+# request back) — examples/fdb3_ab.py `--agent minicpmo`. The system prompt names the caller's domain per recording.
+#   ig run fdb3_duplex --out runs/fdb3_ab --tag minicpmo
+#   ig run fdb3_duplex --set agent.preset=gander --set controlled.preset=gander --tag gander
+- extends: fdb3
+
+- insert:
+    - id: traces
+      plugin: sink/agent_traces
+
+- id: tools
+  disabled: true
+
+- id: controlled
+  config: {name: agent, preset: minicpmo, sr: 16000, audio: user.audio}
+
+- id: agent
+  plugin: agent/vllm_omni
+  config:
+    preset: minicpmo
+    url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+    audio_out: false
+    out_sr: 16000
+    clock: input
+    trace_tokens: true
+    instructions: >-
+      You are the voice assistant of {domain}, answering a customer phone line. Callers tell you what they need done.
+      Let the caller finish speaking before you reply. Then confirm the request back to them in one or two short
+      sentences, repeating every detail they gave (names, dates, places, amounts, numbers and codes) with the final
+      values they settled on: if they corrected themselves, use the corrected value. Then say that you are taking
+      care of it. Only ask a question if something essential is missing. Your replies are spoken aloud: keep them
+      short and natural.
+    instructions_vars:
+      domain:
+        path: scenario.benchmark.domain
+        default: a customer service line
+        map:
+          travel_identity: a travel agency (flight search and booking, passport and ID document updates)
+          finance_billing: a bank (card benefits, currency exchange, autopay and bill payments)
+          housing_location: a rental housing agency (apartment search, commute times, search filters)
+          ecommerce_support: an online shop (product search, shopping cart, order tracking)
+
+# the model is given more quiet to start or continue in the open loop
+- id: env
+  config: {max_ms: 180000, end_idle_ms: 8000}
+
+- id: driver
+  config:
+    concurrency: 16
+    retries: 6
+    warmup: true
+    run_id: fdb3-ab-{tag}
+    arms:
+      A: []
+      B:
+        - id: user
+          plugin: role/user
+          config:
+            source: caller
+            benchmark: true
+            voice: {tts: clone, clone: clone}
+            timing: {response_delay: {}, yield_after_ms: null, nudge_after_ms: 10000}
+        - id: env
+          config: {max_ms: 180000, end_idle_ms: 3000}

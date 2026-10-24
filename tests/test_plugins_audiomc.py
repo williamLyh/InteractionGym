@@ -96,7 +96,8 @@ def test_arms_reproduce_the_script_s_conditions_frame_for_frame(tmp_path):
         ep_main = asyncio.run(run_as_main(task, arm, 0))
         assert ep_bundle["turns"] == ep_main["turns"], arm
         assert ep_bundle["meta"]["user"] == ep_main["meta"]["user"], arm  # same user profile (mode, content, voice, soundscape)
-    assert arms["B"].nodes["user"].source.__class__ is audiomc.ReplanSource and arms["A"].nodes["user"].source.__class__ is audiomc.ScriptSource
+    assert arms["B"].make_env().nodes["user"].source.__class__ is audiomc.ReplanSource
+    assert arms["A"].make_env().nodes["user"].source.__class__ is audiomc.ScriptSource
 
 
 def test_run_layout_and_meta_match_the_script_and_its_report_reads_them(tmp_path, monkeypatch, capsys):

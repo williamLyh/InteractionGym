@@ -44,11 +44,35 @@ def canned(ctx, cfg: CannedConfig):
                                           reply_after=cfg.reply_after, words_per_sec=cfg.words_per_sec, min_words=cfg.min_words))
 
 
+def _lookup(task, path: str):
+    """``scenario.benchmark.domain`` on a task (attributes, then dict keys)."""
+    cur = task
+    for part in path.split("."):
+        cur = getattr(cur, part) if hasattr(cur, part) else (cur.get(part) if isinstance(cur, dict) else None)
+        if cur is None:
+            return None
+    return cur
+
+
+def instructions_for(template: str | None, variables: dict | None, task) -> str | None:
+    """``template`` with ``{name}`` fields filled per task: each of ``variables`` is ``{path, map?, default?}`` — the
+    value at ``path`` on the task, looked up in ``map`` when given (``default`` when absent)."""
+    if template is None or not variables:
+        return template
+    values = {}
+    for name, v in variables.items():
+        raw = _lookup(task, v["path"])
+        mapping = v.get("map")
+        values[name] = (mapping.get(raw, v.get("default", raw)) if mapping else (raw if raw is not None else v.get("default", "")))
+    return template.format(**values)
+
+
 @plugin("agent", "vllm_omni", requires=("controlled",))
 def vllm_omni(ctx, kw: dict):
     """A full-duplex model served by vLLM-Omni (``VllmOmniDuplexAgent(spec, url, **kw)``). ``preset`` (``minicpmo``,
     ``gander``, ``personaplex``, ...) fills the model's settings (``agents.vllm_omni.duplex_model``), explicit keys
-    win; ``instructions`` is the session's system prompt."""
+    win; ``instructions`` is the session's system prompt, a template when ``instructions_vars`` names fields filled
+    per task (``{name: {path: scenario.benchmark.domain, map: {...}, default: ...}}``)."""
     from ...agents.vllm_omni import VllmOmniDuplexAgent, duplex_model
 
     spec, kw = ctx["controlled"].spec, dict(kw)
@@ -56,10 +80,13 @@ def vllm_omni(ctx, kw: dict):
     preset = kw.pop("preset", None)
     if preset:
         kw = {**duplex_model(preset), **kw}
-    instructions = kw.pop("instructions", None)
-    if instructions is not None:
-        kw["session"] = {**kw.get("session", {}), "instructions": instructions}
-    return Factory(lambda ep: VllmOmniDuplexAgent(spec, url, **kw), url=url, audio_out=kw.get("audio_out", True), preset=preset)
+    instructions, variables = kw.pop("instructions", None), kw.pop("instructions_vars", None)
+
+    def make(ep: EpisodeContext):
+        text = instructions_for(instructions, variables, ep.task)
+        session = {**kw.get("session", {}), **({"instructions": text} if text is not None else {})}
+        return VllmOmniDuplexAgent(spec, url, **{**kw, **({"session": session} if session else {})})
+    return Factory(make, url=url, audio_out=kw.get("audio_out", True), preset=preset)
 
 
 @plugin("agent", "openai_realtime", requires=("controlled",))
