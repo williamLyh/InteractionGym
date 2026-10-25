@@ -87,6 +87,7 @@ class EvalConfig:
     warmup: bool = False  # one throw-away episode per agent server before the run (duplex servers)
     run_id: str | None = None  # meta.run_id; "{tag}" is replaced (default: the tag)
     limit_stride: bool = False  # --limit N: every k-th task across the list (a spread sample) instead of the first N
+    group_by: str | None = None  # a path into task.scenario (e.g. benchmark.subset): meta.group, and the sinks' files under <out>/<group>/
 
 
 class EvalDriver:
@@ -125,13 +126,15 @@ class EvalDriver:
                     src.out = out
             for sink in r.sinks.values():
                 sink.out = d
+                sink.grouped = bool(cfg.group_by)
                 if hasattr(sink, "done"):
                     done[arm] |= sink.done()
                     audio_out = getattr(r.agent_factory, "audio_out", None)
-                    if audio_out is not None and hasattr(sink, "path"):
+                    if audio_out is not None and hasattr(sink, "paths"):
                         from ...agents.vllm_omni import check_output_mode
 
-                        check_output_mode(sink.path, audio_out)
+                        for p in sink.paths():
+                            check_output_mode(p, audio_out)
         tasks = select_tasks(run.tasks, ids, limit, cfg.limit_stride)
         eid = lambda t, s, a: "/".join(x for x in (tag, t.id, f"s{s}", a) if x)  # noqa: E731
         jobs = [(t, s) for s in seeds for t in tasks if any(eid(t, s, a) not in done[a] for a in arms)]
@@ -149,6 +152,8 @@ class EvalDriver:
                     if e in done[arm]:
                         continue
                     ep = EpisodeContext(task, seed, arm or None, cache, e)
+                    if cfg.group_by:
+                        ep.meta["group"] = str(_lookup(task.scenario, cfg.group_by))
                     for attempt in range(max(1, cfg.retries)):
                         try:
                             record, env, agent = await run_episode(r, ep, media)
@@ -192,6 +197,15 @@ class EvalDriver:
         t0 = time.monotonic()
         warm = await asyncio.gather(*[run_episode(first, EpisodeContext(task, seed, arm or None, {}, "warmup")) for _ in range(n)])
         log(f"ig: warm-up ({n} server{'s' * (n > 1)}): {warm[0][1].t / 1000:.1f}s sim in {time.monotonic() - t0:.1f}s wall", flush=True)
+
+
+def _lookup(d, path: str):
+    cur = d
+    for part in path.split("."):
+        cur = cur.get(part) if isinstance(cur, dict) else getattr(cur, part, None)
+        if cur is None:
+            return None
+    return cur
 
 
 def select_tasks(tasks: list[Task], ids=(), limit: int = 0, stride: bool = False) -> list[Task]:

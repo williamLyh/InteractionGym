@@ -1,5 +1,6 @@
 """Sinks: where finished episodes go. Paths are relative to the run's output directory (``ig run --out``), which the
-driver sets on every sink as ``sink.out`` before the first episode."""
+driver sets on every sink as ``sink.out`` before the first episode; with ``grouped`` (the driver's ``group_by``), each
+episode goes under ``<out>/<meta.group>/`` (a benchmark's subsets)."""
 
 from __future__ import annotations
 
@@ -13,6 +14,11 @@ from ..registry import plugin
 
 class Sink:
     out: Path = Path(".")
+    grouped: bool = False  # set by the driver with group_by: files under <out>/<meta.group>/
+
+    def where(self, ep: dict | None = None) -> Path:
+        group = (ep or {}).get("meta", {}).get("group") if self.grouped else None
+        return self.out / group if group else self.out
 
     def write(self, ep: dict, env, agent) -> None:  # pragma: no cover - interface
         raise NotImplementedError
@@ -34,14 +40,23 @@ class JsonlSink(Sink):
     def path(self) -> Path:
         return self.out / self.cfg.path
 
+    def paths(self) -> list[Path]:
+        """The files of this run: one, or one per group."""
+        if self.grouped:
+            return sorted(p for p in self.out.glob(f"*/{self.cfg.path}")) + sorted(self.out.glob(f"*/*/{self.cfg.path}"))
+        return [self.path] if self.path.exists() else []
+
     def done(self) -> set[str]:
-        """Episode ids already in the file (a resumed run skips them)."""
-        if not self.path.exists():
-            return set()
-        return {json.loads(line)["meta"]["episode_id"] for line in self.path.read_text().splitlines() if line.strip()}
+        """Episode ids already in the file(s) (a resumed run skips them)."""
+        out = set()
+        for p in self.paths():
+            out |= {json.loads(line)["meta"]["episode_id"] for line in p.read_text().splitlines() if line.strip()}
+        return out
 
     def write(self, ep, env, agent) -> None:
-        save([ep], self.path, append=True)
+        d = self.where(ep)
+        d.mkdir(parents=True, exist_ok=True)
+        save([ep], d / self.cfg.path, append=True)
 
 
 @plugin("sink", "jsonl", config=JsonlSinkConfig)
@@ -91,7 +106,9 @@ class TracesSink(Sink):
         trace = getattr(agent, "trace", None)
         tr = trace(ep["meta"]["episode_id"]) if callable(trace) else None
         if tr:
-            save([tr], self.out / self.cfg.path, append=True)
+            d = self.where(ep)
+            d.mkdir(parents=True, exist_ok=True)
+            save([tr], d / self.cfg.path, append=True)
 
 
 @plugin("sink", "agent_traces", config=TracesSinkConfig)

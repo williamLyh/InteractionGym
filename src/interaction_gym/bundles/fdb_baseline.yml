@@ -1,0 +1,70 @@
+# fdb_baseline: Full-Duplex-Bench v1.0 / v1.5 (bench fdb), the Easy Turn testset (easy_turn) or HumDial-FDBench
+# (humdial) with MiniCPM-o 4.5 in lockstep — examples/fdb_baseline.py as a composition (docs/BENCHMARKS.md). Each
+# sample is replayed exactly as the benchmark streams it: the microphone carries input.wav sample for sample, for
+# exactly its length, with no system prompt. Output per subset: <out>/<subset>/episodes.jsonl (what the report reads).
+#
+#   ig run fdb_baseline --out runs/fdb                                               # every FD-Bench subset
+#   ig run fdb_baseline --set tasks.bench=easy_turn --out runs/easy_turn
+#   ig run fdb_baseline --set tasks.subsets='[v1.5/user_backchannel]' --set tasks.clean=true --set tasks.limit=20 --set tasks.spread=true
+#   ig run fdb_baseline --set agent.audio_out=true                                   # the talker's speech (not comparable with text-only)
+#   ig report fdb_baseline --out runs/fdb                                            # official metrics, summary.json, pages
+#   ig report fdb_baseline --set report.judge=judge_llm --set report.repo=/path/to/Full-Duplex-Bench --out runs/fdb   # with the LLM judges
+#
+# Services: IG_FDB_DATA (the unpacked benchmark), IG_AGENT_URL (one server or the agent proxy; the script's --agent-urls
+# × --sessions is driver.concurrency), IG_AGENT_MODEL / IG_AGENT_REF_AUDIO; IG_LLM_URL for the judges.
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/fdb_samples
+      config: {data: "${IG_FDB_DATA:-data/full_duplex_bench}", bench: fdb, clean: false, sr: 16000}
+
+    # the replayed benchmark speaker (no simulated user: the recordings are the user)
+    - id: user
+      plugin: role/fdb_sample
+
+    - id: agent
+      plugin: agent/vllm_omni
+      config:
+        url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+        model: "${IG_AGENT_MODEL:-openbmb/MiniCPM-o-4_5}"
+        ref_audio: "${IG_AGENT_REF_AUDIO:-models/MiniCPM-o-4_5/assets/system_ref_audio.wav}"
+        out_sr: 16000
+        clock: input
+        audio_out: false
+        trace_tokens: true
+
+    - id: benchmark
+      plugin: scorer/fdb_sample_metrics
+
+    - id: traces
+      plugin: sink/agent_traces
+
+    - id: judge_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {max_tokens: 1024, temperature: 0}
+
+    - id: report
+      plugin: report/fdb_baseline
+      config: {tasks: tasks, judge: null, pages: 3}
+
+- id: controlled
+  config: {name: agent, chunk_ms: 200, audio: user.audio, sr: 16000}
+
+# the kernel limits come from each sample (exactly input.wav long)
+- id: env
+  config: {max_ms: 600000, end_idle_ms: 3000}
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config:
+    concurrency: 4
+    retries: 6
+    retry_wait_s: 60
+    run_id: fdb-minicpmo45
+    group_by: benchmark.subset

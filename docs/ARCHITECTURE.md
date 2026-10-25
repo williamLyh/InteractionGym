@@ -254,6 +254,16 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | `--only`, `--format`, `--audio-out`, `--parallel`, `--seeds` | `--set tasks.only=[...]`, `--set tasks.format=list`, `--set agent.audio_out=true`, `--set driver.concurrency=N`, `--seeds` | — |
    | episode ids `<name>-s<seed>` | `<name>/s<seed>` (the driver's form; nothing reads the old one) | — |
 
+   | `examples/fdb_baseline.py` on main (FD-Bench v1.0 / v1.5, Easy Turn, HumDial) | now | checked by |
+   |---|---|---|
+   | per subset: `_ids` (`--limit`, `--spread` evenly spaced), the v1.5 `--clean` variants, episode ids `fdb-<subset>-<id>[-clean]` | `task/fdb_samples` (`bench`, `subsets`, `limit`, `spread`, `clean`; a placeholder task per sample, the sample loaded when its episode starts; a subset absent from the data has no samples instead of a crash) | `test_plugins_fdb_baseline`: the task ids are the samples' ids |
+   | `fdb.make_env(sample, spec)`: `ReplayUser(sample.turns)`, `max_ms = end_idle_ms − 1 = input.wav`'s length, `background=sample.background` | `prepare` sets `ep.env` (`max_ms`, `end_idle_ms`, `background`) and hands the sample to `role/fdb_sample` through `ep.data` | every synthetic sample replays frame for frame, same length, same metrics |
+   | `VllmOmniDuplexAgent(spec, url, model, ref_audio, out_sr=16000, clock="input", audio_out, trace_tokens=True)`, no system prompt; `--agent-urls` × `--sessions` workers | `agent/vllm_omni`; one `IG_AGENT_URL` (the proxy) × `driver.concurrency` | config |
+   | `ep.eval.benchmark = fdb.sample_metrics(ep, media)` (FD-Bench subsets) | `scorer/fdb_sample_metrics` (media from `meta.media_root`) | equal to the hand computation |
+   | output `out/<subset>/episodes.jsonl` + `agent_traces.jsonl`, resume per subset, `check_output_mode` per subset | `driver.group_by: benchmark.subset`; grouped sinks (`<out>/<meta.group>/`), resume and the output-mode check over every group's file | layout test; a rerun has nothing to do |
+   | retries 6 with 60–90 s waits; `--run-id` (`fdb-minicpmo45`) | `retries`, `retry_wait_s: 60`, `run_id` | config |
+   | `report`: official metrics per subset, judges (v1.0 interruption ratings, v1.5 behaviour tags, verdicts cached in `per_sample.json`), `summary.json`, pages | `report/fdb_baseline` (`ig report fdb_baseline`; `interaction_gym.benchmarks.reports.fdb_baseline`, also what the script's `report` runs; `judge: judge_llm` for the judges) | `summary.json` / `per_sample.json` / pages written on a bundle run |
+
    Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
    the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes

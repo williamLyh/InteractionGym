@@ -228,6 +228,7 @@ class EpisodeContext:
     env: dict = field(default_factory=dict)  # per-episode Env overrides a task source sets (``max_ms``, ``end_idle_ms``)
     meta: dict = field(default_factory=dict)  # extra ``meta`` fields for the trajectory
     verifier: dict | None = None  # ``eval.verifier``: how the task's own checker computes the reward (traj.episode)
+    data: dict = field(default_factory=dict)  # objects a task source hands to the roles of this episode (a loaded sample)
 
 
 CURRENT_EPISODE: contextvars.ContextVar[EpisodeContext | None] = contextvars.ContextVar("ig_episode", default=None)

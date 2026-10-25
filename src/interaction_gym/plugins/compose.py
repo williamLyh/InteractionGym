@@ -92,7 +92,7 @@ class Run:
         c, over = self.env_config, (ep.env if ep is not None else {})
         nodes = {k: (n(ep) if is_factory(n) else n) for k, n in self.nodes.items()}
         return Env(nodes, self.spec, log=tuple(c.log), max_ms=over.get("max_ms", c.max_ms),
-                   end_idle_ms=over.get("end_idle_ms", c.end_idle_ms), peek=c.peek)
+                   end_idle_ms=over.get("end_idle_ms", c.end_idle_ms), peek=c.peek, background=over.get("background", ()))
 
     def agent(self, ep: EpisodeContext):
         """The external policy for one episode (``ep``: task, seed, arm, shared cache)."""

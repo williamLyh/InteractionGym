@@ -1,7 +1,7 @@
 # Existing duplex benchmarks as test sets
 
 Code: `interaction_gym.benchmarks` (`full_duplex_bench`, `easy_turn`, `humdial`, `fdb3`, `fdb3_spoken`, `fdb2`, `audiomc`,
-`clip_bank`, `wav`). Runners: `examples/fdb_baseline.py --bench fdb|easy_turn|humdial` (run, then report);
+`clip_bank`, `wav`). Runners: `examples/fdb_baseline.py --bench fdb|easy_turn|humdial` (run, then report) or the bundle `ig run fdb_baseline` / `ig report fdb_baseline` (`--set tasks.bench=...`, [ARCHITECTURE.md](ARCHITECTURE.md));
 `examples/fdb3_ab.py` (FD-Bench v3, open vs closed loop); `examples/fdb2_ab.py` (FD-Bench v2, §12);
 `examples/audiomc_ab.py` (Audio MultiChallenge, §13).
 Tests: `tests/test_benchmarks.py` (tiny synthetic fixtures; no benchmark data in the repo).

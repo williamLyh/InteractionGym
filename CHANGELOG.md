@@ -50,6 +50,15 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **FD-Bench v1.0 / v1.5, Easy Turn and HumDial as a bundle** (`ig run fdb_baseline`, `--set tasks.bench=easy_turn |
+  humdial`): `examples/fdb_baseline.py` as a composition — `task/fdb_samples` (a task per sample and clean variant,
+  loaded when its episode starts; `limit` / `spread` per subset), `role/fdb_sample` (the recording replayed exactly:
+  the episode is `input.wav` long, the residual input a background track), `scorer/fdb_sample_metrics`
+  (`eval.benchmark`), `report/fdb_baseline` (`ig report fdb_baseline`: the official metrics, optional judges,
+  `summary.json`, pages; the script's `report` runs the same code from `interaction_gym.benchmarks.reports`). The
+  driver's `group_by` (a path into `task.scenario`) writes each group's episodes under `<out>/<group>/` and resumes
+  from every group (`meta.group`); a task source may hand objects to the roles (`EpisodeContext.data`) and set the
+  episode's background tracks (`ep.env.background`). Parity test: `tests/test_plugins_fdb_baseline.py`.
 - **SOP service calls as a bundle** (`ig run sop_calls`): `examples/sop_calls.py` as a composition, the SOP package
   serving three seams — `task/sop_calls` (the scenarios, now `interaction_gym/data/sop_calls.json` via
   `sop_task.scenarios()` / `task_of()`, which the script loads too; per-episode `meta.policy`, `eval.verifier`, the
