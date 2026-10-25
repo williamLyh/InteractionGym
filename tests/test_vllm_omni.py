@@ -11,7 +11,7 @@ import pytest
 websockets = pytest.importorskip("websockets")
 
 from interaction_gym import AgentSpec, Env, Frame, Task  # noqa: E402
-from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent  # noqa: E402
+from interaction_gym.agents.vllm_omni import VllmOmniDuplexAgent, rejoin_split  # noqa: E402
 from interaction_gym.audio import Audio  # noqa: E402
 from interaction_gym.clients import FakeSpeech  # noqa: E402
 from interaction_gym.traj import episode  # noqa: E402
@@ -495,3 +495,15 @@ def test_a_session_the_server_refuses_fails_at_once():
             await agent.close()
 
     asyncio.run(main())
+
+
+def test_a_word_split_across_units_is_rejoined():
+    joined = {("What'", " s next?"): "s next?", ("I can", " 't"): "'t", ("a kite-", " flying day"): "flying day",
+              ("try some garden", " ing"): "ing", ("about £1", " 0"): "0", ("the 50-30-2", " 0 rule"): "0 rule",
+              ("at 9.", " 30"): "30", ("ref CL-4", " 471"): "471"}
+    kept = [("the garden", " party"), ("number M R 6", " 8 4"), ("between 10", " 20"), ("It's", " sunny"),
+            ("in 2020.", " 30 people"), ("Sil", " va"), ("", " Hello")]
+    for (prev, piece), want in joined.items():
+        assert rejoin_split(prev, piece) == want, (prev, piece)
+    for prev, piece in kept:
+        assert rejoin_split(prev, piece) == piece, (prev, piece)

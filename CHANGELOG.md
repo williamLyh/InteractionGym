@@ -7,6 +7,13 @@
   drawn per user turn, lognormal around `nudge_after_ms`, clipped to `nudge_min_ms`–`nudge_max_ms` (was always
   exactly 5.000 s, a trivial cue).
 
+### Fixed
+- **Words split across a duplex unit are rejoined** (`agents.vllm_omni.rejoin_split`, r12 trajectory review): MiniCPM-o
+  decodes each unit's text alone and often opens a unit with a word-initial token mid-word, so the text read by the
+  user sim and the judges had "it' s", "garden ing", "£1 0", "9. 30" in 6–8% of agent turns. The adapter drops that
+  space only where it is never a real boundary (clitics, suffixes, hyphens, a number continued after a non-space);
+  on r12 held-out traces the split patterns fell from 740 to 6. Spelled digits ("6 8 4") are kept.
+
 ### Changed
 - **Voice packs keep only clips whose labels hold** (r12 trajectory review): a recorded backchannel only if its words
   are a minimal listening token (`user.is_listening_token`: "mm-hmm", "yeah", "嗯嗯", "对对"; clip-bank

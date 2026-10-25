@@ -62,6 +62,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 import time
 import warnings
 from array import array
@@ -82,6 +83,27 @@ TRANSPORT_ERRORS = frozenset({"engine_backpressure", "bad_audio", "bad_event", "
 #: ... except that the session itself may also refuse an append with these, and then acknowledges it (``rejected``):
 #: after such an error the adapter waits ``ack_grace_s`` for that acknowledgement before deciding none follows.
 EITHER_LAYER = frozenset({"bad_audio", "bad_event"})
+
+
+# A native duplex model (MiniCPM-o) decodes each unit's text on its own and often opens a unit with a word-initial token
+# in the middle of a word: "What'" + " s", "garden" + " ing", "£1" + " 0", "9." + " 30". These are the splits that are
+# never real word boundaries; any other space is left as the model said it ("Sil" + " va" stays).
+_CLITIC = re.compile(r" (?=(?:s|t|d|m|ll|ve|re)\b)")
+_SUFFIX = re.compile(r" (?=(?:ing|ings|ly|s|ation|ations|ment|ments|ness|ful|less|ity)\b)")
+
+
+def rejoin_split(prev: str, piece: str) -> str:
+    """``piece`` (the next unit's text) without its leading space when ``prev`` + ``piece`` split a word or number."""
+    if not prev or not piece.startswith(" ") or piece.startswith("  ") or prev[-1].isspace():
+        return piece
+    if (re.search(r"[A-Za-z]['’]$", prev) and _CLITIC.match(piece)  # it' s
+            or re.search(r"[A-Za-z]$", prev) and re.match(r" ['’](?:s|t|d|m|ll|ve|re)\b", piece)  # can 't
+            or re.search(r"[A-Za-z]-$", prev) and re.match(r" [A-Za-z]", piece)  # kite- flying
+            or re.search(r"[A-Za-z]{3}$", prev) and _SUFFIX.match(piece)  # garden ing
+            or re.search(r"(?:^|[^\d\s])\d+$", prev) and re.match(r" \d", piece)  # £1 0, 50-30-2 0 (not "6 8")
+            or re.search(r"(?<![\d.])\d{1,2}[.:]$", prev) and re.match(r" \d", piece)):  # 9. 30
+        return piece[1:]
+    return piece
 
 
 class InputDroppedError(RuntimeError):
@@ -242,6 +264,7 @@ class VllmOmniDuplexAgent:
         self.split_silence_ms, self.silence_rms = split_silence_ms, silence_rms
         self._quiet_out_ms, self._split = 0, False  # output silence so far; between two utterances of one response
         self._early_text: dict[str, str] = {}  # text that arrived ahead of its response's audio
+        self._said: dict[str, str] = {}  # each response's text so far (for rejoin_split)
         self.clock = clock
         self.prebuffer_ms = prebuffer_ms if prebuffer_ms is not None else (0 if clock == "input" else 1000)
         self.ack_timeout_s = ack_timeout_s
@@ -491,6 +514,11 @@ class VllmOmniDuplexAgent:
     def _receive(self, ev: dict) -> None:
         kind = ev["type"]
         rid = ev.get("response_id") or ev.get("response", {}).get("id")
+        if kind.endswith("text.delta") or kind.endswith("transcript.delta"):
+            if kind == (self._text_source or kind) or self.audio_out:
+                prev = self._said.get(rid, "")
+                ev = {**ev, "delta": rejoin_split(prev, ev.get("delta", ""))}
+                self._said[rid] = (prev + ev["delta"])[-16:]
         if kind == "response.output_audio.delta" and self.audio_out:
             sr = int(ev.get("sample_rate_hz") or self.out_sr)
             self._enqueue(Audio.from_pcm16(base64.b64decode(ev["delta"]), sr).resample(self.out_sr), "", rid)
@@ -509,6 +537,7 @@ class VllmOmniDuplexAgent:
                 self._early_text[rid] = self._early_text.get(rid, "") + ev.get("delta", "")
         elif kind == "response.done":
             self.finished.add(rid)
+            self._said.pop(rid, None)
             if ev["response"].get("status") != "completed":
                 self.queue = [q for q in self.queue if q[2] != rid]  # stopped early: the rest never plays
 
