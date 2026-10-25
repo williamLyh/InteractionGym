@@ -137,8 +137,10 @@ def test_a_one_take_pause_is_one_synthesis_cut_in_pieces():
 def test_pack_clips_keep_only_listening_tokens_and_asides_to_others(tmp_path):
     from interaction_gym.user import VoicePack, is_listening_token
 
-    assert all(is_listening_token(x) for x in ("Mm-hmm.", "Yeah", "uh huh", "嗯嗯", "对对。", "I see."))
-    assert not any(is_listening_token(x) for x in ("Well said.", "应该没错", "Of course.", "I feel the same way.", "懂啦"))
+    assert all(is_listening_token(x) for x in ("Mm-hmm.", "Yeah", "uh huh", "Yeah yeah.", "Right, right.", "I see.", "Oh, got it.",
+                                               "嗯嗯", "对对。", "嗯对对对", "哦好的", "嗯是的"))
+    assert not any(is_listening_token(x) for x in ("Well said.", "Of course.", "I feel the same way.", "That's right.", "Exactly.",
+                                                   "应该没错", "懂啦", "有道理有道理", "明白明白", "哈哈哈"))
     p = pack(tmp_path)
     p["backchannel"].append({"audio": p["backchannel"][0]["audio"], "text": "应该没错"})
     p["aside"].append({"audio": p["aside"][0]["audio"], "text": "do you think a navy suit is fine for a wedding?"})

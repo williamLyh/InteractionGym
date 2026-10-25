@@ -253,16 +253,23 @@ def clip_reference(audio: Audio, text: str, max_ms: int, window_ms: int = 40) ->
     return audio[:cut], " ".join(words[:keep])
 
 
-# minimal listening tokens (normalised: lower case, letters / CJK only): what a listener says without taking a turn
-LISTENING_TOKENS = frozenset({
-    "mm", "mmm", "mhm", "mmhmm", "mmhm", "uhhuh", "uhuh", "hmm", "yeah", "yeahyeah", "yep", "right", "okay", "ok", "isee",
-    "gotit", "oh", "ah", "嗯", "嗯嗯", "嗯嗯嗯", "嗯哼", "对", "对对", "对对对", "哦", "哦哦", "噢", "是", "是是", "是的", "好", "好的",
-    "啊", "嗯对", "对的"})
+# minimal listening tokens: a backchannel is made only of these words (English, "i see" / "got it" as one word) or of
+# these characters (Chinese), at most 6 of them: "Uh-huh.", "Yeah yeah.", "Right, right.", "嗯对对对", "哦好的"
+LISTENING_WORDS = frozenset({"mm", "mmm", "mhm", "mmhmm", "mmmhmm", "mmhm", "uh", "huh", "uhhuh", "hmm", "yeah", "yes", "yep",
+                             "right", "okay", "ok", "oh", "ah", "isee", "gotit"})
+LISTENING_CHARS = frozenset("嗯哦噢喔啊对是的好哎诶呀哼")
 
 
 def is_listening_token(text: str) -> bool:
-    """``text`` is a minimal backchannel ("mm-hmm", "Yeah.", "嗯嗯", "对对"), not a reply ("Well said.", "应该没错")."""
-    return re.sub(r"[^a-z\u4e00-\u9fff]", "", (text or "").lower()) in LISTENING_TOKENS
+    """``text`` is a minimal backchannel ("mm-hmm", "Yeah yeah.", "嗯嗯", "嗯对对对"), not a reply ("Well said.",
+    "Of course.", "应该没错", "有道理")."""
+    t = (text or "").lower()
+    zh = re.sub(r"[^\u4e00-\u9fff]", "", t)
+    if zh:
+        return not re.search(r"[a-z]", t) and len(zh) <= 6 and set(zh) <= LISTENING_CHARS
+    t = re.sub(r"\bi see\b", "isee", re.sub(r"\bgot it\b", "gotit", t)).replace("-", "")
+    words = re.findall(r"[a-z]+", t)
+    return 0 < len(words) <= 6 and set(words) <= LISTENING_WORDS
 
 
 @dataclass
