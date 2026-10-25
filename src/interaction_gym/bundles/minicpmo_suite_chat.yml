@@ -1,0 +1,21 @@
+# minicpmo_suite_chat: casual chat and everyday general knowledge with a general assistant (examples/minicpmo_suite.py
+# `--set chat`): realistic users — persona-driven listening, pauses, random noise events and asides from their
+# surroundings, and the surroundings' recorded ambience (sound bank: $IG_SOUNDBANK).
+#   ig run minicpmo_suite_chat --out runs/chat --seeds 0,1,2 --set controlled.chunk_ms=1000 --set agent.audio_out=true
+- extends: minicpmo_suite
+
+- id: tasks
+  config: {set: chat, max_ms: 120000}
+
+- id: user
+  config:
+    source: lines
+    listener: user_llm
+    voice: {tts: tts, clone: clone_tts, voices: qwen3}
+    timing: {response_delay: {}}
+    behaviors: !py interaction_gym.user:PERSONA
+
+- id: pages
+  config:
+    title: "MiniCPM-o suite: chat"
+    note: "{meta.user.profile.name} ({meta.user.profile.gender}, {meta.user.profile.age}) · voice {meta.user.voice.speaker} · {meta.user.profile.surroundings} surroundings"

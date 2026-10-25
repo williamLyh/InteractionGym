@@ -50,6 +50,13 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **The MiniCPM-o suite as bundles** (`ig run minicpmo_suite`, `minicpmo_suite_chat`): `examples/minicpmo_suite.py`
+  as compositions — the scenarios in `interaction_gym/data/minicpmo_suite.json` (the script loads it too),
+  `task/scenarios` (a set of hand-written caller scenarios, the agent's prompt kept as `scenario.agent_instructions`
+  for `instructions_vars`), `sink/pages` (a browsable run with a `note` template per episode, notes.json);
+  `role/user` `behaviors` may be a `!py` `Behaviors` preset (`interaction_gym.user:PERSONA`, the realistic user), and
+  `--dump-config` / `meta.config` record a resolved `!py` object as its fields. Parity test: `tests/test_plugins_suite.py`.
+  The script's `offline-replay` diagnostic (a synthesized noise clip) stays in the script.
 - **FD-Bench v1.0 / v1.5, Easy Turn and HumDial as a bundle** (`ig run fdb_baseline`, `--set tasks.bench=easy_turn |
   humdial`): `examples/fdb_baseline.py` as a composition — `task/fdb_samples` (a task per sample and clean variant,
   loaded when its episode starts; `limit` / `spread` per subset), `role/fdb_sample` (the recording replayed exactly:

@@ -119,7 +119,7 @@ class UserConfig:
     listener: str | None = None  # row id of a backend/chat deciding LISTEN / BACKCHANNEL / INTERRUPT; None: only listens
     voice: dict = field(default_factory=dict)  # VoiceConfig
     timing: dict = field(default_factory=dict)  # TurnTaking fields; "response_delay": {ResponseDelay fields} | true
-    behaviors: dict = field(default_factory=dict)  # Behaviors fields
+    behaviors: dict | object = field(default_factory=dict)  # Behaviors fields, or a Behaviors preset (!py interaction_gym.user:PERSONA)
     soundscape: dict | None = None  # Soundscape(**dict); background may be "scenario": a track only when the task defines one
     benchmark: bool = False  # the evaluation setting: no background track, no sound bank, no random noises or asides
     aside_writer: str = "auto"
@@ -140,7 +140,7 @@ def user(ctx, cfg: UserConfig):
     per_task_bg = cfg.soundscape is not None and cfg.soundscape.get("background") == "scenario"
     try:
         tt = TurnTaking(**timing)
-        beh = Behaviors(**cfg.behaviors) if cfg.behaviors or not cfg.benchmark else None
+        beh = cfg.behaviors if isinstance(cfg.behaviors, Behaviors) else Behaviors(**cfg.behaviors) if cfg.behaviors or not cfg.benchmark else None
         soundscape = Soundscape(**{**cfg.soundscape, **({"background": True} if per_task_bg else {})}) if cfg.soundscape is not None else None
     except TypeError as e:
         raise PluginError(f"role/user: {e}") from None

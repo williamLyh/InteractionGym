@@ -215,6 +215,54 @@ def fdb3(ctx, cfg: Fdb3Config) -> Fdb3Tasks:
 
 
 @dataclass
+class ScenariosConfig:
+    path: str | None = None  # a JSON of {set: {name: scenario}} (default: the shipped interaction_gym/data/minicpmo_suite.json)
+    set: str = "default"
+    only: list | None = None
+    max_ms: int = 120000  # the cap of scenarios that set none
+    keep: tuple = ("persona", "profile", "first_turn", "turn_taking", "background", "voice")  # scenario fields the task keeps
+    instructions_key: str = "goal"  # the field that becomes task.scenario.instructions (the caller's goal)
+    agent_key: str | None = "agent"  # the field kept as task.scenario.agent_instructions (the agent's prompt, for instructions_vars)
+
+
+class Scenarios:
+    """Hand-written scenarios (the MiniCPM-o suite's): each a caller (persona, profile, first turn, goal), the agent's
+    prompt and optional turn-taking / background / voice / max_ms; a task per scenario, the cap per episode."""
+
+    def __init__(self, cfg: ScenariosConfig):
+        from importlib import resources
+
+        raw = json.loads(Path(cfg.path).read_text() if cfg.path else (resources.files("interaction_gym") / "data" / "minicpmo_suite.json").read_text())
+        if cfg.set not in raw:
+            raise PluginError(f"task/scenarios: no set {cfg.set!r} in the file; sets: {', '.join(raw)}")
+        self.cfg = cfg
+        self.scenarios = {n: sc for n, sc in raw[cfg.set].items() if not cfg.only or n in cfg.only}
+        if cfg.only and set(cfg.only) - set(self.scenarios):
+            raise PluginError(f"task/scenarios: unknown scenarios {sorted(set(cfg.only) - set(self.scenarios))}; known: {', '.join(raw[cfg.set])}")
+
+    def tasks(self) -> list[Task]:
+        out = []
+        for name, sc in self.scenarios.items():
+            scenario = {k: sc[k] for k in self.cfg.keep if k in sc} | {"instructions": sc[self.cfg.instructions_key]}
+            if self.cfg.agent_key and self.cfg.agent_key in sc:
+                scenario["agent_instructions"] = sc[self.cfg.agent_key]
+            out.append(Task(id=name, scenario=scenario))
+        return out
+
+    def prepare(self, task: Task, ep) -> Task:
+        sc = self.scenarios.get(task.id)
+        if sc is not None:
+            ep.env["max_ms"] = sc.get("max_ms", self.cfg.max_ms)
+        return task
+
+
+@plugin("task", "scenarios", config=ScenariosConfig)
+def scenarios(ctx, cfg: ScenariosConfig) -> Scenarios:
+    """A file of hand-written caller scenarios (the MiniCPM-o suite's sets), one task each."""
+    return Scenarios(cfg)
+
+
+@dataclass
 class JsonlConfig:
     path: str
     ids: list | None = None  # only these task ids

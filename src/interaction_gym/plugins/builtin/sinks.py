@@ -117,6 +117,54 @@ def agent_traces(ctx, cfg: TracesSinkConfig) -> TracesSink:
     return TracesSink(cfg)
 
 
+@dataclass
+class PagesSinkConfig:
+    title: str = "Run"
+    note: str = "{meta.task.id} · {meta.duration_ms} ms"  # one line per episode on the index, fields by dotted path into the episode
+
+
+def _field(ep: dict, path: str):
+    cur = ep
+    for part in path.split("."):
+        cur = cur.get(part) if isinstance(cur, dict) else getattr(cur, part, None)
+        if cur is None:
+            return ""
+    return cur
+
+
+class PagesSink(Sink):
+    """``viewer.export_run`` over the run's episodes when it ends: ``index.html`` (one row per episode with its note),
+    ``env.html``, the agent trace pages; ``notes.json``."""
+
+    def __init__(self, cfg: PagesSinkConfig):
+        self.cfg, self.episodes, self.traces, self.notes = cfg, [], [], {}
+
+    def write(self, ep, env, agent) -> None:
+        eid = ep["meta"]["episode_id"]
+        self.episodes.append(ep)
+        trace = getattr(agent, "trace", None)
+        tr = trace(eid) if callable(trace) else None
+        if tr:
+            self.traces.append(tr)
+        import re
+
+        self.notes[eid] = re.sub(r"\{([a-zA-Z0-9_.]+)\}", lambda m: str(_field(ep, m.group(1))), self.cfg.note) + f" · {ep['meta']['duration_ms'] / 1000:.1f}s in {ep['meta'].get('wall_s', 0):.1f}s wall"
+
+    def close(self) -> None:
+        if not self.episodes:
+            return
+        from ...viewer import export_run
+
+        (self.out / "notes.json").write_text(json.dumps(self.notes, indent=1, ensure_ascii=False))
+        export_run(self.episodes, self.out, self.notes, title=self.cfg.title, traces=self.traces)
+
+
+@plugin("sink", "pages", config=PagesSinkConfig)
+def pages(ctx, cfg: PagesSinkConfig) -> PagesSink:
+    """A browsable run (``viewer.export_run``) with one note per episode, plus notes.json."""
+    return PagesSink(cfg)
+
+
 class StdoutSink(Sink):
     def write(self, ep, env, agent) -> None:
         print(f"== {ep['meta']['episode_id']}  reward {ep['eval']['reward']['total']}  scores {ep['eval']['scores']['total']}")

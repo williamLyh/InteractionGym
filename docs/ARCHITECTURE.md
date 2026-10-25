@@ -264,6 +264,18 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | retries 6 with 60–90 s waits; `--run-id` (`fdb-minicpmo45`) | `retries`, `retry_wait_s: 60`, `run_id` | config |
    | `report`: official metrics per subset, judges (v1.0 interruption ratings, v1.5 behaviour tags, verdicts cached in `per_sample.json`), `summary.json`, pages | `report/fdb_baseline` (`ig report fdb_baseline`; `interaction_gym.benchmarks.reports.fdb_baseline`, also what the script's `report` runs; `judge: judge_llm` for the judges) | `summary.json` / `per_sample.json` / pages written on a bundle run |
 
+   | `examples/minicpmo_suite.py` on main | now | checked by |
+   |---|---|---|
+   | `SCENARIOS` / `CHAT_SCENARIOS` in the script (`--set default | chat`, `--only`) | `interaction_gym/data/minicpmo_suite.json` (the script loads it too); `task/scenarios` (`set`, `only`, the scenario's `max_ms`, the agent's prompt kept as `scenario.agent_instructions`) | `test_plugins_suite` |
+   | default set: `benchmark_user(LLMSource(llm), Voice(Cached(tts), voices=QWEN3_TTS_VOICES, clone=clone), interrupt=LLMInterrupt(llm), TurnTaking(response_delay=ResponseDelay()), Soundscape(background="background" in sc))` | bundle `minicpmo_suite`: `role/user` with `benchmark: true`, `voice.voices: qwen3`, `soundscape: {background: scenario}` | each scenario's episode equals the script's frame for frame |
+   | chat set: `UserSim(..., behaviors=PERSONA, soundscape=Soundscape())` (the realistic user) | bundle `minicpmo_suite_chat`: `behaviors: !py interaction_gym.user:PERSONA` (a dataclass preset; recorded as its fields) | equal; the preset reaches the node |
+   | `session.instructions = sc["agent"]` per scenario | `agent/vllm_omni` `instructions: "{prompt}"`, `instructions_vars: {prompt: {path: scenario.agent_instructions}}` | the rendered prompt equals the scenario's |
+   | `Env(max_ms=sc.get("max_ms", 120000))`, `AgentSpec(--chunk-ms, audio, sr=24000)` | `prepare` sets `ep.env.max_ms`; row `controlled` (`--set controlled.chunk_ms=1000`) | test |
+   | `booking-alex-realtime` (the same scenario on the realtime clock), `booking-alex-text` (text output on an audio server) | `--set agent.clock=realtime --set agent.trace_tokens=false --tag realtime`, `--set agent.audio_out=false --tag text` on the same output | — |
+   | `offline-replay` (pre-timed turns with real TTS: a barge-in, a backchannel, a synthesized noise clip) | not a bundle: the noise clip is generated in the script; the script keeps it | — |
+   | `episodes.jsonl`, `agent_traces.jsonl`, `notes` ("name (gender, age) · voice ...") and `export_run` pages | `sink/jsonl`, `sink/agent_traces`, `sink/pages` (`note` template over the episode's fields) | `ig run` writes notes.json and index.html |
+   | episode ids `<name>[-s<seed>]` | `<name>/s<seed>` | — |
+
    Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
    the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes

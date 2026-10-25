@@ -1,0 +1,79 @@
+# minicpmo_suite: a suite of real conversations with MiniCPM-o 4.5 as the agent, each caller with its own profile
+# (gender, age, accent, speaking style → voice, TTS instructions and the user LLM's persona) — examples/minicpmo_suite.py
+# `--set default` as a composition. An evaluation user: no background floor and no random noise events unless the
+# scenario sets a background itself (booking-mina-cafe's cafe noise is part of what that scenario tests).
+#
+#   ig run minicpmo_suite --out runs/suite --seeds 0,1,2                       # Thinker-only server, text output
+#   ig run minicpmo_suite --set agent.audio_out=true --out runs/suite_audio     # full audio deployment
+#   ig run minicpmo_suite --set agent.clock=realtime --set agent.trace_tokens=false --set tasks.only='[booking-alex]' --tag realtime
+#   ig run minicpmo_suite_chat ...                                            # the chat set with the realistic user
+#
+# Services: IG_LLM_URL (the user LLM), IG_TTS_URL, IG_CLONE_URL, IG_AGENT_URL / IG_AGENT_MODEL / IG_AGENT_REF_AUDIO.
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/scenarios
+      config: {set: default, max_ms: 120000}
+
+    - id: user_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://localhost:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {max_tokens: 80}
+
+    - id: tts
+      plugin: backend/tts
+      config: {base_url: "${IG_TTS_URL:-http://localhost:8001/v1}", model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice, sr: 24000, cached: true}
+
+    - id: clone_tts
+      plugin: backend/tts
+      config: {base_url: "${IG_CLONE_URL:-http://localhost:8005/v1}", model: Qwen/Qwen3-TTS-12Hz-1.7B-Base, sr: 24000}
+
+    - id: lines
+      plugin: source/llm
+      config: {llm: user_llm}
+
+    - id: user
+      plugin: role/user
+      config:
+        source: lines
+        listener: user_llm
+        benchmark: true
+        voice: {tts: tts, clone: clone_tts, voices: qwen3}
+        timing: {response_delay: {}}
+        soundscape: {background: scenario}
+
+    - id: agent
+      plugin: agent/vllm_omni
+      config:
+        url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+        model: "${IG_AGENT_MODEL:-openbmb/MiniCPM-o-4_5}"
+        ref_audio: "${IG_AGENT_REF_AUDIO:-models/MiniCPM-o-4_5/assets/system_ref_audio.wav}"
+        clock: input
+        audio_out: false
+        trace_tokens: true
+        instructions: "{prompt}"
+        instructions_vars: {prompt: {path: scenario.agent_instructions}}
+
+    - id: traces
+      plugin: sink/agent_traces
+
+    - id: pages
+      plugin: sink/pages
+      config:
+        title: "MiniCPM-o suite"
+        note: "{meta.user.profile.name} ({meta.user.profile.gender}, {meta.user.profile.age}) · voice {meta.user.voice.speaker}"
+
+- id: controlled
+  config: {name: agent, chunk_ms: 200, audio: user.audio, sr: 24000}
+
+- id: env
+  config: {max_ms: 120000, end_idle_ms: 3000}
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config: {concurrency: 4, run_id: minicpmo-suite}

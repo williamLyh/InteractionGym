@@ -59,12 +59,27 @@ class Row:
     def as_dict(self) -> dict:
         d: dict[str, Any] = {"id": self.id, "plugin": self.plugin}
         if self.config:
-            d["config"] = self.config
+            d["config"] = _plain(self.config)
         if self.disabled:
             d["disabled"] = True
         if self.requires:
             d["requires"] = list(self.requires)
         return d
+
+
+def _plain(value):
+    """A config value as plain data for the dump: a resolved ``!py`` object becomes its fields (a dataclass) or its repr."""
+    import dataclasses
+
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {"!py": f"{type(value).__module__}:{type(value).__name__}", **_plain(dataclasses.asdict(value))}
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return repr(value)
 
 
 class PyRef:
