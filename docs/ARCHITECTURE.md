@@ -249,8 +249,17 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    must agree). `tests/test_roles.py`: a renamed controlled role gives the same timeline and scores as the default
    names; the sides swapped (the policy as the user); a three-role bundle. Deferred (ROLES.md §6): the expectation
    table keyed by (speaker, listener) — it comes with step 4 — several controlled roles, tool callers by role.
-4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. The largest
-   change; it goes behind the regression net of steps 1–3.
+4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. **First slice
+   done:** `interaction_gym.behaviours` defines the interface (`init` / `sounds` / `act` / `due` / `report`; a
+   behaviour owns its seeded stream and labels what it produces) and the two independent random processes moved
+   out of `UserSim` as `NoiseEvents` and `Asides` (the default library); `UserSim(behaviours=[...])`, `role/user`
+   `behaviours: [row ids]`, plugins `behaviour/noise`, `behaviour/asides`; `meta.user.behaviours` records the list.
+   Parity: the default library equals the historical user frame for frame (the 139 user-simulator tests and
+   `tests/test_behaviour_plugins.py`); a behaviour of one's own plugs in and the scorer judges the agent against
+   its label. **Still in the core** (next slices): the decision point while the agent talks (barge-in /
+   backchannel: the listener model, the calibration hazards, the safety caps), the mid-thought pauses, the response
+   delay, the hold-and-take-over rules — each with its rate still a `Behaviors` field; and the (speaker, listener)
+   expectation table.
 5. **Clock fields.** `meta.clock` and the time-source interface only; `WallClock` with v3.
 
 ## 9. Relation to DeepSeek Harness

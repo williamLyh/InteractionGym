@@ -50,6 +50,13 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **Behaviours as objects** (`interaction_gym.behaviours`). What the simulated user does besides its turns runs as
+  a list of `Behaviour` objects (`init` / `sounds` / `act` / `due` / `report`), each on its own seeded stream and
+  labelling what it produces: `NoiseEvents` and `Asides` (being addressed, being called away) moved out of `UserSim`
+  unchanged — the default library equals the historical user frame for frame. `UserSim(behaviours=[...])` (`[]`: a
+  user that only speaks); `role/user` `behaviours: [row ids]`; plugins `behaviour/noise`, `behaviour/asides`;
+  `meta.user.behaviours`. Their rates still come from `Behaviors` and the persona; the decision point while the agent
+  talks (barge-in, backchannel), pauses and the response delay stay in the core for now (docs/ARCHITECTURE.md §8).
 - **Roles** ([docs/ROLES.md](docs/ROLES.md)). The role the external policy plays may have any name: `role/controlled`
   `name` (its `out` stream must agree: `assistant` / `assistant.speech`; `policy.speech` stays `agent`). The
   trajectory records `meta.roles` (every role: stream, what it perceives, controlled or which component plays it)

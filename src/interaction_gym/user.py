@@ -1208,6 +1208,8 @@ class UserSim(Node):
     has them, else synthetic ones.
     ``aside_writer`` writes the lines of asides and of being called away: an ``AsideWriter``, ``"auto"`` (one on the
     source's LLM when it has one) or None (the fixed lines).
+    ``behaviours`` are the sounds and interludes besides the turns (``behaviours.Behaviour``: noise events, asides
+    and being called away by default), run in order each step; ``[]`` for a user that only speaks its turns.
 
     Every sound the user makes is its own turn, labelled by its producer (``kind`` / ``expects`` / ``intent`` /
     ``label``; docs/FORMAT.md §4.4)."""
@@ -1224,9 +1226,12 @@ class UserSim(Node):
         listener: LLMListener | None = None,  # the model deciding backchannels when interrupt is not one
         soundscape=None,
         aside_writer="auto",
+        behaviours=None,  # the role's behaviours besides its turns (behaviours.Behaviour), in order; None: the default library
     ):
+        from .behaviours import default_behaviours
         from .soundscape import Soundscape
 
+        self.behaviours = default_behaviours() if behaviours is None else list(behaviours)
         self.behaviors = behaviors
         self.source = source
         self.voice = voice or Voice()
@@ -1242,27 +1247,20 @@ class UserSim(Node):
     # ------------------------------------------------------------ configuration
 
     def init_state(self, task, rng):
-        from .soundscape import EventProcess
+        from .behaviours import seeded_streams
 
         b, levels = self._resolve(task)
         # the episode seed and the task: two tasks run with the same seed get different events
         base = f"{rng.getrandbits(64)}:{task.id}"
         st = {"task": task, "timing": self._timing(task), "behaviors": b, "levels": levels, "rng": rng, "agent": {}, "mine": {},
               "n": 0, "uid": 0, "done": False, "planned": None, "pending": [], "sounds": 0, "last_sound": None, "per_turn": {}, "dp": {},
-              "erng": {k: random.Random(f"{base}:{k}") for k in ("noise", "aside", "barge")}, "next_event": {},
-              "noise": EventProcess(self._noise_rates(b, levels), base),
+              "erng": seeded_streams(base), "erng_base": base, "next_event": {},
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
                       LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
                       "forced_interrupts": 0, "forced_turn_interrupts": 0, "hold_takeovers": 0, "question_takeovers": 0},
-              "events": {"noise": 0, "noise_occurrences": 0, "noise_over_user": 0, "aside": 0, "called_away": 0, "capped": 0,
-                         "lines_llm": 0, "lines_fixed": 0}, "noise_log": []}
-        st["next_event"]["aside"] = self._draw(st, "aside", 0)
-        if b.third_party_per_min:
-            from .soundscape import _bank
-
-            bank = _bank(self.soundscape.bank, fetch=False)
-            if bank is None or not bank.files("events", "speech"):
-                raise ValueError("Behaviors.third_party_per_min needs a sound bank with events/speech/*.wav recordings")
+              "events": {}}
+        for beh in self.behaviours:  # each behaviour's own state (its event process, first due time, counters)
+            beh.init(self, st)
         pack = task.scenario.get("voice_pack")
         if pack and self.voice.speech is not None:
             st["pack"] = VoicePack.load(pack, getattr(self.voice.speech, "sr", 16000))
@@ -1284,15 +1282,6 @@ class UserSim(Node):
             audio = self.voice.leveling.apply(audio, st["task"], self.voice.speaker(st["task"]))
         st["events"][f"pack_{kind}s"] += 1
         return UserTurn(text, audio=audio, kind=kind, expects="ignore")
-
-    @staticmethod
-    def _noise_rates(b: Behaviors, levels: dict) -> dict[str, float]:
-        from .soundscape import event_rates
-
-        rates = event_rates(levels["surroundings"], b.noise_per_min, b.noise_rates)
-        if b.third_party_per_min:
-            rates["speech"] = rates.get("speech", 0.0) + b.third_party_per_min
-        return rates
 
     def _resolve(self, task: Task) -> tuple[Behaviors, dict]:
         """This user's habits and the persona levels in effect: the constructor's ``behaviors`` with any
@@ -1354,9 +1343,10 @@ class UserSim(Node):
             habits["away_p"] = b.away_p
             habits["aside_lines"] = self._lines_profile(task)
         if b.noise_per_min or b.noise_rates:
+            from .behaviours import NoiseEvents
             from .soundscape import EventProcess
 
-            habits["noise_process"] = EventProcess(self._noise_rates(b, levels), 0).params()
+            habits["noise_process"] = EventProcess(NoiseEvents.rates(b, levels), 0).params()
         habits |= {"min_gap_ms": b.min_gap_ms, "max_backchannels_per_turn": b.max_backchannels_per_turn,
                    "max_asides_per_turn": b.max_asides_per_turn, "max_pauses_per_turn": b.max_pauses_per_turn, "persona": levels}
         listening = {"decision_points": "phrase boundaries", "max_decision_gap_ms": self._timing(task).max_decision_gap_ms}
@@ -1367,7 +1357,8 @@ class UserSim(Node):
         else:
             listening["model"] = None
         return {"mode": src.pop("mode"), **_scenario(task), "voice": self.voice.profile(task), **src,
-                "barge_in": barge_in, "listening": listening, "turn_taking": asdict(self._timing(task)), "behaviors": habits}
+                "barge_in": barge_in, "listening": listening, "turn_taking": asdict(self._timing(task)), "behaviors": habits,
+                "behaviours": [x.name for x in self.behaviours]}  # the behaviour objects run, in order (docs/ARCHITECTURE.md §3)
 
     def _lines_profile(self, task: Task) -> dict:
         if self.aside_writer is None or self._fixed_asides(task):
@@ -1384,8 +1375,8 @@ class UserSim(Node):
         out = {"decisions": dict(st["log"]), "random_events": dict(st["events"])}
         if st.get("pack") is not None:
             out["voice_pack"] = st["pack"].describe()
-        if st["noise_log"]:
-            out["noise_events"] = [dict(e) for e in st["noise_log"]]
+        for beh in self.behaviours:
+            out.update(beh.report(st))
         return out
 
     # ------------------------------------------------------------ helpers
@@ -1404,10 +1395,6 @@ class UserSim(Node):
     def _last_end(st) -> Segment | None:
         """The user's latest-ending sound of its own (noise events aside: they never hold the user up)."""
         return max((s for s in st["mine"].values() if s.kind != "noise"), key=lambda s: s.end, default=None)
-
-    def _draw(self, st, kind: str, t: int) -> int | None:
-        rate = st["behaviors"].rates()[kind]
-        return None if rate <= 0 else t + max(1, round(st["erng"][kind].expovariate(rate / 60000)))
 
     def _busy(self, st, t: int) -> bool:
         """Saying something, about to, or in the middle of a sequence: no random event now."""
@@ -1575,89 +1562,6 @@ class UserSim(Node):
             return [frame], frame.data.end
         return None
 
-    # ------------------------------------------------------------ random events
-
-    async def _noises(self, st, t: int) -> list[Frame]:
-        """The noise events due by ``t`` (``soundscape.EventProcess``), whatever the user or the agent is doing."""
-        from .soundscape import event_audio
-
-        out, proc = [], st["noise"]
-        while (ev := proc.peek()) is not None and ev.t <= t:
-            proc.pop()
-            sr = getattr(self.voice.speech, "sr", 16000)
-            # third-party speech in the caller's language where the bank has it (events/speech_<lang>/)
-            variant = _lang(st["task"]) if ev.label in RECORDED_ONLY else None
-            audio, source, n = event_audio(ev, sr, st["erng"]["noise"], self.soundscape.bank, variant)
-            if self.voice.speech is None:  # a text-only timeline: just its length
-                turn = UserTurn("", kind="noise", expects="ignore", label=ev.label, dur=audio.dur_ms)
-            else:
-                turn = UserTurn("", audio=audio, kind="noise", expects="ignore", label=ev.label)
-            mine = self._mine(st)
-            over = mine is not None and mine.t0 <= t < mine.end
-            ev_log = st["events"]
-            ev_log["noise"] += 1
-            ev_log["noise_occurrences"] += n
-            ev_log["noise_over_user"] += over
-            st["noise_log"].append({"t": t, "label": ev.label, "n": n, "level_db": ev.level_db, "dur_ms": audio.dur_ms,
-                                     "source": ev.source, "clip": source, "over_user_speech": over})
-            out.append(await self._emit(st, t, turn))
-        return out
-
-    async def _random_event(self, st, t: int) -> tuple[list[Frame], int | None] | None:
-        """Being addressed by someone nearby, when it is due and socially plausible (else it waits)."""
-        x = st["next_event"].get("aside")
-        if x is None or x > t or self._busy(st, t):  # deferred until the user is free
-            return None
-        b, rng = st["behaviors"], st["erng"]["aside"]
-        if st["last_sound"] is not None and t - st["last_sound"] < b.min_gap_ms:
-            st["next_event"]["aside"] = st["last_sound"] + b.min_gap_ms
-            return None
-        st["next_event"]["aside"] = self._draw(st, "aside", t)
-        agent = self._latest(st["agent"], t)
-        agent = agent if agent is not None and agent.active(t) else None
-        if agent is not None and b.max_asides_per_turn is not None and st["per_turn"].get(agent.id, {}).get("other", 0) >= b.max_asides_per_turn:
-            st["events"]["capped"] += 1
-            return None
-        self._count(st, agent, "other")
-        st["last_sound"] = t
-        task, lang = st["task"], _lang(st["task"])
-        away = agent is not None and rng.random() < b.away_p  # called away: tell the agent, go, come back
-        place = st["levels"]["surroundings"]
-        situation = rng.choice(SITUATIONS.get(place, SITUATIONS["quiet"]))
-        lines = {"ASIDE": rng.choice(b.asides), "HOLD": rng.choice(HOLD_ON.get(lang, HOLD_ON["en"])),
-                 "BACK": rng.choice(BACK.get(lang, BACK["en"]))}  # the fixed fallback (always drawn: the same seed stream)
-        if self.aside_writer is not None and not self._fixed_asides(task):
-            convo = conversation(list(st["mine"].values()), list(st["agent"].values()), t)
-            try:
-                got = await self.aside_writer.write(task, convo, place, situation, away)
-            except Exception as e:  # noqa: BLE001  (a failed call must not end the episode: the fixed lines stand in)
-                warnings.warn(f"AsideWriter failed, using fixed lines: {e!r}")
-                got = {}
-            need = ("HOLD", "ASIDE", "BACK") if away else ("ASIDE",)
-            st["events"]["lines_llm"] += sum(k in got for k in need)
-            st["events"]["lines_fixed"] += sum(k not in got for k in need)
-            lines |= got
-        else:
-            st["events"]["lines_fixed"] += 3 if away else 1
-        aside = self._pack_clip(st, "aside") or UserTurn(lines["ASIDE"], kind="aside", expects="ignore")
-        if away:
-            st["events"]["called_away"] += 1
-            hold = UserTurn(lines["HOLD"], expects="wait", label="called_away")
-            gone = UserTurn("", kind="away", expects="wait", dur=rng.randint(*b.away_ms), label="called_away")
-            back = UserTurn(lines["BACK"], label="called_away")
-            st["pending"] = [(replace(aside, label="called_away"), rng.randint(300, 800)), (gone, 0), (back, 0)] + st["pending"]
-            return await self._speak(st, t + st["timing"].reaction_ms, t, hold, barge_in=True, resumed=True)
-        st["events"]["aside"] += 1
-        frame = await self._emit(st, t, aside)
-        return [frame], frame.data.end
-
-    def _next_event(self, st, t: int) -> int | None:
-        nxt = [x for x in st["next_event"].values() if x is not None and x > t]
-        ev = st["noise"].peek()
-        if ev is not None:
-            nxt.append(max(ev.t, t + 1))
-        return min(nxt, default=None)
-
     # ------------------------------------------------------------ the step
 
     async def step(self, st, t, inbox):
@@ -1666,13 +1570,19 @@ class UserSim(Node):
         mine = self._mine(st)
         if st["done"] and not st["pending"] and (mine is None or mine.end <= t):  # said everything: never starts a new
             return [], None  # turn, but still yields if talked over during its last one (below)
-        noises = [] if st["done"] else await self._noises(st, t)
-        out = None if st["done"] else await self._random_event(st, t)
+        sounds, out = [], None
+        if not st["done"]:  # the behaviours, in order: sounds that happen anyway, then the first one that takes the floor
+            for beh in self.behaviours:
+                sounds += await beh.sounds(self, st, t)
+            for beh in self.behaviours:
+                out = await beh.act(self, st, t)
+                if out is not None:
+                    break
         frames, wake = out if out is not None else await self._react(st, t)
-        nxt = None if st["done"] else self._next_event(st, t)
+        nxt = None if st["done"] else min((d for d in (beh.due(st, t) for beh in self.behaviours) if d is not None), default=None)
         if nxt is not None:
             wake = nxt if wake is None else min(wake, nxt)
-        return noises + frames, wake
+        return sounds + frames, wake
 
     async def _react(self, st, t):
         tt = st["timing"]

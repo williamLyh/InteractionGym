@@ -190,7 +190,8 @@ ToolWorld(backend, latency_ms=0 | (call -> ms))          # generic node: routes 
 | `UserSim` + `ScriptSource` / `LLMSource` | `user.py` | a reactive user: when to speak (turn taking, barge-in) is separate from what to say (script or LLM) |
 | `Voice` | `user.py` | renders a turn: given audio, TTS (voice chosen from the persona, voice cloning), or text with an estimated duration |
 | `LLMListener` | `user.py` | the user's listening decisions (LISTEN / BACKCHANNEL / INTERRUPT) at the agent's phrase boundaries, one greedy LLM call each (τ-Voice's prompt, extended) |
-| `Behaviors`, `ResponseDelay`, `TurnTaking`, `AsideWriter` | `user.py` | random events (noises, asides, being called away) by surroundings and the safety caps; LLM-written aside lines; content-aware reply gaps; turn-taking timing |
+| `Behaviors`, `ResponseDelay`, `TurnTaking`, `AsideWriter` | `user.py` | the rates of random events (noises, asides, being called away) by surroundings and the safety caps; LLM-written aside lines; content-aware reply gaps; turn-taking timing |
+| `Behaviour`, `NoiseEvents`, `Asides` | `behaviours.py` | what a simulated role does besides its turns, as objects run in order (each on its own seeded stream, labelling what it produces); `UserSim(behaviours=...)` ([ARCHITECTURE.md](ARCHITECTURE.md) §3) |
 | `Soundscape`, `background_spec`, `EventProcess` | `soundscape.py` | the episode's background track (silence / white / pink / brown / ambience), the noise event process (compound Poisson by surroundings) and noise clips, synthetic or from a sound bank (`scripts/fetch_noise_banks.py`) |
 | `ToolWorld`, `ToolBackend`, `FunctionBackend` | `tools.py` | stateful tools with simulated latency; all-up-front or discoverable schemas |
 | agents | `agents/` | `CannedAgent` (scripted), `vllm_omni.VllmOmniDuplexAgent` (vLLM-Omni duplex server), `cascaded.CascadedAgent` (VAD + ASR + LLM + TTS) |

@@ -104,9 +104,10 @@ class UserConfig:
     soundscape: dict | None = None  # Soundscape(**dict); None: the default (a background from the persona's surroundings)
     benchmark: bool = False  # the evaluation setting: no background track, no sound bank, no random noises or asides
     aside_writer: str = "auto"
+    behaviours: list | None = None  # row ids of behaviour/* rows, in order; None: the default library (noise, asides)
 
 
-@plugin("role", "user", config=UserConfig, refs={"source": (), "listener": (), **VOICE_REFS})
+@plugin("role", "user", config=UserConfig, refs={"source": (), "listener": (), "behaviours[]": (), **VOICE_REFS})
 def user(ctx, cfg: UserConfig):
     """The reactive simulated user: content from its ``source``, timing from ``timing``, sounds from ``behaviors``.
     Built per episode (a factory), so a source that keeps per-episode state (an examiner's log) starts fresh."""
@@ -130,9 +131,10 @@ def user(ctx, cfg: UserConfig):
         beh = beh or benchmark_behaviors()
     listener = LLMListener(ctx[cfg.listener]) if cfg.listener else None
     voice, source = _voice(ctx, cfg.voice), ctx[cfg.source]
+    behaviours = None if cfg.behaviours is None else [ctx[rid] for rid in cfg.behaviours]
 
     def make(ep) -> UserSim:
         return UserSim(source(ep) if is_factory(source) else source, voice=voice, timing=tt, interrupt=listener, stream=cfg.stream,
                        agent_stream=cfg.listens_to, behaviors=beh if beh is not None else Behaviors(), soundscape=soundscape,
-                       aside_writer=cfg.aside_writer)
+                       aside_writer=cfg.aside_writer, behaviours=behaviours)
     return make
