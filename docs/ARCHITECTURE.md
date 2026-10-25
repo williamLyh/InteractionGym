@@ -256,10 +256,14 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    `behaviours: [row ids]`, plugins `behaviour/noise`, `behaviour/asides`; `meta.user.behaviours` records the list.
    Parity: the default library equals the historical user frame for frame (the 139 user-simulator tests and
    `tests/test_behaviour_plugins.py`); a behaviour of one's own plugs in and the scorer judges the agent against
-   its label. **Still in the core** (next slices): the decision point while the agent talks (barge-in /
-   backchannel: the listener model, the calibration hazards, the safety caps), the mid-thought pauses, the response
-   delay, the hold-and-take-over rules — each with its rate still a `Behaviors` field; and the (speaker, listener)
-   expectation table.
+   its label. **Second slice done:** the decision point while the agent talks is the `Listening` behaviour (the
+   rule interrupt, the listener model's LISTEN / BACKCHANNEL / INTERRUPT, the backchannel safety caps, the
+   calibration hazards on the `barge` stream, the held-answer cut-in), reached through a third hook,
+   `while_other_talks(user, st, t, agent, wake, holding)`, which the core calls at each decision point; plugin
+   `behaviour/listening`; the `Behaviour` interface is now `init` / `sounds` / `act` / `while_other_talks` / `due` /
+   `report`. **Still in the core**: the turn itself (`_speak`: pieces at the LLM's pause markers), the response
+   delay, the hold-and-take-over rules and the `Behaviors` rate fields; and the (speaker, listener) expectation
+   table.
 5. **Clock fields.** `meta.clock` and the time-source interface only; `WallClock` with v3.
 
 ## 9. Relation to DeepSeek Harness

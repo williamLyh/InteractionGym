@@ -43,7 +43,7 @@ def test_default_library_equals_the_historical_user_frame_for_frame():
     b, env_b = run(UserSim(ScriptSource(), voice=Voice(FakeSpeech(), clone=False), behaviors=NOISY, behaviours=default_behaviours()))
     assert env_a.log == env_b.log and a["turns"] == b["turns"]
     assert "noise" in kinds(a) and ("aside" in kinds(a) or "away" in kinds(a))
-    assert a["meta"]["user"]["behaviours"] == ["noise", "aside"] and a["meta"]["user"]["random_events"]["noise"] > 0
+    assert a["meta"]["user"]["behaviours"] == ["noise", "aside", "listening"] and a["meta"]["user"]["random_events"]["noise"] > 0
 
 
 def test_an_empty_list_is_a_user_that_only_speaks_and_a_subset_runs_only_that_subset():
@@ -109,7 +109,7 @@ def test_role_user_names_its_behaviour_rows():
 """, "p")
     run_ = compose(c.resolve())
     rec, env, _ = asyncio.run(run_episode(run_, EpisodeContext(run_.tasks[0], 0, episode_id="x")))
-    assert rec["meta"]["user"]["behaviours"] == ["aside", "noise"] and "noise" in kinds(rec)
+    assert rec["meta"]["user"]["behaviours"] == ["aside", "noise"] and "noise" in kinds(rec)  # no listener: no listening behaviour
     c.apply("- id: user\n  config: {source: lines, voice: {tts: tts, clone: false}, behaviors: {noise_per_min: 30.0, aside_per_min: 20.0}, behaviours: []}", "q")
     rec2, _, _ = asyncio.run(run_episode(compose(c.resolve()), EpisodeContext(run_.tasks[0], 0, episode_id="x")))
     assert kinds(rec2) == ["turn", "turn", "turn"]

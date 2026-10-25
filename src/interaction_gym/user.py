@@ -1228,16 +1228,21 @@ class UserSim(Node):
         aside_writer="auto",
         behaviours=None,  # the role's behaviours besides its turns (behaviours.Behaviour), in order; None: the default library
     ):
-        from .behaviours import default_behaviours
+        from .behaviours import Listening, default_behaviours
         from .soundscape import Soundscape
 
-        self.behaviours = default_behaviours() if behaviours is None else list(behaviours)
         self.behaviors = behaviors
         self.source = source
         self.voice = voice or Voice()
         self.timing = timing
         self.interrupt = interrupt
         self.listener = interrupt if isinstance(interrupt, LLMListener) else listener
+        if behaviours is None:
+            self.behaviours = default_behaviours(interrupt, listener)
+        else:  # an explicit list; a listener given to the constructor is still run, after it, unless the list has one
+            self.behaviours = list(behaviours)
+            if (interrupt is not None or listener is not None) and not any(isinstance(b, Listening) for b in self.behaviours):
+                self.behaviours.append(Listening(interrupt, listener))
         self.soundscape = Soundscape() if soundscape is None else soundscape
         llm = getattr(source, "llm", None)
         self.aside_writer = (AsideWriter(llm) if llm is not None else None) if aside_writer == "auto" else aside_writer
@@ -1473,94 +1478,31 @@ class UserSim(Node):
         fallback = after + st["timing"].max_decision_gap_ms
         return fallback if nxt is None else min(nxt, fallback)
 
-    def _bc_allowed(self, st, t: int, agent_id: str) -> bool:
-        """The safety nets on backchannels (they only stop runaway behaviour; the model decides)."""
-        b = st["behaviors"]
-        if st["last_sound"] is not None and t - st["last_sound"] < b.min_gap_ms:
-            return False
-        n = st["per_turn"].get(agent_id, {}).get("backchannel", 0)
-        return b.max_backchannels_per_turn is None or n < b.max_backchannels_per_turn
+    # the calibration helpers live on the Listening behaviour; these names (and their old signatures) stay for callers
+    def _forced(self, st, t: int, agent: Segment | None = None) -> bool:
+        from .behaviours import Listening
+
+        return Listening.forced(st, t, agent)
 
     def _quiet(self, st, agent: Segment, t: int) -> bool:
-        """``Behaviors.question_quiet``: no calibration barge-in now (the agent is asking, or an answer to its question is
-        held). The hazard is not drawn, so its clock carries the time to the next point."""
-        return st["behaviors"].question_quiet and (bool(st.get("planned_q")) or asking(agent, t, st["timing"].respond_after_ms))
+        from .behaviours import Listening
+
+        return Listening.quiet(st, agent, t)
 
     @staticmethod
     def _calibrated(st) -> bool:
-        b = st["behaviors"]
-        return b.barge_in_per_min > 0 or b.barge_in_per_turn > 0
+        from .behaviours import Listening
 
-    def _forced(self, st, t: int, agent: Segment | None = None) -> bool:
-        """The calibration barge-ins: the per-turn draw (``barge_in_per_turn``) for ``agent``'s turn, then the hazard
-        (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock counts all of the agent's
-        speech, so what passed while no barge-in was possible (before ``min_words``, after a turn's last decision point)
-        is carried to the next point instead of lost, and the rate holds per agent-minute."""
-        b = st["behaviors"]
-        if b.barge_in_per_turn > 0 and agent is not None:
-            due = st.setdefault("turn_barge", {})
-            if agent.id not in due:  # the turn's first possible point: draw whether (and when) it is cut in on
-                rng = st["erng"]["barge"]
-                due[agent.id] = t + int(rng.random() * b.barge_in_turn_window_ms) if rng.random() < b.barge_in_per_turn else None
-            if due[agent.id] is not None and t >= due[agent.id]:
-                due[agent.id] = None
-                st["log"]["forced_interrupts"] += 1
-                st["log"]["forced_turn_interrupts"] += 1
-                return True
-        lam = b.barge_in_per_min
-        if lam <= 0:
-            return False
-        spoken = sum(max(0, min(s.end, t) - s.t0) for s in st["agent"].values() if s.t0 <= t)
-        dt, st["barge_clock"] = spoken - st.get("barge_clock", 0), spoken
-        if st["erng"]["barge"].random() < 1 - math.exp(-lam * dt / 60000):
-            st["log"]["forced_interrupts"] += 1
-            return True
-        return False
+        return Listening.calibrated(st)
 
-    async def _decide(self, st, agent: Segment, t: int, at: str) -> tuple[list[Frame], int | None] | None:
-        tt, log, task = st["timing"], st["log"], st["task"]
-        log["points"] += 1
-        log[at] += 1
-        convo = conversation(list(st["mine"].values()), list(st["agent"].values()), t)
-        if self.interrupt is not None and self.interrupt is not self.listener:  # a rule
-            if await self.interrupt(task, convo):
-                log["rule_interrupts"] += 1
-                return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
-        if self.listener is None:
-            return None
-        options = [LISTEN]
-        if st["levels"]["backchanneling"] != "none" and at == "boundary":  # a listening sound only where a phrase ends
-            if self._bc_allowed(st, t, agent.id):
-                options.append(BACKCHANNEL)
-            else:
-                log["capped"] += 1
-        if self.listener is self.interrupt:
-            options.append(INTERRUPT)
-        if len(options) == 1:
-            return None
-        if n_words(agent.heard_text(t)) < self.listener.min_words:
-            log["too_few_words"] += 1
-            return None
-        if INTERRUPT in options and not self._quiet(st, agent, t) and self._forced(st, t, agent):
-            return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
-        d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
-                                       st["behaviors"].backchannels, at)
-        log["llm_calls"] += 1
-        log[d.choice] += 1
-        if d.choice == INTERRUPT:
-            return await self._speak(st, t + tt.reaction_ms, t, barge_in=True)
-        if d.choice == BACKCHANNEL:
-            text, last = d.token, st.get("last_backchannel")
-            if not text or text == last:  # the model's sound, but never the same one twice in a row (greedy decoding
-                # would say "mm-hmm" every time): else one from the language's sounds, seeded
-                text = st["rng"].choice([v for v in st["behaviors"].backchannels if v != last] or st["behaviors"].backchannels)
-            turn = self._pack_clip(st, "backchannel", last) or UserTurn(text, kind="backchannel", expects="ignore")
-            st["last_backchannel"] = turn.text
-            frame = await self._emit(st, t, turn)
-            self._count(st, agent, "backchannel")
-            st["last_sound"] = t
-            return [frame], frame.data.end
-        return None
+    async def _while_other_talks(self, st, t: int, agent: Segment, wake: int, holding: bool = False):
+        """A decision point while the agent talks: the behaviours in order (``Listening`` decides barge-ins and
+        backchannels); none acting, the user waits until ``wake`` (the agent's end, or the hold cap)."""
+        for beh in self.behaviours:
+            out = await beh.while_other_talks(self, st, t, agent, wake, holding)
+            if out is not None:
+                return out
+        return [], wake
 
     # ------------------------------------------------------------ the step
 
@@ -1628,18 +1570,7 @@ class UserSim(Node):
                     st["log"]["question_takeovers"] += bool(st.get("planned_q")) and st["timing"].question_hold_ms is not None
                     return await self._speak(st, t, t, turn, barge_in=True)
                 wake = agent.end if cap is None else min(agent.end, since + cap)
-                if not self._calibrated(st) or self.listener is not self.interrupt:
-                    return [], wake
-                # calibrated: a user holding an answer may still cut in (and then says something new, not the held answer)
-                last = st["dp"].setdefault(agent.id, agent.t0)
-                nxt = self._next_point(st, agent, last)
-                if t >= nxt:
-                    st["dp"][agent.id] = t
-                    if n_words(agent.heard_text(t)) >= self.listener.min_words and not self._quiet(st, agent, t) and self._forced(st, t, agent):
-                        st["planned"] = None
-                        return await self._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
-                    nxt = self._next_point(st, agent, t)
-                return [], min(nxt, wake)
+                return await self._while_other_talks(st, t, agent, wake, holding=True)
             if t0 is None:
                 t0 = t + self._delay(st, turn)
                 st["planned"] = (turn, t0)
@@ -1652,18 +1583,7 @@ class UserSim(Node):
             return [], sound.end
 
         if agent_speaking:
-            if self.listener is None and self.interrupt is None:  # nobody decides anything: the user just listens
-                return [], agent.end
-            last = st["dp"].setdefault(agent.id, agent.t0)
-            nxt = self._next_point(st, agent, last)
-            if t >= nxt:
-                at = "boundary" if any(last < b <= t for b in phrase_boundaries(agent)) else "fallback"
-                st["dp"][agent.id] = t
-                out = await self._decide(st, agent, t, at)
-                if out is not None:
-                    return out
-                nxt = self._next_point(st, agent, t)
-            return [], min(nxt, agent.end)
+            return await self._while_other_talks(st, t, agent, agent.end)
 
         agent_end = max((s.end for s in st["agent"].values() if s.t0 <= t), default=None)
         my_end = mine.end if mine is not None else None

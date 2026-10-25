@@ -41,6 +41,12 @@ class Behaviour:
     async def act(self, user, st: dict, t: int) -> tuple[list[Frame], int | None] | None:
         return None
 
+    async def while_other_talks(self, user, st: dict, t: int, agent, wake: int, holding: bool = False) -> tuple[list[Frame], int | None] | None:
+        """At a decision point while the other side talks (the role is free, or ``holding`` an answer for it to
+        finish): ``(frames, wake)`` to cut in / make a sound / wait until a time of its own, or None to leave it to the
+        next behaviour (the core then waits until ``wake``)."""
+        return None
+
     def report(self, st: dict) -> dict:
         return {}
 
@@ -184,9 +190,157 @@ class Asides(Behaviour):
         return [frame], frame.data.end
 
 
-def default_behaviours() -> list[Behaviour]:
-    """The simulated user's historical habits, in the order the role runs them."""
-    return [NoiseEvents(), Asides()]
+class Listening(Behaviour):
+    """What the user does while the agent talks, at each decision point (a phrase boundary of the agent's, or
+    ``TurnTaking.max_decision_gap_ms`` on): ``interrupt`` — a rule ``async (task, convo) -> bool`` such as
+    ``KeywordInterrupt`` — may barge in; then the listener model (``interrupt`` itself when it is an ``LLMListener``,
+    else ``listener``) chooses LISTEN / BACKCHANNEL / INTERRUPT among the options this user has (no INTERRUPT unless
+    the model is ``interrupt``; BACKCHANNEL only at a phrase boundary, never for a ``backchanneling: none`` persona
+    nor while a safety cap holds). The calibration barge-ins (``Behaviors.barge_in_per_min`` / ``barge_in_per_turn``,
+    drawn on the ``barge`` stream) force a cut-in before the model is asked, also while the user holds an answer.
+    Neither given: the user only listens."""
+
+    name = "listening"
+
+    def __init__(self, interrupt=None, listener=None):
+        from .user import LLMListener
+
+        self.interrupt = interrupt
+        self.listener = interrupt if isinstance(interrupt, LLMListener) else listener
+
+    # ------------------------------------------------------------ the safety nets and the calibration hazards
+
+    def bc_allowed(self, st, t: int, agent_id: str) -> bool:
+        """The safety nets on backchannels (they only stop runaway behaviour; the model decides)."""
+        b = st["behaviors"]
+        if st["last_sound"] is not None and t - st["last_sound"] < b.min_gap_ms:
+            return False
+        n = st["per_turn"].get(agent_id, {}).get("backchannel", 0)
+        return b.max_backchannels_per_turn is None or n < b.max_backchannels_per_turn
+
+    @staticmethod
+    def quiet(st, agent, t: int) -> bool:
+        """``Behaviors.question_quiet``: no calibration barge-in now (the agent is asking, or an answer to its question is
+        held). The hazard is not drawn, so its clock carries the time to the next point."""
+        from .user import asking
+
+        return st["behaviors"].question_quiet and (bool(st.get("planned_q")) or asking(agent, t, st["timing"].respond_after_ms))
+
+    @staticmethod
+    def calibrated(st) -> bool:
+        b = st["behaviors"]
+        return b.barge_in_per_min > 0 or b.barge_in_per_turn > 0
+
+    @staticmethod
+    def forced(st, t: int, agent=None) -> bool:
+        """The calibration barge-ins: the per-turn draw (``barge_in_per_turn``) for ``agent``'s turn, then the hazard
+        (``barge_in_per_min``) over the agent speech heard since it was last applied. The clock counts all of the agent's
+        speech, so what passed while no barge-in was possible (before ``min_words``, after a turn's last decision point)
+        is carried to the next point instead of lost, and the rate holds per agent-minute."""
+        import math
+
+        b = st["behaviors"]
+        if b.barge_in_per_turn > 0 and agent is not None:
+            due = st.setdefault("turn_barge", {})
+            if agent.id not in due:  # the turn's first possible point: draw whether (and when) it is cut in on
+                rng = st["erng"]["barge"]
+                due[agent.id] = t + int(rng.random() * b.barge_in_turn_window_ms) if rng.random() < b.barge_in_per_turn else None
+            if due[agent.id] is not None and t >= due[agent.id]:
+                due[agent.id] = None
+                st["log"]["forced_interrupts"] += 1
+                st["log"]["forced_turn_interrupts"] += 1
+                return True
+        lam = b.barge_in_per_min
+        if lam <= 0:
+            return False
+        spoken = sum(max(0, min(s.end, t) - s.t0) for s in st["agent"].values() if s.t0 <= t)
+        dt, st["barge_clock"] = spoken - st.get("barge_clock", 0), spoken
+        if st["erng"]["barge"].random() < 1 - math.exp(-lam * dt / 60000):
+            st["log"]["forced_interrupts"] += 1
+            return True
+        return False
+
+    # ------------------------------------------------------------ the decision
+
+    async def decide(self, user, st, agent, t: int, at: str) -> tuple[list[Frame], int | None] | None:
+        from .user import BACKCHANNEL, BACKCHANNELING, INTERRUPT, LISTEN, UserTurn, conversation, n_words
+
+        tt, log, task = st["timing"], st["log"], st["task"]
+        log["points"] += 1
+        log[at] += 1
+        convo = conversation(list(st["mine"].values()), list(st["agent"].values()), t)
+        if self.interrupt is not None and self.interrupt is not self.listener:  # a rule
+            if await self.interrupt(task, convo):
+                log["rule_interrupts"] += 1
+                return await user._speak(st, t + tt.reaction_ms, t, barge_in=True)
+        if self.listener is None:
+            return None
+        options = [LISTEN]
+        if st["levels"]["backchanneling"] != "none" and at == "boundary":  # a listening sound only where a phrase ends
+            if self.bc_allowed(st, t, agent.id):
+                options.append(BACKCHANNEL)
+            else:
+                log["capped"] += 1
+        if self.listener is self.interrupt:
+            options.append(INTERRUPT)
+        if len(options) == 1:
+            return None
+        if n_words(agent.heard_text(t)) < self.listener.min_words:
+            log["too_few_words"] += 1
+            return None
+        if INTERRUPT in options and not self.quiet(st, agent, t) and self.forced(st, t, agent):
+            return await user._speak(st, t + tt.reaction_ms, t, barge_in=True)
+        d = await self.listener.decide(task, convo, tuple(options), BACKCHANNELING[st["levels"]["backchanneling"]],
+                                       st["behaviors"].backchannels, at)
+        log["llm_calls"] += 1
+        log[d.choice] += 1
+        if d.choice == INTERRUPT:
+            return await user._speak(st, t + tt.reaction_ms, t, barge_in=True)
+        if d.choice == BACKCHANNEL:
+            text, last = d.token, st.get("last_backchannel")
+            if not text or text == last:  # the model's sound, but never the same one twice in a row (greedy decoding
+                # would say "mm-hmm" every time): else one from the language's sounds, seeded
+                text = st["rng"].choice([v for v in st["behaviors"].backchannels if v != last] or st["behaviors"].backchannels)
+            turn = user._pack_clip(st, "backchannel", last) or UserTurn(text, kind="backchannel", expects="ignore")
+            st["last_backchannel"] = turn.text
+            frame = await user._emit(st, t, turn)
+            user._count(st, agent, "backchannel")
+            st["last_sound"] = t
+            return [frame], frame.data.end
+        return None
+
+    async def while_other_talks(self, user, st, t: int, agent, wake: int, holding: bool = False):
+        from .user import n_words, phrase_boundaries
+
+        if holding:  # an answer is ready and held: only a calibrated user may still cut in (and then says something new)
+            if not self.calibrated(st) or self.listener is not self.interrupt:
+                return None
+            last = st["dp"].setdefault(agent.id, agent.t0)
+            nxt = user._next_point(st, agent, last)
+            if t >= nxt:
+                st["dp"][agent.id] = t
+                if n_words(agent.heard_text(t)) >= self.listener.min_words and not self.quiet(st, agent, t) and self.forced(st, t, agent):
+                    st["planned"] = None
+                    return await user._speak(st, t + st["timing"].reaction_ms, t, barge_in=True)
+                nxt = user._next_point(st, agent, t)
+            return [], min(nxt, wake)
+        if self.listener is None and self.interrupt is None:  # nobody decides anything: the user just listens
+            return None
+        last = st["dp"].setdefault(agent.id, agent.t0)
+        nxt = user._next_point(st, agent, last)
+        if t >= nxt:
+            at = "boundary" if any(last < b <= t for b in phrase_boundaries(agent)) else "fallback"
+            st["dp"][agent.id] = t
+            out = await self.decide(user, st, agent, t, at)
+            if out is not None:
+                return out
+            nxt = user._next_point(st, agent, t)
+        return [], min(nxt, wake)
+
+
+def default_behaviours(interrupt=None, listener=None) -> list[Behaviour]:
+    """The simulated user's historical habits, in the order the role runs them: noise events, asides, listening."""
+    return [NoiseEvents(), Asides(), Listening(interrupt, listener)]
 
 
 def seeded_streams(base: str, names=("noise", "aside", "barge")) -> dict[str, random.Random]:
