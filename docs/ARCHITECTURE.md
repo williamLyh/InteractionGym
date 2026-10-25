@@ -242,8 +242,13 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes
    by name instead would remove this dependence; it would change every existing trajectory, so it waits for a format
    version bump.
-3. **Role table and expectation table.** `turns[].role` becomes a role name, `meta.roles` / `meta.controlled`; old
-   files read as `user` / `agent`. This unlocks user-side evaluation and three-party tasks.
+3. **Role table and expectation table** — the table is done ([ROLES.md](ROLES.md)): `turns[].role` is a role name
+   (the stream's first segment; `policy.*` stays `agent`), `meta.roles` / `meta.controlled` are recorded, and every
+   reader (`eval.scores` / `duplex`, `interaction`, `turn_validity`, the SOP transcript, the viewer) judges relative
+   to the controlled role; old files read as `controlled = agent`. `role/controlled` takes any `name` (its `out`
+   must agree). `tests/test_roles.py`: a renamed controlled role gives the same timeline and scores as the default
+   names; the sides swapped (the policy as the user); a three-role bundle. Deferred (ROLES.md §6): the expectation
+   table keyed by (speaker, listener) — it comes with step 4 — several controlled roles, tool callers by role.
 4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. The largest
    change; it goes behind the regression net of steps 1–3.
 5. **Clock fields.** `meta.clock` and the time-source interface only; `WallClock` with v3.

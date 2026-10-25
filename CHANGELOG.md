@@ -50,6 +50,13 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **Roles** ([docs/ROLES.md](docs/ROLES.md)). The role the external policy plays may have any name: `role/controlled`
+  `name` (its `out` stream must agree: `assistant` / `assistant.speech`; `policy.speech` stays `agent`). The
+  trajectory records `meta.roles` (every role: stream, what it perceives, controlled or which component plays it)
+  and `meta.controlled`; `eval.scores` / `eval.duplex`, `interaction.metrics`, the SOP transcript, the viewer's
+  headlines and lanes judge relative to the controlled role, so the sides can be swapped (the policy as the user,
+  a simulated assistant) or a third role added by configuration alone. Files without `meta.controlled` read as
+  `agent`. Schema: `meta.roles`, `meta.controlled`.
 - **`ig report`.** The benchmark scripts' `report` commands (judges, tables, confidence intervals, pages) moved into
   `interaction_gym.benchmarks.reports` (`audiomc`, `fdb2`, `fdb3`, plus the shared memoized judge, validity and
   timing tables) and run as the `report` plugin kind (`report/audiomc`, `report/fdb2`, `report/fdb3`; a row of each

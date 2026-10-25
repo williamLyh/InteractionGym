@@ -131,10 +131,11 @@ def _json(text: str) -> dict:
 def transcript(ep: dict) -> tuple[str, dict[str, str]]:
     """The spoken turns as "[a3] AGENT: ..." lines (short aliases: agent turn ids can be long), and alias -> turn id."""
     lines, alias, n = [], {}, {"agent": 0, "user": 0}
+    me = ep.get("meta", {}).get("controlled") or "agent"  # the role under evaluation; every other role is the caller side
     for t in ep["turns"]:
         if not t.get("text", "").strip() or t.get("kind"):
             continue
-        r = "agent" if t["role"] == "agent" else "user"
+        r = "agent" if t["role"] == me else "user"
         a = f"{r[0]}{n[r]}"
         n[r] += 1
         alias[a] = t["id"]

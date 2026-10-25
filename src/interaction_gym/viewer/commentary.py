@@ -301,6 +301,7 @@ def view_data(episodes: list[dict], traces: list[dict] | None = None, agent_page
             continue
         sc = (ep.get("eval") or {}).get("scores") or {}
         total = sc.get("total")
-        out[eid] = {"headlines": headlines(ep), "total": None if total is None or (isinstance(total, float) and math.isnan(total)) else total,
+        out[eid] = {"headlines": headlines(ep, (ep.get("meta") or {}).get("controlled") or "agent"),
+                    "total": None if total is None or (isinstance(total, float) and math.isnan(total)) else total,
                     "units": units(by_id.get(eid)), "agent_page": (agent_pages or {}).get(eid)}
     return out

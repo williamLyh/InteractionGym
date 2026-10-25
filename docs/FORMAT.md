@@ -70,6 +70,8 @@ Per-step agent observations are not saved separately: given the agent's `chunk_m
 | `run_id` | string | no | The run this episode belongs to |
 | `seed` | integer | no | Random seed |
 | `media_root` | string | when there are media references | Root directory of the media store; every `media.uri` is relative to it |
+| `roles` | object | yes (filled by `traj.episode`) | Every role of the episode by its name (the value of `turns[].role`): `{stream, perceives: [streams], controlled: true}` for the role the external policy plays, `{stream, perceives, component}` for a simulated or replayed one (the node playing it). Nodes that do not speak (tools, soundscapes) are components (`env.components`), not roles. See [ROLES.md](ROLES.md) |
+| `controlled` | string | yes (filled by `traj.episode`) | The role the external policy played: the one `eval.scores` / `eval.duplex` judge. Files without it (written before 2026-10-25) mean `agent` |
 | `task` | object | yes | The task: `id`, `scenario` (persona, instructions, first turn, etc.), `initial_state`, `criteria` |
 | `env` | object | yes | Environment context: which components the environment consists of, and what the environment gives the agent (tool schemas, instructions, context); see §4.1.1 |
 | `user` | object | when there is a user simulator | Details of the user simulation: persona, goal, voice, models used, barge-in and turn-taking policy; see §4.1.2 |
@@ -217,7 +219,7 @@ Sorted by `start_time` ascending (ties keep their order of appearance). A turn i
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `id` | string | yes | Unique within the episode |
-| `role` | string | yes | `user` / `agent` |
+| `role` | string | yes | The role's name: the first segment of the stream it speaks on (`caller.speech` → `caller`), with `policy.*` recorded as `agent`. `user` / `agent` are the core bundle's default roles; `meta.roles` lists the episode's roles and `meta.controlled` names the one under evaluation ([ROLES.md](ROLES.md)) |
 | `start_time` | integer | yes | Start instant |
 | `end_time` | integer | yes | **Actual** end instant (the cut-off instant if interrupted) |
 | `text` | string | yes | The text **actually spoken**; empty string when there is no text (e.g. noise) |

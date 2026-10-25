@@ -154,6 +154,25 @@ def _env_context(env: Env, log: list[Frame]) -> dict:
     return {k: v for k, v in out.items() if v not in ("", [], {}, None)}
 
 
+def controlled_role(env: Env) -> str:
+    """The trajectory name of the role the external policy plays: from the stream it speaks on (``AgentSpec.out``):
+    ``policy.speech`` → ``agent`` (the default), ``assistant.speech`` → ``assistant``."""
+    return role_of(env.agent.out)
+
+
+def roles(env: Env) -> dict[str, dict]:
+    """``meta.roles``: every role of the episode by its trajectory name — the stream it speaks on, what it perceives
+    (the streams it reads), the component playing it (``controlled`` for the external policy). Simulated roles are
+    the nodes that speak on a stream (``node.stream``); nodes without one (tools, soundscapes) are components, not
+    roles (``meta.env.components``)."""
+    out = {controlled_role(env): {"stream": env.agent.out, "perceives": list(env.agent.obs), "controlled": True}}
+    for name, node in env.nodes.items():
+        stream = getattr(node, "stream", None)
+        if isinstance(stream, str) and name != env.POLICY:
+            out[role_of(stream)] = {"stream": stream, "perceives": list(getattr(node, "reads", ())), "component": name}
+    return out
+
+
 def _user(env: Env) -> dict | None:
     """The simulated user: the component that reports a ``profile`` (persona, goal, voice, models,
     barge-in and turn-taking policy). Only the producer knows these, so each user component reports its own."""
@@ -227,9 +246,12 @@ def episode(
         m["seed"] = env.seed
     if media is not None:
         m["media_root"] = str(media.root)
+    agent_role = controlled_role(env)
     m.update(
         task=_jsonable(env.sim.task),
         env=_env_context(env, log),
+        roles=roles(env),
+        controlled=agent_role,
         duration_ms=env.t,
         end_reason="max_duration" if env.truncated else "idle",
     )
@@ -253,7 +275,8 @@ def episode(
     if reward is None:  # from the episode's reward stream; null when nothing defines a reward
         rewarded = any(f.stream == REWARD for f in log)
         reward = {"total": env.sim.reward if rewarded else None, "parts": {}}
-    ep["eval"] = {"reward": reward, "duplex": duplex(turns, end_ms=env.t), "scores": scores(turns, end_ms=env.t)}
+    # the rule scores judge the controlled role's reactions to every other role's turns, whatever it is called
+    ep["eval"] = {"reward": reward, "duplex": duplex(turns, agent=agent_role, end_ms=env.t), "scores": scores(turns, agent=agent_role, end_ms=env.t)}
     if verifier:
         ep["eval"]["verifier"] = verifier
     return ep

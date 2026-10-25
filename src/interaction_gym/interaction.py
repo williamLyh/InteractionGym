@@ -45,8 +45,21 @@ For each USER turn after the first (numbered), label what it does, choosing one:
 Respond with ONLY a JSON object: {{"labels": ["...", ...]}} (one label per numbered user turn, in order)."""
 
 
+def controlled(ep: dict) -> str:
+    """The role the external policy played (``meta.controlled``; ``agent`` in files written before roles were recorded)."""
+    return ep.get("meta", {}).get("controlled") or "agent"
+
+
+def is_user(t: dict, ep: dict) -> bool:
+    """A turn of the other side of the call: any role but the controlled one."""
+    return t["role"] != controlled(ep)
+
+
 def _speech(ep: dict, role: str) -> list[dict]:
-    return sorted((t for t in ep.get("turns", []) if t["role"] == role and t.get("kind") is None and t["end_time"] > t["start_time"]),
+    """Directed speech of ``role``: ``"agent"`` is the controlled role, ``"user"`` every other role."""
+    me = controlled(ep)
+    mine = (lambda t: t["role"] != me) if role == "user" else (lambda t: t["role"] == (me if role == "agent" else role))
+    return sorted((t for t in ep.get("turns", []) if mine(t) and t.get("kind") is None and t["end_time"] > t["start_time"]),
                   key=lambda t: t["start_time"])
 
 
@@ -85,7 +98,7 @@ def dialogue(ep: dict) -> str:
     """USER / ASSISTANT lines in time order, user turns numbered from the second on (for ``LABEL_PROMPT``)."""
     lines, k = [], 0
     for t in sorted((t for t in ep.get("turns", []) if t.get("kind") is None and t.get("text", "").strip()), key=lambda t: t["start_time"]):
-        if t["role"] == "user":
+        if is_user(t, ep):
             tag = "USER" if k == 0 else f"USER ({k})"
             k += 1
         else:
@@ -96,7 +109,7 @@ def dialogue(ep: dict) -> str:
 
 async def label_user_turns(ep: dict, llm) -> list[str]:
     """One label per user turn after the first (``LABELS``); unknown labels become ``other``."""
-    n = len([t for t in ep.get("turns", []) if t["role"] == "user" and t.get("kind") is None and t.get("text", "").strip()]) - 1
+    n = len([t for t in ep.get("turns", []) if is_user(t, ep) and t.get("kind") is None and t.get("text", "").strip()]) - 1
     if n <= 0:
         return []
     raw = await llm.chat([{"role": "user", "content": LABEL_PROMPT.format(dialogue=dialogue(ep))}])

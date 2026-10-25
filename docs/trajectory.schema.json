@@ -59,6 +59,24 @@
         "media_root": {
           "type": "string"
         },
+        "roles": {
+          "type": "object",
+          "description": "Every role of the episode by its trajectory name (turns[].role): the stream it speaks on, what it perceives, and whether the external policy played it (controlled) or which component did",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "stream": {"type": "string"},
+              "perceives": {"type": "array", "items": {"type": "string"}},
+              "controlled": {"type": "boolean"},
+              "component": {"type": "string"}
+            },
+            "required": ["stream"]
+          }
+        },
+        "controlled": {
+          "type": "string",
+          "description": "The role the external policy played (the one the rule scores judge); files without it mean agent"
+        },
         "task": {
           "type": "object",
           "required": [

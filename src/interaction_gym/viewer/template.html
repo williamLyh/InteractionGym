@@ -199,7 +199,9 @@ function catHtml(k) { return `<span class="cat ${esc(k)}">${esc(CATEGORIES[k] ||
 // Schema-v1 episode (docs/FORMAT.md) -> the viewer's internal model (a frame log + latency spans).
 function fromEpisode(ep) {
   if (!ep.schema) return ep;
-  const m = ep.meta, streamOf = r => r === 'agent' ? 'policy.speech' : r + '.speech', srcOf = r => r === 'agent' ? 'policy' : r;
+  // roles: meta.controlled is the role the policy played (files without it: 'agent'); meta.roles maps each role to its stream
+  const m = ep.meta, AGENT = m.controlled || 'agent', ROLES = m.roles || {};
+  const streamOf = r => (ROLES[r] && ROLES[r].stream) || (r === 'agent' ? 'policy.speech' : r + '.speech'), srcOf = r => r === AGENT ? 'policy' : r;
   const frames = [];
   ep.turns.forEach(t => {
     const dur = t.end_time - t.start_time, st = streamOf(t.role);
@@ -213,7 +215,7 @@ function fromEpisode(ep) {
       } else frames.push({stream: st, t: t.start_time, src: srcOf(t.role), dur: 0, data: seg(dur, t.text)});
     }
     (t.tool_calls || []).forEach(c => {
-      const user = t.role === 'user';
+      const user = t.role !== AGENT;
       frames.push({stream: user ? 'user.tool_call' : 'policy.tool_call', t: c.call_time, src: srcOf(t.role), dur: 0, data: {id: c.id, name: c.name, arguments: c.arguments}});
       if (c.result_time != null) frames.push({stream: user ? 'tool.user_result' : 'tool.result', t: c.result_time, src: 'tools', dur: 0, data: {id: c.id, name: c.name, content: c.content ?? '', error: !!c.error, images: c.images || []}});
     });
@@ -231,10 +233,10 @@ function fromEpisode(ep) {
   });
   frames.forEach(f => { if (f.data && f.data.__segment__ && causes[f.data.id]) f.data.cause = causes[f.data.id]; });
   const spans = [];
-  const normal = speech.filter(t => t.role !== 'agent' && !t.kind);
+  const normal = speech.filter(t => t.role !== AGENT && !t.kind);
   const censored = new Set((((ep.eval || {}).scores || {}).events || []).filter(e => e.outcome === 'censored').map(e => e.turn));
   normal.forEach((u, i) => {   // response latency is not stored; derived here for display only
-    const reply = speech.find(a => a.role === 'agent' && a.start_time >= u.end_time), next = normal[i + 1];
+    const reply = speech.find(a => a.role === AGENT && a.start_time >= u.end_time), next = normal[i + 1];
     const ok = reply && (!next || reply.start_time < next.start_time);
     if (!ok && u.expects === 'wait') return;   // a mid-thought pause: silence is what was wanted, not a missing reply
     spans.push({kind: 'response', t0: u.end_time, t1: ok ? reply.start_time : null, ms: ok ? reply.start_time - u.end_time : null, censored: !ok && censored.has(u.id)});
@@ -247,7 +249,8 @@ function fromEpisode(ep) {
   const r = (ep.eval || {}).reward || {}, meta = envc.tool_schema_mode ? {tool_schema_mode: envc.tool_schema_mode} : {};
   if (!(ep.eval || {}).verifier) Object.entries(r.parts || {}).forEach(([k, v]) => meta['reward.' + k] = v);   // else in the Evaluation card
   Object.entries(m).forEach(([k, v]) => { if (!STD_META.has(k) && !(v && typeof v === 'object' && JSON.stringify(v).length > 160)) meta[k] = v; });   // big records: see the trajectory
-  return {case_id: m.episode_id, task: m.task || {}, meta, speakers: {user: 'user.speech', agent: 'policy.speech'},
+  const otherRole = Object.keys(ROLES).find(r => r !== AGENT);   // the lanes: the other side first, the controlled role second
+  return {case_id: m.episode_id, task: m.task || {}, meta, speakers: {user: otherRole ? streamOf(otherRole) : 'user.speech', agent: streamOf(AGENT)},
           t_end: m.duration_ms, agent: m.agent || null, reward: r.total, endReason: m.end_reason, frames, spans, envTools, episode: ep};
 }
 const CASES = JSON.parse(document.getElementById('data').textContent).map(fromEpisode);

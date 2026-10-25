@@ -20,10 +20,10 @@ from ..registry import Controlled, PluginError, plugin
 
 @dataclass
 class ControlledConfig:
-    name: str = "agent"  # what the trajectory calls this role
+    name: str = "agent"  # what the trajectory calls this role (turns[].role, meta.controlled)
     chunk_ms: int = 200
     obs: tuple[str, ...] = ("user.speech",)
-    out: str = "policy.speech"
+    out: str | None = None  # the stream it speaks on; default: policy.speech for "agent", <name>.speech otherwise
     audio: str | None = None  # e.g. "user.audio": a microphone frame every step
     sr: int = 16000
     preset: str | None = None  # a duplex model's name (agents.vllm_omni.DUPLEX_MODELS): its chunk_ms, audio on
@@ -31,14 +31,21 @@ class ControlledConfig:
 
 @plugin("role", "controlled", provides="controlled", config=ControlledConfig)
 def controlled(ctx, cfg: ControlledConfig) -> Controlled:
-    """The role played by the external policy: what it observes, at which granularity, and where it speaks."""
+    """The role played by the external policy: what it observes, at which granularity, and where it speaks. The
+    trajectory names roles after their streams (``policy.*`` is ``agent``), so ``out`` must agree with ``name``."""
+    from ...traj import role_of
+
+    out = cfg.out or ("policy.speech" if cfg.name == "agent" else f"{cfg.name}.speech")
+    if role_of(out) != cfg.name:
+        raise PluginError(f"role/controlled: name {cfg.name!r} but out {out!r} would be recorded as role {role_of(out)!r}; "
+                          f"use out: {cfg.name}.speech (or policy.speech for the role named agent)")
     if cfg.preset:
         from ...agents.vllm_omni import duplex_spec
 
         spec = duplex_spec(cfg.preset, cfg.sr, cfg.audio or "user.audio")
-        spec = AgentSpec(spec.chunk_ms, tuple(cfg.obs), cfg.out, spec.audio, cfg.sr)
+        spec = AgentSpec(spec.chunk_ms, tuple(cfg.obs), out, spec.audio, cfg.sr)
     else:
-        spec = AgentSpec(cfg.chunk_ms, tuple(cfg.obs), cfg.out, cfg.audio, cfg.sr)
+        spec = AgentSpec(cfg.chunk_ms, tuple(cfg.obs), out, cfg.audio, cfg.sr)
     return Controlled(spec, cfg.name)
 
 
