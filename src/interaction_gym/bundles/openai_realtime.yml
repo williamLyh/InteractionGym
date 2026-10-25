@@ -1,0 +1,57 @@
+# openai_realtime: an OpenAI Realtime model as the agent against an LLM-driven user, everything on the OpenAI API
+# (examples/openai_realtime_demo.py as a composition). The episode runs in wall time: the agent's microphone is
+# real-time paced and the env holds still, unseen by the API, while the user simulator computes
+# (agents/openai_realtime.py; not reproducible, and the reply timing depends on this machine's link). Costs money.
+#
+#   OPENAI_API_KEY=... ig run openai_realtime --out runs/openai_realtime
+#   ig run openai_realtime --set agent.model=gpt-realtime --set agent.voice=marin
+#   ig run openai_realtime --set user_llm.base_url=$IG_LLM_URL --set tts.base_url=$IG_TTS_URL   # local servers for the user
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/inline
+      config:
+        tasks:
+          - id: restaurant-booking
+            scenario:
+              persona: "You are Alex, a busy but friendly person calling a restaurant."
+              instructions: "Book a table for two people tonight at around 7pm. Correct the agent if it gets a detail wrong."
+              first_turn: "Hi, I'd like to book a table for tonight."
+
+    - id: user_llm
+      plugin: backend/chat
+      config: {model: gpt-5.4-mini, defaults: {max_tokens: 80}}      # no base_url: the hosted API, $OPENAI_API_KEY
+
+    - id: tts
+      plugin: backend/tts
+      config: {model: gpt-4o-mini-tts, sr: 24000, cached: true}
+
+    - id: lines
+      plugin: source/llm
+      config: {llm: user_llm}
+
+    # the user's words from the chat model, its voice an OpenAI preset (hosted TTS cannot clone); the env's default
+    # soundscape (a background from the persona's surroundings) as in the demo
+    - id: user
+      plugin: role/user
+      config:
+        source: lines
+        listener: user_llm
+        voice: {tts: tts, voices: openai, voice: coral, clone: false}
+
+    - id: agent
+      plugin: agent/openai_realtime
+      config:
+        model: gpt-realtime-mini
+        voice: marin
+        instructions: "You are the phone assistant of a busy restaurant. Help the caller with their booking. Keep replies short and natural."
+
+- id: controlled
+  config: {name: agent, chunk_ms: 100, obs: [user.speech, tool.result], audio: user.audio, sr: 24000}
+
+- id: env
+  config: {max_ms: 90000, end_idle_ms: 3000}
+
+- id: driver
+  config: {concurrency: 1, run_id: openai-realtime}

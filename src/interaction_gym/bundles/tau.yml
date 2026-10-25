@@ -1,0 +1,48 @@
+# tau: τ-bench tasks in InteractionGym (examples/tau_mock.py as a composition; layer 1: plumbing, no real models). The
+# user is an LLM source on a fake LLM with canned lines, the agent the oracle (the task's gold tool calls), the tools
+# the domain's own (TauBackend on a shared world), the reward τ-bench's official evaluators. Needs `uv sync --extra tau`.
+#
+#   ig run tau --out runs/tau_mock
+#   ig run tau --set tools.latency_ms=1500 --tag tool-1500ms            # slow tools: the oracle waits for the results
+#   ig run tau --set tasks.domain=retail --set tools.domain=retail --set user_llm.plugin=... # a real domain needs a real user LLM
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/tau
+      config: {domain: mock}
+
+    - id: user_llm
+      plugin: backend/fake_chat
+      config: {replies: ["Hi, I need some help with my tasks.", "Great, thanks! ###STOP###"], per_episode: true}
+
+    - id: lines
+      plugin: source/llm
+      config: {llm: user_llm}
+
+    - id: user
+      plugin: role/user
+      config: {source: lines}
+
+    - id: domain
+      plugin: tool/tau
+      config: {domain: mock}
+
+    - id: tools
+      plugin: node/tool_world
+      config: {backends: [domain], latency_ms: 0}
+
+    - id: agent
+      plugin: agent/tau_oracle
+
+    - id: tau
+      plugin: scorer/tau
+
+- id: controlled
+  config: {name: agent, chunk_ms: 200, obs: [user.speech, tool.result]}
+
+- id: env
+  config: {max_ms: 120000, end_idle_ms: 3000}
+
+- id: driver
+  config: {concurrency: 4, media: false, run_id: tau-mock}

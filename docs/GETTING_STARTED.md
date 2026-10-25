@@ -188,6 +188,7 @@ voice (`MiniCPM-o-4_5/assets/system_ref_audio.wav`; or set `IG_AGENT_REF_AUDIO`)
 
 ```bash
 OPENAI_API_KEY=... uv run python examples/openai_realtime_demo.py --model gpt-realtime-mini --html runs/openai_realtime.html
+OPENAI_API_KEY=... uv run ig run openai_realtime --out runs/openai_realtime        # the same as a bundle (--set agent.model=gpt-realtime)
 ```
 
 `OpenAIRealtimeAgent` (agents/openai_realtime.py) runs a `gpt-realtime*` model against the simulated user (here all on
@@ -221,6 +222,7 @@ commit (`5bfa7e3`); its domain data is read from a checkout:
 git clone --depth 1 https://github.com/sierra-research/tau2-bench third_party/tau2-bench   # data (or set TAU2_DATA_DIR)
 uv sync --extra tau
 uv run python examples/tau_mock.py --html runs/tau_mock.html
+uv run ig run tau --out runs/tau_mock                      # the same as a bundle (--set tools.latency_ms=1500 for slow tools)
 ```
 
 AutomationBench ([Zapier, MIT](https://github.com/zapier/AutomationBench)): business workflows across 47 simulated

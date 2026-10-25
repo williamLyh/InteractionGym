@@ -50,6 +50,10 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **τ-bench and the OpenAI Realtime demo as bundles** (`ig run tau`, `ig run openai_realtime`): `examples/tau_mock.py`
+  as a composition — `task/tau`, `tool/tau` (the domain's tools on `node/tool_world`: the tool seam with an external
+  provider), `agent/tau_oracle`, `scorer/tau` (the official reward → `eval.reward`); and the all-hosted demo
+  (`backend/chat` / `backend/tts` with no `base_url`, `agent/openai_realtime`).
 - **The MiniCPM-o suite as bundles** (`ig run minicpmo_suite`, `minicpmo_suite_chat`): `examples/minicpmo_suite.py`
   as compositions — the scenarios in `interaction_gym/data/minicpmo_suite.json` (the script loads it too),
   `task/scenarios` (a set of hand-written caller scenarios, the agent's prompt kept as `scenario.agent_instructions`

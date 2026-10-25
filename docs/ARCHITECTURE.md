@@ -276,6 +276,25 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    | `episodes.jsonl`, `agent_traces.jsonl`, `notes` ("name (gender, age) · voice ...") and `export_run` pages | `sink/jsonl`, `sink/agent_traces`, `sink/pages` (`note` template over the episode's fields) | `ig run` writes notes.json and index.html |
    | episode ids `<name>[-s<seed>]` | `<name>/s<seed>` | — |
 
+   | `examples/tau_mock.py` on main (τ-bench, layer 1) | now | checked by |
+   |---|---|---|
+   | `tau.tasks(domain)` (the mock domain, `--domain`) | `task/tau` (`domain`, `task_set`, `ids`) | `test_plugins_tau`: the same task ids |
+   | `UserSim(LLMSource(FakeChat([...two lines, STOP])))` | `backend/fake_chat` (`per_episode: true`, the script makes one per episode) → `source/llm` → `role/user` | each episode ends by `user_stop` |
+   | `ToolWorld(tau.TauBackend(domain), tool_latency_ms)` | `tool/tau` on `node/tool_world` (`--set tools.latency_ms=1500`) | the domain's tools are offered; with 1500 ms every result arrives 1500 ms after its call and the oracle still gets 1.0 |
+   | `tau.OracleAgent(task, SPEC)`; `Lazy` (talks, never uses a tool) | `agent/tau_oracle` (a per-episode factory); the lazy agent is a one-off of the script | the official reward is 1.0 (or None when NL assertions are skipped) on every task the oracle can solve, as in `tests/test_tau.py` |
+   | `reward = {"total": res["reward"], "parts": res["breakdown"]}`, `res = tau.evaluate(env.log, task, env.truncated)` | `scorer/tau` writes `eval.reward` in that form; `eval.tau` keeps `parts`, `nl_skipped`, `termination` | equal to the hand computation |
+   | `SPEC = AgentSpec(chunk_ms=200, obs=("user.speech", RESULT["agent"]))`, `max_ms=120_000` | rows `controlled`, `env` | config |
+   | `meta.tool_latency_ms` | `meta.nodes.tools` (the node's `episode_meta`) | — |
+
+   | `examples/openai_realtime_demo.py` on main | now | checked by |
+   |---|---|---|
+   | `OpenAIChat("gpt-5.4-mini", max_tokens=80)`, `Cached(OpenAISpeech("gpt-4o-mini-tts", sr=24000))` (the hosted API, `OPENAI_API_KEY`) | `backend/chat` / `backend/tts` with no `base_url` | `test_plugins_tau`: the composition resolves with the key set and calls nothing |
+   | `UserSim(LLMSource(llm), Voice(tts, voice="coral", clone=False, voices=OPENAI_TTS_VOICES), listener=llm)` with the default `Soundscape()` | `role/user` `voice: {tts, voices: openai, voice: coral, clone: false}`, `listener`, no `soundscape` row (the default: a background from the persona) | the node's voice and soundscape |
+   | `OpenAIRealtimeAgent(spec, model="gpt-realtime-mini", voice=..., instructions=...)` | `agent/openai_realtime` | config |
+   | `AgentSpec(chunk_ms=100, obs=("user.speech", "tool.result"), audio="user.audio", sr=24000)`, `max_ms=90_000` | rows `controlled`, `env` | test |
+   | `TASK` from `examples/user_modes.py` (restaurant booking) | `task/inline` in the bundle | — |
+   | wall-time pacing, not reproducible (the agent adapter's own clock) | unchanged: the coupling is the adapter's, as §4 says; `meta.clock` not yet recorded | — |
+
    Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
    the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes
