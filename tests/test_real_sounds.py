@@ -45,7 +45,7 @@ def pack(tmp_path, n_bc=3):
     ref = tone(tmp_path / "ref.wav", ms=4000, f=150.0)
     bcs = [{"audio": tone(tmp_path / f"bc{i}.wav", ms=500, f=300.0 + 50 * i), "text": f"yeah {i}"} for i in range(n_bc)]
     return {"id": "p1", "lang": "en", "ref": {"audio": ref, "text": "I would like to talk about my trip please"},
-            "backchannel": bcs, "aside": [{"audio": tone(tmp_path / "aside.wav", ms=1500), "text": "one sec, honey"}]}
+            "backchannel": bcs, "aside": [{"audio": tone(tmp_path / "aside.wav", ms=1500), "text": "one sec, honey", "to": "other"}]}
 
 
 def test_a_voice_pack_plays_the_speakers_own_backchannels_and_asides(tmp_path):
@@ -132,3 +132,38 @@ def test_a_one_take_pause_is_one_synthesis_cut_in_pieces():
     sp2 = WordSpeech()
     run(turns, listener=None, interrupt=None, speech=sp2, behaviors=Behaviors(pause_ms=(900, 900)))
     assert calls == sp2.calls - 1  # off: one take a piece
+
+
+def test_pack_clips_keep_only_listening_tokens_and_asides_to_others(tmp_path):
+    from interaction_gym.user import VoicePack, is_listening_token
+
+    assert all(is_listening_token(x) for x in ("Mm-hmm.", "Yeah", "uh huh", "嗯嗯", "对对。", "I see."))
+    assert not any(is_listening_token(x) for x in ("Well said.", "应该没错", "Of course.", "I feel the same way.", "懂啦"))
+    p = pack(tmp_path)
+    p["backchannel"].append({"audio": p["backchannel"][0]["audio"], "text": "应该没错"})
+    p["aside"].append({"audio": p["aside"][0]["audio"], "text": "do you think a navy suit is fine for a wedding?"})
+    vp = VoicePack.load(p, 16000)
+    assert [t for _, t in vp.clips["backchannel"]] == ["yeah 0", "yeah 1", "yeah 2"]
+    assert [t for _, t in vp.clips["aside"]] == ["one sec, honey"]
+
+
+def test_sampled_nudges_vary_and_stay_in_range():
+    from interaction_gym.user import TurnTaking
+
+    gaps = []
+    for seed in range(6):
+        env, ep = run(["Hello, is anyone there?", "Hello?", "Are you there?", "Bye ###STOP###"], listener=None, interrupt=None,
+                      seed=seed, agent_ms=0, timing=TurnTaking(nudge_after_ms=4000, nudge_sigma=0.5))
+        T = user_turns(ep)[1:]  # after its reply to the agent: the user speaks again unanswered
+        gaps += [b["start_time"] - a["end_time"] for a, b in zip(T, T[1:])]
+    assert len(set(gaps)) > 3 and all(2000 <= g <= 10000 for g in gaps)
+
+
+def test_a_random_pause_never_follows_a_full_stop():
+    import random
+
+    from interaction_gym.user import _split_mid_thought
+
+    for seed in range(30):
+        a, b = _split_mid_thought("Right, I see. That actually sounds doable for us.", random.Random(seed))
+        assert not a.endswith("....") and not a[:-3].endswith(".")

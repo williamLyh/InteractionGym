@@ -38,12 +38,14 @@ def bc_at_sentence_end(messages):
 
 
 def run(replies, listener=bc_at_sentence_end, interrupt="llm", behaviors=Behaviors(), seed=0, agent_text=AGENT, agent_ms=12_000,
-        speech=None, scenario=None, soundscape=None, spec=None, max_ms=60_000, reply_after=500):
+        speech=None, scenario=None, soundscape=None, spec=None, max_ms=60_000, reply_after=500, timing=None):
     """One episode: the user's first turn, one long agent turn, then whatever follows."""
     async def main():
         sp = spec or AgentSpec(chunk_ms=100)
         lst = LLMListener(FakeChat(listener)) if listener is not None else None
         kw = {"interrupt": lst} if interrupt == "llm" else {"interrupt": interrupt, "listener": lst}
+        if timing is not None:
+            kw["timing"] = timing
         user = UserSim(LLMSource(FakeChat(replies)), Voice(speech) if speech else Voice(), behaviors=behaviors, soundscape=soundscape, **kw)
         env = Env({"user": user}, sp, max_ms=max_ms)
         await env.reset(Task(id="t", scenario={"instructions": "Move my booking to Saturday.", **(scenario or {})}), seed=seed)

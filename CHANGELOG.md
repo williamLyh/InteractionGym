@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- **Sampled nudges** (`TurnTaking.nudge_sigma`, off by default): the silence before an unanswered user speaks again is
+  drawn per user turn, lognormal around `nudge_after_ms`, clipped to `nudge_min_ms`–`nudge_max_ms` (was always
+  exactly 5.000 s, a trivial cue).
+
+### Changed
+- **Voice packs keep only clips whose labels hold** (r12 trajectory review): a recorded backchannel only if its words
+  are a minimal listening token (`user.is_listening_token`: "mm-hmm", "yeah", "嗯嗯", "对对"; clip-bank
+  "backchannels" were often replies, "Well said.", "应该没错"); a recorded aside only if marked `"to": "other"`
+  (clip-bank "asides" were mostly requests to an assistant, labelled ignore). Others fall back to synthesized lines in
+  the pack's voice.
+- `pause_p` splits only mid-clause (never right after a full stop) and no longer doubles an ellipsis ("I see....").
 - **One-take pauses** (`Behaviors.pause_one_take`, off by default): a user turn said in pieces (a mid-thought
   pause, LLM-placed or `pause_p`) is synthesized once and cut at the quietest point within 250 ms of each piece's
   share of the audio (`user.take_cuts`), instead of one TTS take per piece, which ends each piece like a whole turn.

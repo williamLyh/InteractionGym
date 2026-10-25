@@ -253,6 +253,18 @@ def clip_reference(audio: Audio, text: str, max_ms: int, window_ms: int = 40) ->
     return audio[:cut], " ".join(words[:keep])
 
 
+# minimal listening tokens (normalised: lower case, letters / CJK only): what a listener says without taking a turn
+LISTENING_TOKENS = frozenset({
+    "mm", "mmm", "mhm", "mmhmm", "mmhm", "uhhuh", "uhuh", "hmm", "yeah", "yeahyeah", "yep", "right", "okay", "ok", "isee",
+    "gotit", "oh", "ah", "嗯", "嗯嗯", "嗯嗯嗯", "嗯哼", "对", "对对", "对对对", "哦", "哦哦", "噢", "是", "是是", "是的", "好", "好的",
+    "啊", "嗯对", "对的"})
+
+
+def is_listening_token(text: str) -> bool:
+    """``text`` is a minimal backchannel ("mm-hmm", "Yeah.", "嗯嗯", "对对"), not a reply ("Well said.", "应该没错")."""
+    return re.sub(r"[^a-z\u4e00-\u9fff]", "", (text or "").lower()) in LISTENING_TOKENS
+
+
 @dataclass
 class VoicePack:
     """A recorded speaker for a simulated user (``task.scenario["voice_pack"]``): the user's voice is cloned from
@@ -272,7 +284,11 @@ class VoicePack:
             a = Audio.read_wav(path)
             return a if a.sr == sr else a.resample(sr)
 
-        clips = {k: [(read(c["audio"]), c["text"]) for c in spec.get(k, [])] for k in ("backchannel", "aside")}
+        # a recorded backchannel only if its words are a minimal listening token (many clip-bank "backchannels" are
+        # replies: "Well said.", "应该没错"); a recorded aside only if marked as said to someone else ("to": "other";
+        # clip-bank "asides" are mostly requests to an assistant). The rest are left to the synthesized lines.
+        keep = {"backchannel": lambda c: is_listening_token(c["text"]), "aside": lambda c: c.get("to") == "other"}
+        clips = {k: [(read(c["audio"]), c["text"]) for c in spec.get(k, []) if keep[k](c)] for k in ("backchannel", "aside")}
         meta = {k: spec[k] for k in ("lang", "license", "source") if k in spec}
         return cls(spec["id"], (read(spec["ref"]["audio"]), spec["ref"]["text"]), clips, meta)
 
@@ -1133,6 +1149,11 @@ class TurnTaking:
     respond_after_ms: int = 1000  # silence after the agent before the user replies (τ-Voice wait-to-respond); fixed
     response_delay: ResponseDelay | None = None  # a random, content-aware gap instead (replaces respond_after_ms)
     nudge_after_ms: int = 5000  # silence after the user's own turn before speaking again
+    # > 0: that silence is drawn per user turn, lognormal around nudge_after_ms with this sigma, clipped to
+    # [nudge_min_ms, nudge_max_ms] (a fixed delay is a trivial cue); 0 = always nudge_after_ms
+    nudge_sigma: float = 0.0
+    nudge_min_ms: int = 2000
+    nudge_max_ms: int = 10000
     max_decision_gap_ms: int = 3000  # while the agent talks without a phrase boundary, decide at least this often
     check_ms: int = 1000  # after yielding to the agent, how soon the user looks again
     reaction_ms: int = 300  # barge-in decision → start of speech
@@ -1252,7 +1273,7 @@ class UserSim(Node):
         base = f"{rng.getrandbits(64)}:{task.id}"
         st = {"task": task, "timing": self._timing(task), "behaviors": b, "levels": levels, "rng": rng, "agent": {}, "mine": {},
               "n": 0, "uid": 0, "done": False, "planned": None, "pending": [], "sounds": 0, "last_sound": None, "per_turn": {}, "dp": {},
-              "erng": {k: random.Random(f"{base}:{k}") for k in ("noise", "aside", "barge")}, "next_event": {},
+              "erng": {k: random.Random(f"{base}:{k}") for k in ("noise", "aside", "barge", "nudge")}, "next_event": {},
               "noise": EventProcess(self._noise_rates(b, levels), base),
               "log": {"points": 0, "boundary": 0, "fallback": 0, "too_few_words": 0, "capped": 0, "llm_calls": 0,
                       LISTEN: 0, BACKCHANNEL: 0, INTERRUPT: 0, "rule_interrupts": 0,
@@ -1475,6 +1496,10 @@ class UserSim(Node):
         seg = frame.data
         st["ref"] = self.voice.reference(seg, st.get("ref"))
         st["uid"] += 1
+        tt = st["timing"]
+        if tt.nudge_sigma > 0:  # how long this user waits for an answer to this turn before speaking again
+            lo, hi = tt.nudge_min_ms, tt.nudge_max_ms
+            st["nudge_ms"] = int(min(max(tt.nudge_after_ms * math.exp(st["erng"]["nudge"].gauss(0.0, tt.nudge_sigma)), lo), hi))
         if not resumed:  # a new turn from the source (not the rest of one, nor a scripted step of being called away)
             st["n"] += 1
         if turn.final:  # the last thing the user says; the conversation then winds down by itself
@@ -1800,9 +1825,10 @@ class UserSim(Node):
                 return await self._speak(st, t, t)
             return [], agent_end + tt.respond_after_ms
         if my_end is not None:
-            if t - my_end >= tt.nudge_after_ms:
+            nudge = st.get("nudge_ms", tt.nudge_after_ms)
+            if t - my_end >= nudge:
                 return await self._speak(st, t, t)
-            return [], my_end + tt.nudge_after_ms
+            return [], my_end + nudge
         return [], None
 
 
@@ -1862,8 +1888,11 @@ def _split_mid_thought(text: str, rng) -> tuple[str, str] | None:
     Between words for spaced text; CJK text only after an inner comma-like mark; None if there is none."""
     if not has_cjk(text):
         words = text.split()
-        k = rng.randint(2, len(words) - 2)
-        return " ".join(words[:k]) + "...", " ".join(words[k:])
+        ks = [k for k in range(2, len(words) - 1) if not re.search(r"[.!?…]$", words[k - 1])]  # mid-clause, not after a sentence
+        if not ks:
+            return None
+        k = rng.choice(ks)
+        return " ".join(words[:k]).rstrip(",;:") + "...", " ".join(words[k:])
     cuts = [m.end() for m in re.finditer(r"[，,、；;：:]\s*", text)
             if n_words(text[:m.start()]) >= 1 and n_words(text[m.end():]) >= 1.5]
     if not cuts:
