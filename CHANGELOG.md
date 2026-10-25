@@ -66,7 +66,10 @@
   and `meta.controlled`; `eval.scores` / `eval.duplex`, `interaction.metrics`, the SOP transcript, the viewer's
   headlines and lanes judge relative to the controlled role, so the sides can be swapped (the policy as the user,
   a simulated assistant) or a third role added by configuration alone. Files without `meta.controlled` read as
-  `agent`. Schema: `meta.roles`, `meta.controlled`.
+  `agent`. Schema: `meta.roles`, `meta.controlled`. **Standards per speaker** (`eval.Standard`: `mid_ms`, `width_ms`,
+  `early_floor`, `respond_within_ms`; `ASSISTANT_STANDARD`, `CALLER_STANDARD`): `scores(..., standards=)` grades the
+  controlled role's reactions to each speaker's turns by that speaker's standard; `role/controlled` `standards:
+  {"*": {...}, business: {...}}`; recorded as `meta.standards`. Without it, the assistant standard for everyone, as before.
 - **`ig report`.** The benchmark scripts' `report` commands (judges, tables, confidence intervals, pages) moved into
   `interaction_gym.benchmarks.reports` (`audiomc`, `fdb2`, `fdb3`, plus the shared memoized judge, validity and
   timing tables) and run as the `report` plugin kind (`report/audiomc`, `report/fdb2`, `report/fdb3`; a row of each

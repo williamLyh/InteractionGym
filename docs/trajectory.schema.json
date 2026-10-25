@@ -77,6 +77,19 @@
           "type": "string",
           "description": "The role the external policy played (the one the rule scores judge); files without it mean agent"
         },
+        "standards": {
+          "type": "object",
+          "description": "How the controlled role's reactions were graded, by speaker role ('*' the default): eval.Standard fields",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "mid_ms": {"type": "number"},
+              "width_ms": {"type": "number"},
+              "early_floor": {"type": "number"},
+              "respond_within_ms": {"type": "integer"}
+            }
+          }
+        },
         "task": {
           "type": "object",
           "required": [

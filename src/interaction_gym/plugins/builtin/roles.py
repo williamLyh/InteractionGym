@@ -27,6 +27,9 @@ class ControlledConfig:
     audio: str | None = None  # e.g. "user.audio": a microphone frame every step
     sr: int = 16000
     preset: str | None = None  # a duplex model's name (agents.vllm_omni.DUPLEX_MODELS): its chunk_ms, audio on
+    # how this role's reactions to each other role's turns are graded (eval.Standard fields: mid_ms, width_ms,
+    # early_floor, respond_within_ms), by speaker role with "*" the default; None: the assistant standard for everyone
+    standards: dict | None = None
 
 
 @plugin("role", "controlled", provides="controlled", config=ControlledConfig)
@@ -46,7 +49,15 @@ def controlled(ctx, cfg: ControlledConfig) -> Controlled:
         spec = AgentSpec(spec.chunk_ms, tuple(cfg.obs), out, spec.audio, cfg.sr)
     else:
         spec = AgentSpec(cfg.chunk_ms, tuple(cfg.obs), out, cfg.audio, cfg.sr)
-    return Controlled(spec, cfg.name)
+    extra = {}
+    if cfg.standards:
+        from ...eval import Standard
+
+        try:
+            extra["standards"] = {k: Standard(**(v or {})) for k, v in cfg.standards.items()}
+        except TypeError as e:
+            raise PluginError(f"role/controlled: standards: {e}; the fields are mid_ms, width_ms, early_floor, respond_within_ms") from None
+    return Controlled(spec, cfg.name, extra)
 
 
 @dataclass

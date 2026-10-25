@@ -225,6 +225,7 @@ def episode(
     meta: dict | None = None,
     agent=None,
     verifier: dict | None = None,
+    standards=None,
 ) -> dict:
     """The episode in schema v1. Audio is written to ``media`` (if given) and referenced.
     ``reward`` defaults to the sum of the episode's ``reward`` stream; pass a task-specific
@@ -233,6 +234,8 @@ def episode(
     ``verifier`` (``{"name", "description", "checks": {part: what it checks}}``) is recorded as ``eval.verifier``: how
     the task's own checker computed ``reward``. ``meta.categories`` is the task's ``scenario["categories"]``, or else
     inferred (``categories``); a ``meta["policy"]`` (the SOP the agent must follow) adds ``"sop"``.
+    ``standards`` (``eval.Standard`` or ``{speaker role: Standard | dict}``, docs/ROLES.md §4) sets how the controlled
+    role's reactions to each speaker are graded, recorded as ``meta.standards``.
     Chunk-/unit-level internals of the agent are not part of the trajectory; an adapter's trace is
     saved separately (docs/AGENT_TRACE.md)."""
     log = env.log
@@ -261,6 +264,12 @@ def episode(
     if agent is not None:
         m["agent"] = describe_agent(agent)
     m.update(meta or {})
+    if standards is not None:
+        from dataclasses import asdict
+
+        from .eval import standard_for
+        std = standards if isinstance(standards, dict) else {"*": standards}
+        m["standards"] = {k: asdict(standard_for(std, k)) for k in std}
     m["categories"] = categories(m)
     ep: dict = {"schema": SCHEMA, "meta": m}
     bg = _background(env, media, env.t)
@@ -276,7 +285,8 @@ def episode(
         rewarded = any(f.stream == REWARD for f in log)
         reward = {"total": env.sim.reward if rewarded else None, "parts": {}}
     # the rule scores judge the controlled role's reactions to every other role's turns, whatever it is called
-    ep["eval"] = {"reward": reward, "duplex": duplex(turns, agent=agent_role, end_ms=env.t), "scores": scores(turns, agent=agent_role, end_ms=env.t)}
+    ep["eval"] = {"reward": reward, "duplex": duplex(turns, agent=agent_role, end_ms=env.t),
+                  "scores": scores(turns, agent=agent_role, end_ms=env.t, standards=standards)}
     if verifier:
         ep["eval"]["verifier"] = verifier
     return ep

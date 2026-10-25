@@ -214,6 +214,33 @@ LATENCY_EARLY_WIDTH_MS = 5.0
 LATENCY_EARLY_FLOOR = 0.3
 
 
+@dataclass(frozen=True)
+class Standard:
+    """How fast and how carefully the controlled role must react to one speaker's turns (docs/ROLES.md §4): the
+    latency logistic (``mid_ms``, ``width_ms``), the early-reply floor (``early_floor``; 1.0 = no penalty for
+    answering within ~50 ms, as a person may) and the reply window. The defaults are the assistant standard."""
+
+    mid_ms: float = LATENCY_MID_MS
+    width_ms: float = LATENCY_WIDTH_MS
+    early_floor: float = LATENCY_EARLY_FLOOR
+    respond_within_ms: int = 5000
+
+
+ASSISTANT_STANDARD = Standard()
+CALLER_STANDARD = Standard(early_floor=1.0)  # a caller answering at once is not "cutting the assistant off"
+
+
+def standard_for(standards, speaker: str) -> Standard | None:
+    """The standard for turns of ``speaker``: ``standards`` is a ``Standard`` for everyone, or a dict by speaker role
+    with ``"*"`` as the default; None when none applies (the function-level parameters are used)."""
+    if standards is None:
+        return None
+    if isinstance(standards, Standard):
+        return standards
+    s = standards.get(speaker, standards.get("*"))
+    return Standard(**s) if isinstance(s, dict) else s
+
+
 def latency_score(ms: float, mid_ms: float = LATENCY_MID_MS, width_ms: float = LATENCY_WIDTH_MS) -> float:
     """How satisfying a reaction delay is, for taking the floor after the user ends (``respond``) and for stopping
     when talked over (``yield``, from the user's start to the agent's stop): a logistic in milliseconds,
@@ -285,7 +312,8 @@ def expectations(u: dict, agent_playing: bool) -> list[str]:
 
 
 def scores(turns: list[dict], agent: str = "agent", respond_within_ms: int = 5000, mid_ms: float = LATENCY_MID_MS,
-           width_ms: float = LATENCY_WIDTH_MS, end_ms: int | None = None, early_floor: float = LATENCY_EARLY_FLOOR) -> dict:
+           width_ms: float = LATENCY_WIDTH_MS, end_ms: int | None = None, early_floor: float = LATENCY_EARLY_FLOOR,
+           standards=None) -> dict:
     """One rule-based score in [0, 1] per user turn: did the agent do what the user expected (``expectation``),
     and — where doing it means taking over the conversation — how fast. Outcomes (docs/FORMAT.md §6.3):
 
@@ -316,6 +344,10 @@ def scores(turns: list[dict], agent: str = "agent", respond_within_ms: int = 500
     events}``; ``total`` is ``None`` when nothing was scored. The same scores serve as evaluation metrics and as a
     (stage-1) RL reward.
 
+    ``standards`` (docs/ROLES.md §4): a ``Standard`` for every speaker, or a dict by speaker role (``"*"`` the
+    default), replacing ``mid_ms`` / ``width_ms`` / ``early_floor`` / ``respond_within_ms`` for that speaker's turns —
+    a caller held to the caller standard, an assistant to the assistant standard, whichever is the controlled role.
+
     Every event carries position fields (they never change a score), so a trainer can assign it to the part of the
     episode that caused it: ``user_start_ms`` / ``user_end_ms`` (the user turn), ``resolved_ms`` (when the outcome
     was settled: the reply's / stop's / cut-in's start, or the end of the window in which nothing happened; absent
@@ -332,6 +364,9 @@ def scores(turns: list[dict], agent: str = "agent", respond_within_ms: int = 500
     events = []
     for i, u in enumerate(users):
         u0, u1 = u["start_time"], u["end_time"]
+        std = standard_for(standards, u["role"])
+        if std is not None:  # this speaker's standard for the controlled role's reactions
+            mid_ms, width_ms, early_floor, respond_within_ms = std.mid_ms, std.width_ms, std.early_floor, std.respond_within_ms
         a = playing(agents, u0)
         nxt_user = next((o for o in users[i + 1 :] if o.get("kind") not in NONDIRECTED), None)
         limit = nxt_user["start_time"] if nxt_user is not None else math.inf

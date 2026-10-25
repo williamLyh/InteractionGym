@@ -45,9 +45,21 @@ the controlled role, "user" means every other role. So:
 - three roles (`caller`, `assistant` controlled, `business` simulated): the assistant is judged on its reactions to
   both other roles' turns; `turns[].to` can say whom a line addresses (FORMAT.md §4.3).
 
-What the expectation *is* still comes from the producer's labels (`kind`, `expects`) and the fixed table of §6.3; the
-**standards** (latency thresholds, overlap tolerance) are the assistant standard for every controlled role. A user
-held to the assistant standard will be penalised for overlapping — see §6.
+What the expectation *is* comes from the producer's labels (`kind`, `expects`) and the fixed table of §6.3. **How
+strictly** the controlled role's reaction is graded is a **standard per speaker** (`eval.Standard`: the latency
+logistic `mid_ms` / `width_ms`, the early-reply floor `early_floor`, the reply window `respond_within_ms`), set on the
+controlled role by speaker role with `"*"` as the default and recorded as `meta.standards`:
+
+```yaml
+- id: controlled
+  config: {name: assistant, standards: {"*": {}, business: {mid_ms: 3000}}}   # the caller: the assistant standard; the business may wait
+- id: controlled
+  config: {name: user, out: user.speech, obs: [policy.speech], standards: {"*": {early_floor: 1.0}}}  # a caller may answer at once
+```
+
+Without `standards`, every speaker is graded by the assistant standard (`eval.ASSISTANT_STANDARD`; `CALLER_STANDARD`
+drops the early-reply penalty). The outcome rules themselves (talked over = 0, kept talking = 0, ...) are the same for
+every pair; a tolerance for overlap would be a new outcome rule, not a standard — see §6.
 
 ## 5. Composition
 
@@ -63,9 +75,10 @@ caller and the simulated node the assistant; the trajectory then says `controlle
 
 ## 6. Deferred
 
-- **Per-pair standards.** One expectation table keyed by (speaker role, listener role): a caller may overlap the
-  assistant, the assistant may not overlap the caller (`eval.reply_score`'s early floor). Comes with the behaviour
-  plugins (ARCHITECTURE.md step 4), which bring each behaviour's own `expects`.
+- **Outcome rules per pair.** The standards (§4) scale the grading; the outcomes are fixed: an overlap is
+  `talked_over` (0) whoever does it. A role allowed to overlap another (a caller cutting a long-winded assistant short
+  without penalty) needs an outcome rule keyed by the pair, which would change what the expectations mean; it waits
+  for the real-corpus timing statistics of DESIGN.md §5.2.
 - **Several controlled roles** (self-play): waits for real-human data to anchor them (DESIGN.md §5.1).
 - **Tool callers by role.** Tool calls are keyed by caller class (`agent` → `policy.tool_call`, `user` →
   `user.tool_call`; `tools.CALL`), not by role name: a third speaking role has no tool stream yet.

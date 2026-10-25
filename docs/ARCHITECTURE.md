@@ -247,8 +247,10 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    reader (`eval.scores` / `duplex`, `interaction`, `turn_validity`, the SOP transcript, the viewer) judges relative
    to the controlled role; old files read as `controlled = agent`. `role/controlled` takes any `name` (its `out`
    must agree). `tests/test_roles.py`: a renamed controlled role gives the same timeline and scores as the default
-   names; the sides swapped (the policy as the user); a three-role bundle. Deferred (ROLES.md §6): the expectation
-   table keyed by (speaker, listener) — it comes with step 4 — several controlled roles, tool callers by role.
+   names; the sides swapped (the policy as the user); a three-role bundle. The **standards per speaker** are done too
+   (`eval.Standard`; `role/controlled` `standards: {speaker: {...}}`; `meta.standards`): how strictly the controlled
+   role's reaction to each speaker is graded. Deferred (ROLES.md §6): outcome rules per pair (an overlap allowed for
+   one pair), several controlled roles, tool callers by role.
 4. **Split `UserSim`** into the role core (scheduling, arbitration, budgets) and behaviour plugins. **First slice
    done:** `interaction_gym.behaviours` defines the interface (`init` / `sounds` / `act` / `due` / `report`; a
    behaviour owns its seeded stream and labels what it produces) and the two independent random processes moved

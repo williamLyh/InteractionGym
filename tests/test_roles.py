@@ -102,3 +102,35 @@ def test_role_plugins_name_and_stream_must_agree_and_a_three_role_bundle_runs(tm
     assert {t["role"] for t in rec["turns"]} == {"assistant", "caller", "business"}
     assert len(rec["eval"]["scores"]["events"]) == 2  # one expectation per turn of each other role
     assert json.dumps(rec)  # serialisable
+
+
+def test_standards_grade_each_speaker_s_turns_by_its_own_rule():
+    from interaction_gym.eval import CALLER_STANDARD, Standard, scores
+
+    # a controlled "user" that answers the assistant within 30 ms: cut off by the assistant standard, fine by the caller's
+    turns = [{"id": "a0", "role": "agent", "start_time": 0, "end_time": 2000, "text": "Which day?"},
+             {"id": "u0", "role": "user", "start_time": 2030, "end_time": 3000, "text": "Tuesday."}]
+    strict = scores(turns, agent="user")["events"][0]
+    lenient = scores(turns, agent="user", standards=CALLER_STANDARD)["events"][0]
+    assert strict["outcome"] == lenient["outcome"] == "responded" and strict["score"] < 0.4 < 0.99 < lenient["score"]
+    # by speaker: the business may be answered slowly, the caller must not
+    three = [{"id": "c0", "role": "caller", "start_time": 0, "end_time": 1000, "text": "A table for two?"},
+             {"id": "s0", "role": "assistant", "start_time": 2000, "end_time": 2500, "text": "One moment."},
+             {"id": "b0", "role": "business", "start_time": 3000, "end_time": 4000, "text": "We are full until nine."},
+             {"id": "s1", "role": "assistant", "start_time": 5500, "end_time": 6500, "text": "Nine works?"}]
+    by = {e["turn"]: e for e in scores(three, agent="assistant", standards={"*": Standard(), "business": {"mid_ms": 3000}})["events"]}
+    assert by["c0"]["score"] < 0.5 and by["b0"]["score"] > 0.9  # 1000 ms is slow for the caller; 1500 ms is fine for the business
+    assert scores(three, agent="assistant")["events"][1]["score"] < 0.1  # without standards: the assistant standard for all
+
+
+def test_role_controlled_standards_reach_the_trajectory(tmp_path):
+    c = Composition.bundle("minimal")
+    c.apply("- id: controlled\n  config: {name: agent, chunk_ms: 200, standards: {'*': {early_floor: 1.0}, user: {respond_within_ms: 8000}}}", "p")
+    run_ = compose(c.resolve())
+    assert run_.controlled.extra["standards"]["user"].respond_within_ms == 8000
+    rec, env, _ = asyncio.run(run_episode(run_, EpisodeContext(run_.tasks[0], 0, episode_id="x")))
+    assert rec["meta"]["standards"] == {"*": {"mid_ms": 950.0, "width_ms": 100.0, "early_floor": 1.0, "respond_within_ms": 5000},
+                                        "user": {"mid_ms": 950.0, "width_ms": 100.0, "early_floor": 0.3, "respond_within_ms": 8000}}
+    c.apply("- id: controlled\n  config: {name: agent, chunk_ms: 200, standards: {'*': {floor: 1}}}", "q")
+    with pytest.raises(PluginError, match="standards: .*the fields are mid_ms, width_ms, early_floor, respond_within_ms"):
+        compose(c.resolve())
