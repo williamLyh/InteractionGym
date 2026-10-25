@@ -49,10 +49,13 @@ three-party tasks); several controlled roles at once is deferred until real-huma
 
 A role has four slots — identity (persona, goal, SOP, hidden preferences), the streams it perceives and speaks on, a
 voice, and a policy (`Simulated` | `Controlled` | `Replay`) — a core that schedules its turns, and a list of
-**behaviour plugins** asked in a fixed order at each decision point (the other side's pauses, or every
-`max_decision_gap_ms`). The first behaviour that wants to act wins; cross-behaviour budgets (frequency caps) and the
-rng (one per role, dealt by the `Sim`) stay in the core, so two behaviours that want to fire at once resolve the same
-way every time.
+**behaviour plugins** (`interaction_gym.behaviours`) run in a fixed order each step: `sounds` that happen whatever
+the role is doing, `act` when the role is free, `while_other_talks` at each decision point (the other side's pauses,
+or every `max_decision_gap_ms`). The first behaviour that wants to act wins; cross-behaviour budgets (frequency caps)
+and the rng streams (one per behaviour, derived from the role's seed) are dealt by the core, so two behaviours that
+want to fire at once resolve the same way every time. The turn itself — when the role's own line starts, the
+response delay, yielding when talked over, the pieces at the LLM's pause markers — is the core's turn-taking
+(`TurnTaking`), not a behaviour: it decides *when the role speaks*; behaviours decide *what else happens*.
 
 A behaviour plugin provides five things: **when** it fires (an event process on the given rng), **what** happens (a
 sound, a line, silence), its effect on the **role itself** (cutting its own turn, pausing), its **labels** (`kind`,
