@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- **One-take pauses** (`Behaviors.pause_one_take`, off by default): a user turn said in pieces (a mid-thought
+  pause, LLM-placed or `pause_p`) is synthesized once and cut at the quietest point within 250 ms of each piece's
+  share of the audio (`user.take_cuts`), instead of one TTS take per piece, which ends each piece like a whole turn.
 - **Recorded sounds for online users.** Third-party speech: the noise label `speech` (someone else talking nearby, a
   TV), at `Behaviors.third_party_per_min` onsets per minute on top of the noise rates, recordings only (a sound bank's
   `events/speech/`; no synthetic stand-in, so a missing bank is an error). Voice packs (`task.scenario["voice_pack"]`,

@@ -95,3 +95,40 @@ def test_third_party_speech_in_the_callers_language_first(tmp_path):
     zh = tone(tmp_path / "events" / "speech_zh" / "zh.wav")
     assert all(event_clip("speech", 16000, random.Random(i), bank=tmp_path, variant="zh")[1] == f"file:{zh}" for i in range(5))
     assert event_clip("speech", 16000, random.Random(0), bank=tmp_path, variant="de")[1].endswith("en.wav")
+
+
+class WordSpeech(FakeSpeech):
+    """A tone per word with 80 ms of silence between words, so the quiet places are the word gaps."""
+
+    async def synth(self, text, *a, **k):
+        self.calls += 1
+        sr, out = self.sr, array("h")
+        for _ in text.split():
+            out += array("h", (int(8000 * math.sin(2 * math.pi * 200 * i / sr)) for i in range(sr * 250 // 1000)))
+            out += array("h", [0] * (sr * 80 // 1000))
+        return Audio(out, sr)
+
+
+def test_take_cuts_fall_in_the_word_gaps():
+    from interaction_gym.user import take_cuts
+
+    import asyncio
+    audio = asyncio.run(WordSpeech().synth("one two three four five six"))
+    parts = take_cuts(audio, [3, 3])
+    assert sum(len(p) for p in parts) == len(audio)
+    k = len(parts[0])
+    assert all(v == 0 for v in audio.samples[k - 100:k + 100])  # in the silence between two words
+
+
+def test_a_one_take_pause_is_one_synthesis_cut_in_pieces():
+    turns = ["I need to move, (pause) let me see, my Saturday booking.", "Bye ###STOP###"]
+    sp = WordSpeech()
+    env, ep = run(turns, listener=None, interrupt=None, speech=sp, behaviors=Behaviors(pause_one_take=True, pause_ms=(900, 900)))
+    first, rest = user_turns(ep)[:2]
+    assert first["text"] == "I need to move..." and first["expects"] == "wait" and rest["start_time"] - first["end_time"] == 900
+    whole = (first["end_time"] - first["start_time"]) + (rest["end_time"] - rest["start_time"])
+    assert abs(whole - 10 * 330) <= 2  # one take of the ten words, split between the two pieces
+    calls = sp.calls
+    sp2 = WordSpeech()
+    run(turns, listener=None, interrupt=None, speech=sp2, behaviors=Behaviors(pause_ms=(900, 900)))
+    assert calls == sp2.calls - 1  # off: one take a piece
