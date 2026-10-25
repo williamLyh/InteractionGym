@@ -1,0 +1,96 @@
+# sop_calls: service calls with an SOP — a caller with a request, the business's SOP and the case's ground truth;
+# MiniCPM-o 4.5 (full duplex, speech only) as the agent, the SOP rendered in its instructions — examples/sop_calls.py
+# as a composition. The SOP package serves three seams here: task/sop_calls, the agent's instructions
+# (instructions_by_task) and scorer/sop_judge (docs/ARCHITECTURE.md §3).
+#
+#   ig run sop_calls --out runs/sop_calls --seeds 0,1,2
+#   ig run sop_calls --set tasks.format=list --set tasks.only='[booking-mina]'          # another SOP format, one scenario
+#   ig run sop_calls --set agent.audio_out=true                                        # the talker's speech
+#   ig report sop_calls --out runs/sop_calls                                           # score the episodes again (the script's --rejudge)
+#
+# Services: IG_LLM_URL (caller, listener), IG_JUDGE_URL (the judge; default IG_LLM_URL), IG_TTS_URL, IG_CLONE_URL,
+# IG_AGENT_URL / IG_AGENT_MODEL / IG_AGENT_REF_AUDIO.
+- extends: core
+
+- insert:
+    - id: tasks
+      plugin: task/sop_calls
+      config: {format: structured, max_ms: 180000}
+
+    - id: user_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_LLM_URL:-http://localhost:8000/v1}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        defaults: {max_tokens: 80}
+
+    - id: tts
+      plugin: backend/tts
+      config: {base_url: "${IG_TTS_URL:-http://localhost:8001/v1}", model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice, sr: 24000, cached: true}
+
+    - id: clone_tts
+      plugin: backend/tts
+      config: {base_url: "${IG_CLONE_URL:-http://localhost:8005/v1}", model: Qwen/Qwen3-TTS-12Hz-1.7B-Base, sr: 24000}
+
+    - id: lines
+      plugin: source/llm
+      config: {llm: user_llm}
+
+    # the caller: an LLM writes its lines and decides, at the agent's pauses, whether to listen, backchannel or cut in;
+    # a voice from the Qwen3-TTS catalogue by persona, cloned from its first line; a background only where the scenario has one
+    - id: user
+      plugin: role/user
+      config:
+        source: lines
+        listener: user_llm
+        benchmark: true
+        voice: {tts: tts, clone: clone_tts, voices: qwen3}
+        timing: {response_delay: {}}
+        soundscape: {background: scenario}
+
+    - id: agent
+      plugin: agent/vllm_omni
+      config:
+        url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
+        model: "${IG_AGENT_MODEL:-openbmb/MiniCPM-o-4_5}"
+        ref_audio: "${IG_AGENT_REF_AUDIO:-models/MiniCPM-o-4_5/assets/system_ref_audio.wav}"
+        clock: input
+        audio_out: false
+        trace_tokens: true
+        instructions_by_task: "interaction_gym.sop_task:agent_instructions"
+        instructions_args: {fmt: structured}
+
+    - id: judge_llm
+      plugin: backend/chat
+      config:
+        base_url: "${IG_JUDGE_URL:-${IG_LLM_URL:-http://localhost:8000/v1}}"
+        model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
+        timeout: 900
+        defaults: {max_tokens: 16000, temperature: 0, chat_template_kwargs: {enable_thinking: true}}
+
+    - id: judge
+      plugin: scorer/sop_judge
+      config: {judge: judge_llm}
+
+    - id: traces
+      plugin: sink/agent_traces
+
+    - id: pages
+      plugin: sink/sop_pages
+      config: {title: "SOP service calls (format: structured)"}
+
+    - id: rejudge
+      plugin: report/sop_rejudge
+      config: {judge: judge_llm}
+
+- id: controlled
+  config: {name: agent, chunk_ms: 1000, audio: user.audio, sr: 24000}
+
+- id: env
+  config: {max_ms: 180000, end_idle_ms: 3000}
+
+- id: viewer
+  disabled: true
+
+- id: driver
+  config: {concurrency: 4, run_id: sop-calls}

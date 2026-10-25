@@ -255,7 +255,7 @@ class Composition:
         return Resolved(ordered, plugins, configs, provides, tuple(self.layers), rank)
 
 
-_ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+_ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-((?:[^${}]|\$(?!\{))*))?\}")  # innermost first: a default may hold another reference
 
 
 def expand_env(value, where: str):
@@ -272,8 +272,11 @@ def expand_env(value, where: str):
             if v is None:
                 raise PluginError(f"{where}: ${{{name}}} is not set and has no default")
             return v
-        out = _ENV.sub(sub, value)
-        return load_yaml(out) if out != value and _ENV.fullmatch(value) else out  # a whole-value reference keeps its type
+        whole = bool(_ENV.fullmatch(value)) or (value.startswith("${") and value.endswith("}") and value.count("${") == value.count("}"))
+        out, prev = value, None
+        while out != prev:  # nested defaults: ${IG_JUDGE_URL:-${IG_LLM_URL:-http://...}} expands from the inside
+            prev, out = out, _ENV.sub(sub, out)
+        return load_yaml(out) if out != value and whole else out  # a whole-value reference keeps its type
     if isinstance(value, dict):
         return {k: expand_env(v, where) for k, v in value.items()}
     if isinstance(value, list):

@@ -222,3 +222,8 @@ def test_env_references_in_bundles_expand_and_fail_loud(tmp_path, monkeypatch):
     c = Composition.bundle("audiomc")
     c.set("tasks.per_axis=${IG_PER_AXIS:-7}")
     assert c.resolve().configs["tasks"].per_axis == 7  # a whole-value reference keeps its type
+    monkeypatch.delenv("IG_JUDGE_URL", raising=False)
+    monkeypatch.setenv("IG_LLM_URL", "http://llm:1/v1")
+    c = Composition.bundle("audiomc")
+    c.set("tasks.data=${IG_JUDGE_URL:-${IG_LLM_URL:-http://x}}")
+    assert c.resolve().configs["tasks"].data == "http://llm:1/v1"  # a default may hold another reference

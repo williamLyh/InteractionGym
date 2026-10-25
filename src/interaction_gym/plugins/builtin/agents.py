@@ -54,9 +54,15 @@ def _lookup(task, path: str):
     return cur
 
 
-def instructions_for(template: str | None, variables: dict | None, task) -> str | None:
-    """``template`` with ``{name}`` fields filled per task: each of ``variables`` is ``{path, map?, default?}`` — the
-    value at ``path`` on the task, looked up in ``map`` when given (``default`` when absent)."""
+def instructions_for(template: str | None, variables: dict | None, task, by_task=None, args: dict | None = None) -> str | None:
+    """The controlled role's instructions for one task: ``by_task`` (``"module:function"``, called
+    ``function(task, **args)``, e.g. ``interaction_gym.sop_task:agent_instructions`` with ``{fmt: structured}``) when
+    given; else ``template`` with ``{name}`` fields filled per task — each of ``variables`` is ``{path, map?,
+    default?}``: the value at ``path`` on the task, looked up in ``map`` when given (``default`` when absent)."""
+    if by_task:
+        from .tools import _import
+
+        return _import(by_task, "agent instructions_by_task")(task, **(args or {}))
     if template is None or not variables:
         return template
     values = {}
@@ -81,9 +87,10 @@ def vllm_omni(ctx, kw: dict):
     if preset:
         kw = {**duplex_model(preset), **kw}
     instructions, variables = kw.pop("instructions", None), kw.pop("instructions_vars", None)
+    by_task, args = kw.pop("instructions_by_task", None), kw.pop("instructions_args", None)
 
     def make(ep: EpisodeContext):
-        text = instructions_for(instructions, variables, ep.task)
+        text = instructions_for(instructions, variables, ep.task, by_task, args)
         session = {**kw.get("session", {}), **({"instructions": text} if text is not None else {})}
         return VllmOmniDuplexAgent(spec, url, **{**kw, **({"session": session} if session else {})})
     return Factory(make, url=url, audio_out=kw.get("audio_out", True), preset=preset)
@@ -96,7 +103,13 @@ def openai_realtime(ctx, kw: dict):
 
     spec, kw = ctx["controlled"].spec, dict(kw)
     model = kw.pop("model", "gpt-realtime-mini")
-    return Factory(lambda ep: OpenAIRealtimeAgent(spec, model, **kw))
+    instructions, variables = kw.pop("instructions", None), kw.pop("instructions_vars", None)
+    by_task, args = kw.pop("instructions_by_task", None), kw.pop("instructions_args", None)
+
+    def make(ep: EpisodeContext):
+        text = instructions_for(instructions, variables, ep.task, by_task, args)
+        return OpenAIRealtimeAgent(spec, model, **{**kw, **({"instructions": text} if text is not None else {})})
+    return Factory(make)
 
 
 @plugin("agent", "cascaded", requires=("controlled",), refs=("asr", "llm", "tts"))
@@ -112,4 +125,10 @@ def cascaded(ctx, kw: dict):
         kw["endpointing"] = Endpointing(**kw["endpointing"])
     if isinstance(kw.get("latency"), dict):
         kw["latency"] = LatencyModel(**kw["latency"])
-    return Factory(lambda ep: CascadedAgent(spec, asr, llm, tts, seed=ep.seed, cache=ep.cache, **kw))
+    instructions, variables = kw.pop("instructions", None), kw.pop("instructions_vars", None)
+    by_task, args = kw.pop("instructions_by_task", None), kw.pop("instructions_args", None)
+
+    def make(ep: EpisodeContext):
+        text = instructions_for(instructions, variables, ep.task, by_task, args)
+        return CascadedAgent(spec, asr, llm, tts, seed=ep.seed, cache=ep.cache, **{**kw, **({"instructions": text} if text is not None else {})})
+    return Factory(make)

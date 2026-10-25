@@ -50,6 +50,16 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **SOP service calls as a bundle** (`ig run sop_calls`): `examples/sop_calls.py` as a composition, the SOP package
+  serving three seams — `task/sop_calls` (the scenarios, now `interaction_gym/data/sop_calls.json` via
+  `sop_task.scenarios()` / `task_of()`, which the script loads too; per-episode `meta.policy`, `eval.verifier`, the
+  scenario's `max_ms`), the controlled role's instructions (`agent/*` `instructions_by_task: module:function` +
+  `instructions_args`, here `sop_task.agent_instructions` with the format), `scorer/sop_judge` (`sop_task.judge` →
+  `eval.reward`, `meta.sop_judge`; scorers may be async and may write into the episode); plus `sink/sop_pages`
+  (notes, judge results, viewer pages) and `report/sop_rejudge` (`ig report sop_calls`, the script's `--rejudge`).
+  `role/user` `voice.voices: qwen3 | openai` (a speaker catalogue by persona) and `soundscape: {background:
+  scenario}` (a track only for tasks that define one). Environment defaults may hold another reference
+  (`${IG_JUDGE_URL:-${IG_LLM_URL:-...}}`). Parity test: `tests/test_plugins_sop.py`.
 - **Behaviours as objects** (`interaction_gym.behaviours`). What the simulated user does besides its turns runs as
   a list of `Behaviour` objects (`init` / `sounds` / `act` / `due` / `report`), each on its own seeded stream and
   labelling what it produces: `NoiseEvents` and `Asides` (being addressed, being called away) moved out of `UserSim`

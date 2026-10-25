@@ -7,7 +7,7 @@ the user decide **how it is written for the model**.
 
 - `interaction_gym.sop`: the source format, the condition logic, and the formats (plugins).
 - `interaction_gym.sop_task`: spoken SOP tasks for agents that only talk, and their judge.
-- `examples/sop_calls.py`: service calls with MiniCPM-o 4.5: in English a restaurant (×2), a clinic and an online shop; in Chinese a courier (changing a parcel's address, ×2) and a hotel (late checkout, ×2).
+- `examples/sop_calls.py` (or the bundle `ig run sop_calls`, the same scenarios from `interaction_gym/data/sop_calls.json`): service calls with MiniCPM-o 4.5: in English a restaurant (×2), a clinic and an online shop; in Chinese a courier (changing a parcel's address, ×2) and a hotel (late checkout, ×2).
 
 ## 1. Source format
 

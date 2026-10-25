@@ -65,9 +65,14 @@ async def run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, E
             if callable(em):
                 meta.update(em())
     standards = run.controlled.extra.get("standards") if run.controlled is not None else None
-    record = make_episode(env, ep.episode_id, media=media, agent=agent if hasattr(agent, "describe") else None, meta=meta, standards=standards)
-    for rid, scorer in run.scorers.items():
-        record["eval"][rid] = scorer(record, env, agent)
+    record = make_episode(env, ep.episode_id, media=media, agent=agent if hasattr(agent, "describe") else None, meta=meta,
+                          standards=standards, verifier=ep.verifier)
+    for rid, scorer in run.scorers.items():  # a scorer returns a dict for eval.<row id>, or None when it wrote into the episode itself
+        out = scorer(record, env, agent)
+        if inspect.isawaitable(out):
+            out = await out
+        if out is not None:
+            record["eval"][rid] = out
     return record, env, agent
 
 

@@ -26,9 +26,32 @@ from __future__ import annotations
 
 import json
 import re
+from importlib import resources
+from pathlib import Path
 
 from . import sop as S
 from .core import Task
+
+SCENARIOS_PATH = resources.files("interaction_gym") / "data" / "sop_calls.json"  # the shipped service-call scenarios
+TASK_KEYS = ("persona", "profile", "first_turn", "turn_taking", "background", "voice", "agent_role", "sop", "sop_case")
+
+
+def scenarios(path: str | Path | None = None, only=None) -> dict[str, dict]:
+    """The spoken SOP scenarios by name (``examples/sop_calls.py``'s, from ``data/sop_calls.json`` or ``path``): each
+    a caller (``persona``, ``profile``, ``first_turn``, ``goal``), the business's ``sop`` (validated) and its
+    ``sop_case``; optional ``background``, ``voice``, ``turn_taking``, ``max_ms``."""
+    raw = json.loads(Path(path).read_text() if path else SCENARIOS_PATH.read_text())
+    out = {}
+    for name, sc in raw.items():
+        if only and name not in only:
+            continue
+        out[name] = {**sc, "sop": S.validate(sc["sop"])}
+    return out
+
+
+def task_of(name: str, sc: dict) -> Task:
+    """The task of one scenario: its caller and SOP fields, ``instructions`` = the caller's goal, category ``sop``."""
+    return Task(id=name, scenario={k: sc[k] for k in TASK_KEYS if k in sc} | {"instructions": sc["goal"], "categories": ["sop"]})
 
 SPOKEN_NOTE = ("This is a phone call: what you write is spoken to the caller. Speak briefly and naturally, one or two short "
                "sentences at a time; no lists or markdown. Ask for what you need one or two items at a time.")

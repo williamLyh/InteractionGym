@@ -65,6 +65,7 @@ class VoiceConfig:
     tts: str | None = None  # row id of a backend/tts; None: text timed at words_per_sec
     clone: str | bool | None = None  # row id of a cloning TTS, False: no cloning, None: the tts clones by itself or not at all
     voice: str | None = None  # preset speaker when not cloning
+    voices: str | None = None  # a speaker catalogue the persona picks from: "qwen3" (QWEN3_TTS_VOICES) | "openai" (OPENAI_TTS_VOICES)
     words_per_sec: float = 3.4
     style: str | None = "neutral"
     seed: bool = True
@@ -78,6 +79,13 @@ def _voice(ctx, v: VoiceConfig | dict | None) -> Voice:
         kw["clone"] = ctx[v.clone] if isinstance(v.clone, str) else v.clone
     if v.voice:
         kw["voice"] = v.voice
+    if v.voices:
+        from ...user import OPENAI_TTS_VOICES, QWEN3_TTS_VOICES
+
+        catalogues = {"qwen3": QWEN3_TTS_VOICES, "openai": OPENAI_TTS_VOICES}
+        if v.voices not in catalogues:
+            raise PluginError(f"voice.voices is one of {', '.join(catalogues)}, got {v.voices!r}")
+        kw["voices"] = catalogues[v.voices]
     if v.style != "neutral":
         kw["style"] = v.style
     if not v.seed:
@@ -112,7 +120,7 @@ class UserConfig:
     voice: dict = field(default_factory=dict)  # VoiceConfig
     timing: dict = field(default_factory=dict)  # TurnTaking fields; "response_delay": {ResponseDelay fields} | true
     behaviors: dict = field(default_factory=dict)  # Behaviors fields
-    soundscape: dict | None = None  # Soundscape(**dict); None: the default (a background from the persona's surroundings)
+    soundscape: dict | None = None  # Soundscape(**dict); background may be "scenario": a track only when the task defines one
     benchmark: bool = False  # the evaluation setting: no background track, no sound bank, no random noises or asides
     aside_writer: str = "auto"
     behaviours: list | None = None  # row ids of behaviour/* rows, in order; None: the default library (noise, asides)
@@ -129,10 +137,11 @@ def user(ctx, cfg: UserConfig):
     rd = timing.pop("response_delay", None)
     if rd is not None and rd is not False:  # {} or true: the default ResponseDelay; a dict: its fields
         timing["response_delay"] = ResponseDelay(**(rd if isinstance(rd, dict) else {}))
+    per_task_bg = cfg.soundscape is not None and cfg.soundscape.get("background") == "scenario"
     try:
         tt = TurnTaking(**timing)
         beh = Behaviors(**cfg.behaviors) if cfg.behaviors or not cfg.benchmark else None
-        soundscape = Soundscape(**cfg.soundscape) if cfg.soundscape is not None else None
+        soundscape = Soundscape(**{**cfg.soundscape, **({"background": True} if per_task_bg else {})}) if cfg.soundscape is not None else None
     except TypeError as e:
         raise PluginError(f"role/user: {e}") from None
     if cfg.benchmark:
@@ -145,7 +154,10 @@ def user(ctx, cfg: UserConfig):
     behaviours = None if cfg.behaviours is None else [ctx[rid] for rid in cfg.behaviours]
 
     def make(ep) -> UserSim:
+        scape = soundscape
+        if per_task_bg:  # a background track only for tasks that define one
+            scape = Soundscape(**{**cfg.soundscape, "background": ep is not None and "background" in ep.task.scenario})
         return UserSim(source(ep) if is_factory(source) else source, voice=voice, timing=tt, interrupt=listener, stream=cfg.stream,
-                       agent_stream=cfg.listens_to, behaviors=beh if beh is not None else Behaviors(), soundscape=soundscape,
+                       agent_stream=cfg.listens_to, behaviors=beh if beh is not None else Behaviors(), soundscape=scape,
                        aside_writer=cfg.aside_writer, behaviours=behaviours)
     return make

@@ -240,6 +240,20 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    validity and timing tables in `interaction_gym.benchmarks.reports`). What stays in the example scripts is the
    command-line surface and the `prepare` / `run` loops they always had.
 
+   | `examples/sop_calls.py` on main | now | checked by |
+   |---|---|---|
+   | the SOPs and scenarios defined in the script (`validate(...)`, `SCENARIOS`), `make_task` | `interaction_gym/data/sop_calls.json`; `sop_task.scenarios()` / `task_of()`; the script loads the same file | `test_sop`, `test_plugins_sop` |
+   | `benchmark_user(LLMSource(llm), Voice(Cached(tts), voices=QWEN3_TTS_VOICES, clone=clone), interrupt=LLMInterrupt(llm), TurnTaking(response_delay=ResponseDelay()), Soundscape(background="background" in sc))` | `role/user` with `source/llm`, `listener`, `voice.voices: qwen3`, `soundscape: {background: scenario}`, `benchmark: true`; `backend/tts` `cached` | the episode equals the script's frame for frame |
+   | `AgentSpec(chunk_ms=--chunk-ms (1000), audio, sr=24000)`, `Env(max_ms=sc.get("max_ms", 180000))` | row `controlled`; `task/sop_calls.prepare` sets `ep.env.max_ms` | test |
+   | `session.instructions = sop_task.agent_instructions(task, --format)` | `agent/vllm_omni` `instructions_by_task: interaction_gym.sop_task:agent_instructions`, `instructions_args: {fmt}` (also on `openai_realtime`, `cascaded`) | the rendered text equals |
+   | `meta.policy = sop_task.policy(task, fmt)`, `verifier=sop_task.VERIFIER` | `task/sop_calls.prepare` (`ep.meta`, `ep.verifier`) | test |
+   | `score()`: `sop_task.judge` → `eval.reward`, `meta.sop_judge`, kept on error | `scorer/sop_judge` (an async scorer writing into the episode) | test |
+   | `notes.json`, `judge.json`, `qa.json`, `export_run` pages, `agent_traces.jsonl` | `sink/sop_pages`, `sink/agent_traces` | `ig run` writes them |
+   | `--rejudge` | `report/sop_rejudge` (`ig report sop_calls`) | test: the rewards change with the judge |
+   | judge LLM `OpenAIChat(JUDGE_URL, timeout=900, max_tokens=16000, temperature=0, chat_template_kwargs=...)` | row `judge_llm` (`${IG_JUDGE_URL:-${IG_LLM_URL:-...}}`: a default may hold another reference) | dump-config |
+   | `--only`, `--format`, `--audio-out`, `--parallel`, `--seeds` | `--set tasks.only=[...]`, `--set tasks.format=list`, `--set agent.audio_out=true`, `--set driver.concurrency=N`, `--seeds` | — |
+   | episode ids `<name>-s<seed>` | `<name>/s<seed>` (the driver's form; nothing reads the old one) | — |
+
    Found by the parity tests so far: `response_delay: {}` dropped as falsy; the kernel deals each node its rng in
    the order nodes are given, so a bundle must keep the scripts' node order (`{"user", "tools"}`) — rows now keep
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes
