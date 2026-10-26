@@ -89,7 +89,10 @@ def walk(a, b, path, out, floats, added=None):
     if isinstance(a, dict) and isinstance(b, dict):
         for k in sorted(set(a) | set(b)):
             p = f"{path}.{k}" if path else k
-            if k not in a and k in b and p in ADDED:
+            if added is not None and any(p == d or p.startswith(d + ".") for d in DESCRIPTIVE):
+                if a.get(k) != b.get(k):
+                    added.append((p, a.get(k, "<absent>"), b.get(k, "<absent>")))
+            elif k not in a and k in b and p in ADDED:
                 (added if added is not None else out).append((p, "<absent>", b[k]))
             elif k not in a or k not in b:
                 out.append((p, a.get(k, "<absent>"), b.get(k, "<absent>")))
