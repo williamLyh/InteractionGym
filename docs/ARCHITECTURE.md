@@ -300,6 +300,31 @@ Each step's acceptance is: with a fixed seed, the trajectories before and after 
    their layer order through dump and reload (the build order is only for requirements). A kernel that seeded nodes
    by name instead would remove this dependence; it would change every existing trajectory, so it waits for a format
    version bump.
+
+   **Found by the parity runs on real servers** (2026-10-26, Isambard, one GH200 node with Qwen3.8-27B, MiniCPM-o 4.5
+   duplex, Qwen3-TTS ×2 and Qwen3-ASR; `tools/parity/`: the `main` script of every benchmark recorded through a
+   proxy, the bundle replayed against the recording, every field compared — the method is in
+   [tools/parity/README.md](../tools/parity/README.md)). All twelve stages (`suite_default`, `suite_chat`, `sop`,
+   `audiomc`, `audiomc_cascaded`, `fdb2`, `fdb2_cascaded`, `fdb3`, `fdb3_duplex`, `fdb_baseline`, `easy_turn`,
+   `humdial`; 3 tasks each, both arms, judges included) end **IDENTICAL**: 0 HTTP misses, 0 WebSocket misses, every
+   episode, agent trace, report row and per-sample verdict equal; the proxy replayed 1,137 HTTP answers and 54
+   duplex sessions. What the runs caught and what changed:
+   - `meta.agent.name` was the agent row id (`agent`); the scripts recorded the adapter's own name (`MiniCPM-o 4.5`,
+     `cascaded ASR-LLM-TTS`) or their `--agent` label → `Run.agent_label` (the row's `name`, else the adapter's own
+     name, else the row id) is `meta.agent.name`, `meta.agent_name`, `meta.agent_base`, the A/B run folder and the
+     reports' default tag; the bundles label their agents as the scripts did (`minicpmo`, `cascaded`,
+     `cascaded-official`, …).
+   - The `audiomc` and `fdb2` judges were unseeded; the scripts' were `llm(0, 0.0, …)` → `seed: 0` on the judge rows
+     (144 judge requests per stage would otherwise never match). The `fdb3` judge had `temperature: 0.0` the script
+     never set → the server's defaults, as the script.
+   - Episode-seeded backends (`seed: episode`) described themselves as `"seed": "episode"`; the scripts' per-episode
+     clients recorded the seed value → the record and scorers now run inside the episode context and `meta.*.llm`
+     carries the seed the calls carried (`clients.describe` honours a wrapper's own `describe`).
+   - The cascaded bundles inherited the duplex warm-up (one throw-away episode) → 21 model calls the scripts never
+     made; the driver warms up only agents with a server url, as the scripts did.
+   - Not differences but worth knowing: report rows are written in completion order (concurrency decides it), the
+     scripts' `meta.task.scenario._agent` stash and the bundles' extra metadata (`meta.config`, `meta.roles`, …)
+     are the only fields that differ by design, and measured latencies (`asr_wall_ms` …) are wall-clock.
 3. **Role table and expectation table** — the table is done ([ROLES.md](ROLES.md)): `turns[].role` is a role name
    (the stream's first segment; `policy.*` stays `agent`), `meta.roles` / `meta.controlled` are recorded, and every
    reader (`eval.scores` / `duplex`, `interaction`, `turn_validity`, the SOP transcript, the viewer) judges relative

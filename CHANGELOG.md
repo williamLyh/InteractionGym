@@ -50,6 +50,10 @@
   `instructions_vars` (a prompt template filled per task: the caller's domain), `scorer/fdb3_quick` (the runner's
   `eval.benchmark`). Rows keep their layer order through `--dump-config` and the A/B arms: the kernel deals each node
   its rng in the order nodes are given, so the order is part of the configuration.
+- **Parity runs on real servers** (`tools/parity/`): a record / replay proxy for the model servers, an episode
+  comparer and a stage runner; every benchmark's `main` script and its bundle ran on one GH200 node (Qwen3.8-27B,
+  MiniCPM-o 4.5 duplex, Qwen3-TTS, Qwen3-ASR) and ended identical in every field — docs/ARCHITECTURE.md §8 lists
+  what the runs caught: the agent's label (`Run.agent_label`), the seeded judges, the described seed, the warm-up.
 - **τ-bench and the OpenAI Realtime demo as bundles** (`ig run tau`, `ig run openai_realtime`): `examples/tau_mock.py`
   as a composition — `task/tau`, `tool/tau` (the domain's tools on `node/tool_world`: the tool seam with an external
   provider), `agent/tau_oracle`, `scorer/tau` (the official reward → `eval.reward`); and the all-hosted demo
