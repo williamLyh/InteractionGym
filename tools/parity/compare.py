@@ -196,7 +196,8 @@ def main(argv=None) -> int:
     if a.json:
         def keyed(x):  # dict keys that are episode ids: the two naming schemes unified
             if isinstance(x, dict):
-                return {(norm_id(k) if isinstance(k, str) and re.search(r"[-/]s\d+(/[A-Za-z]+)?$|^[a-z]+-v?\d", k) else k): keyed(v) for k, v in x.items()}
+                ids = any(isinstance(k, str) and re.search(r"/s\d+(/[A-Za-z]+)?$", k) for k in x)  # a dict keyed by episode ids on at least one side
+                return {(norm_id(k) if ids and isinstance(k, str) else k): keyed(v) for k, v in x.items()}
             if isinstance(x, list):
                 xs = [keyed(v) for v in x]
                 if xs and all(isinstance(v, dict) and isinstance(v.get("id"), str) for v in xs):  # rows per episode: by id, not by completion order

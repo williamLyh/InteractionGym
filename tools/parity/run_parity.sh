@@ -126,7 +126,7 @@ fdb3_cmp() { for arm in A B; do cmp_files "$1/cascaded-official/$arm/episodes.js
 
 fdb3_duplex_old() { old examples/fdb3_ab.py run --data "$IG_FDB3_DATA" --out "$1" --agent minicpmo --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb3_ab.py report --out "$1" --agent minicpmo; }
 fdb3_duplex_new() { new "$IG" run fdb3_duplex --out "$1" --limit $N --seeds "$SEEDS" --set driver.concurrency=3 && new "$IG" report fdb3_duplex --out "$1"; }
-fdb3_duplex_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "$2/minicpmo/$arm/episodes.jsonl" "episodes_$arm"; cmp_files "$1/minicpmo/$arm/agent_traces.jsonl" "$2/minicpmo/$arm/agent_traces.jsonl" "traces_$arm"; done; cmp_files "$1/rows.json" "$2/rows.json" rows --json; }
+fdb3_duplex_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "$2/minicpmo/$arm/episodes.jsonl" "episodes_$arm"; cmp_files "$1/minicpmo/$arm/agent_traces.jsonl" "$2/minicpmo/$arm/agent_traces.jsonl" "traces_$arm"; done; cmp_files "$1/minicpmo/rows.json" "$2/minicpmo/rows.json" rows --json; }
 
 # FD-Bench v1.0 / v1.5, Easy Turn, HumDial: a few samples per subset, the judges in the report
 FDB_SUBSETS=${FDB_SUBSETS:-v1.0/synthetic_pause_handling,v1.5/user_backchannel}
