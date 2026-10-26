@@ -132,15 +132,17 @@ fdb3_duplex_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.json
 FDB_SUBSETS=${FDB_SUBSETS:-v1.0/synthetic_pause_handling,v1.5/user_backchannel}
 fdb_baseline_old() { old examples/fdb_baseline.py run --data "$IG_FDB_DATA" --out "$1" --bench fdb --subsets "$FDB_SUBSETS" --limit $N --agent-urls "$IG_AGENT_URL" --sessions 3 && old examples/fdb_baseline.py report --data "$IG_FDB_DATA" --out "$1" --bench fdb --judge-url "$IG_LLM_URL" --judge-model "$IG_LLM_MODEL"; }
 fdb_baseline_new() { new "$IG" run fdb_baseline --out "$1" --set "tasks.subsets=[$FDB_SUBSETS]" --set tasks.limit=$N --set driver.concurrency=3 && new "$IG" report fdb_baseline --out "$1"; }
-fdb_baseline_cmp() { for s in ${FDB_SUBSETS//,/ }; do cmp_files "$1/$s/episodes.jsonl" "$2/$s/episodes.jsonl" "episodes_$s"; cmp_files "$1/$s/agent_traces.jsonl" "$2/$s/agent_traces.jsonl" "traces_$s"; cmp_files "$1/$s/per_sample.json" "$2/$s/per_sample.json" "per_sample_$s" --json; done; cmp_files "$1/summary.json" "$2/summary.json" summary --json; }
+# every episodes.jsonl / agent_traces.jsonl / per_sample.json the old run wrote, at the same relative path in the new run
+grouped_cmp() { local rel; for rel in $(cd "$1" && find . \( -name episodes.jsonl -o -name agent_traces.jsonl -o -name per_sample.json \) | sed "s#^\./##" | sort); do case $rel in *.json) cmp_files "$1/$rel" "$2/$rel" "$rel" --json;; *) cmp_files "$1/$rel" "$2/$rel" "$rel";; esac; done; cmp_files "$1/summary.json" "$2/summary.json" summary --json; }
+fdb_baseline_cmp() { grouped_cmp "$@"; }
 
 easy_turn_old() { old examples/fdb_baseline.py run --data "$IG_EASY_TURN_DATA" --out "$1" --bench easy_turn --limit $N --agent-urls "$IG_AGENT_URL" --sessions 3 && old examples/fdb_baseline.py report --data "$IG_EASY_TURN_DATA" --out "$1" --bench easy_turn; }
 easy_turn_new() { new "$IG" run fdb_baseline --out "$1" --set tasks.bench=easy_turn --set "tasks.data=$IG_EASY_TURN_DATA" --set tasks.limit=$N --set driver.concurrency=3 && new "$IG" report fdb_baseline --out "$1" --set tasks.bench=easy_turn --set "tasks.data=$IG_EASY_TURN_DATA"; }
-easy_turn_cmp() { for s in $(ls "$1" | grep -v summary); do cmp_files "$1/$s/episodes.jsonl" "$2/$s/episodes.jsonl" "episodes_$s"; done; cmp_files "$1/summary.json" "$2/summary.json" summary --json; }
+easy_turn_cmp() { grouped_cmp "$@"; }
 
 humdial_old() { old examples/fdb_baseline.py run --data "$IG_HUMDIAL_DATA" --out "$1" --bench humdial --subsets humdial/en/ask,humdial/en/pause --limit $N --agent-urls "$IG_AGENT_URL" --sessions 3 && old examples/fdb_baseline.py report --data "$IG_HUMDIAL_DATA" --out "$1" --bench humdial --judge-url "$IG_LLM_URL" --judge-model "$IG_LLM_MODEL"; }
 humdial_new() { new "$IG" run fdb_baseline --out "$1" --set tasks.bench=humdial --set "tasks.data=$IG_HUMDIAL_DATA" --set "tasks.subsets=[humdial/en/ask,humdial/en/pause]" --set tasks.limit=$N --set driver.concurrency=3 && new "$IG" report fdb_baseline --out "$1" --set tasks.bench=humdial --set "tasks.data=$IG_HUMDIAL_DATA"; }
-humdial_cmp() { for s in humdial/en/ask humdial/en/pause; do cmp_files "$1/$s/episodes.jsonl" "$2/$s/episodes.jsonl" "episodes_$s"; done; cmp_files "$1/summary.json" "$2/summary.json" summary --json; }
+humdial_cmp() { grouped_cmp "$@"; }
 
 ALL="suite_default suite_chat sop audiomc audiomc_cascaded fdb2 fdb2_cascaded fdb3 fdb3_duplex fdb_baseline easy_turn humdial"
 [ $# -eq 0 ] && { echo "usage: $0 all | <stage>...  (stages: $ALL)"; exit 2; }
