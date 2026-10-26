@@ -4,6 +4,7 @@
 
 - id: agent
   config:
+    name: minicpmo-confirm
     preset: minicpmo
     url: "${IG_AGENT_URL:-ws://127.0.0.1:8010/v1/realtime?duplex=1}"
     audio_out: false

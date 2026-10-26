@@ -62,6 +62,7 @@
     - id: agent
       plugin: agent/cascaded
       config:
+        name: cascaded-official
         asr: asr
         llm: agent_llm
         tts: tts

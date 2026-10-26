@@ -166,7 +166,7 @@ def test_run_layout_and_meta_match_the_script_and_the_run_needs_scripts(tmp_path
     assert sorted({e["meta"]["task_id"] for e in eps["A"]}) == [t.id for t in fdb2.load(data)][::2]
     m = eps["B"][0]["meta"]
     assert m["run_id"] == "fdb2-ab-minicpmo" and m["condition"] == "B" and m["agent_name"] == "minicpmo" and m["seed"] in (0, 1)
-    assert m["max_ms"] == 120000 and m["closing"] is False and m["examiner_log"] and m["agent"]["name"] == "agent"
+    assert m["max_ms"] == 120000 and m["closing"] is False and m["examiner_log"] and m["agent"]["name"] == "CannedAgent"
     assert eps["A"][0]["meta"]["max_ms"] == 120000 and "examiner_log" not in eps["A"][0]["meta"]
     assert all(e["meta"]["duration_ms"] <= 120000 for e in eps["A"] + eps["B"])
     # the script's report reads these rows (judge replaced by a fake that returns one parseable judgement)

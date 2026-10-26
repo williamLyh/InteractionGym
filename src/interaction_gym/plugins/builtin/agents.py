@@ -83,6 +83,7 @@ def vllm_omni(ctx, kw: dict):
 
     spec, kw = ctx["controlled"].spec, dict(kw)
     url = kw.pop("url", "ws://127.0.0.1:8010/v1/realtime?duplex=1")
+    label = kw.pop("name", None)  # meta.agent.name (default: what the adapter calls itself)
     preset = kw.pop("preset", None)
     if preset:
         kw = {**duplex_model(preset), **kw}
@@ -93,7 +94,7 @@ def vllm_omni(ctx, kw: dict):
         text = instructions_for(instructions, variables, ep.task, by_task, args)
         session = {**kw.get("session", {}), **({"instructions": text} if text is not None else {})}
         return VllmOmniDuplexAgent(spec, url, **{**kw, **({"session": session} if session else {})})
-    return Factory(make, url=url, audio_out=kw.get("audio_out", True), preset=preset)
+    return Factory(make, url=url, audio_out=kw.get("audio_out", True), preset=preset, name=label)
 
 
 @plugin("agent", "openai_realtime", requires=("controlled",))
@@ -102,14 +103,14 @@ def openai_realtime(ctx, kw: dict):
     from ...agents.openai_realtime import OpenAIRealtimeAgent
 
     spec, kw = ctx["controlled"].spec, dict(kw)
-    model = kw.pop("model", "gpt-realtime-mini")
+    model, label = kw.pop("model", "gpt-realtime-mini"), kw.pop("name", None)
     instructions, variables = kw.pop("instructions", None), kw.pop("instructions_vars", None)
     by_task, args = kw.pop("instructions_by_task", None), kw.pop("instructions_args", None)
 
     def make(ep: EpisodeContext):
         text = instructions_for(instructions, variables, ep.task, by_task, args)
         return OpenAIRealtimeAgent(spec, model, **{**kw, **({"instructions": text} if text is not None else {})})
-    return Factory(make)
+    return Factory(make, name=label)
 
 
 @plugin("agent", "cascaded", requires=("controlled",), refs=("asr", "llm", "tts"))
@@ -120,6 +121,7 @@ def cascaded(ctx, kw: dict):
     from ...agents.cascaded import CascadedAgent, Endpointing, LatencyModel
 
     spec, kw = ctx["controlled"].spec, dict(kw)
+    label = kw.pop("name", None)  # meta.agent.name (default: "cascaded ASR-LLM-TTS", what the adapter calls itself)
     asr, llm, tts = (ctx[kw.pop(k)] for k in ("asr", "llm", "tts"))
     if isinstance(kw.get("endpointing"), dict):
         kw["endpointing"] = Endpointing(**kw["endpointing"])
@@ -131,4 +133,4 @@ def cascaded(ctx, kw: dict):
     def make(ep: EpisodeContext):
         text = instructions_for(instructions, variables, ep.task, by_task, args)
         return CascadedAgent(spec, asr, llm, tts, seed=ep.seed, cache=ep.cache, **{**kw, **({"instructions": text} if text is not None else {})})
-    return Factory(make)
+    return Factory(make, name=label)

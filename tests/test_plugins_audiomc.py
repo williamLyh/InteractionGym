@@ -116,7 +116,7 @@ def test_run_layout_and_meta_match_the_script_and_its_report_reads_them(tmp_path
     # every field the script's `report` reads, and the ones it wrote
     assert m["episode_id"].startswith("minicpmo/c") and m["episode_id"].endswith("/B") and m["run_id"] == "audiomc-ab"
     assert m["condition"] == "B" and m["agent_name"] == "minicpmo" and m["task_id"] in ("c0", "c1") and m["seed"] in (0, 1)
-    assert m["agent"]["name"] == "agent" and m["controlled"] == "agent" and "wall_s" in m and m["config"]["digest"]
+    assert m["agent"]["name"] == "CannedAgent" and m["controlled"] == "agent" and "wall_s" in m and m["config"]["digest"]
     assert {"duration_ms", "end_reason", "user", "task"} <= set(m)
     # the script's report on this output: judge replaced by a fake that passes every rubric item
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
@@ -202,7 +202,7 @@ def test_retries_then_gives_up_and_output_mode_is_checked(tmp_path, capsys):
     eps = asyncio.run(run.driver.run(run, out=tmp_path / "o", seeds=[0], limit=1, log=lambda *a, **k: logs.append(a[0])))
     assert len(eps) == 1 and n["calls"] == 3 and sum("attempt" in x for x in logs) == 2
     first = json.loads((tmp_path / "o" / "agent" / "A" / "episodes.jsonl").read_text().splitlines()[0])["meta"]["agent"]
-    assert first["audio_out"] is False and first["name"] == "agent"  # the factory's declaration reaches meta.agent
+    assert first["audio_out"] is False and first["name"] == "CannedAgent"  # the factory's declaration and the adapter's own name reach meta.agent (the swapped-in canned row has no name)
     # the file now holds text-only episodes: an audio-output agent must not append to it
     comp2 = bundle(data, "- id: agent\n  plugin: agent/flaky\n  config: {audio_out: true}\n- id: driver\n  config: {concurrency: 1, media: false, arms: {A: []}}\n")
     run2 = compose(comp2.resolve())

@@ -4,6 +4,7 @@
 
 - id: agent
   config:
+    name: cascaded-natural
     asr: asr
     llm: agent_llm
     tts: tts

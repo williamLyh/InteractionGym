@@ -169,7 +169,9 @@ class EvalDriver:
                     if run_id:
                         record["meta"]["run_id"] = run_id
                     declared = {k: getattr(r.agent_factory, k) for k in ("audio_out",) if hasattr(r.agent_factory, k)}
-                    record["meta"]["agent"] = {**declared, **record["meta"].get("agent", {}), "name": r.agent_id or ""}
+                    own = record["meta"].get("agent", {})  # what the adapter says of itself (traj.describe_agent)
+                    name = getattr(r.agent_factory, "name", None) or own.get("name") or r.agent_id or ""
+                    record["meta"]["agent"] = {**declared, **own, "name": name}
                     record["meta"]["agent_name"] = tag or r.agent_id or ""
                     for sink in r.sinks.values():
                         sink.write(record, env, agent)

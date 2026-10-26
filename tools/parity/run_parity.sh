@@ -44,8 +44,10 @@ old() { (cd "$OLD" && PYTHONPATH=src:. "$PY_OLD" "$@"); }
 new() { (cd "$NEW" && "$@"); }
 
 # compare FILE_OLD FILE_NEW NAME [--json]  -> appends to the stage's verdict
+EXPECT_ONLY_REF=""   # a stage sets a regex of join keys the script makes and the bundle does not
 cmp_files() {
   local a=$1 b=$2 name=$3; shift 3
+  [ -n "$EXPECT_ONLY_REF" ] && [ "${1:-}" != "--json" ] && set -- "$@" --expect-only-ref "$EXPECT_ONLY_REF"
   if [ ! -s "$a" ] || [ ! -s "$b" ]; then echo "$name: MISSING ($([ -s "$a" ] || echo old) $([ -s "$b" ] || echo new))" >> "$V"; return; fi
   local line; line=$("$PY_NEW" "$HERE/compare.py" "$a" "$b" "$@" --out "$S/compare_${name//\//_}.json" 2>&1 | head -1)
   echo "$name: $line" >> "$V"
@@ -55,11 +57,14 @@ stage() {
   local name=$1; S=$PARITY_OUT/$name; V=$S/verdict.txt
   if [ -s "$V" ] && [ -z "${FORCE:-}" ]; then log "$name: done ($(head -1 "$V"))"; return; fi
   mkdir -p "$S"; : > "$V.partial"
-  log "== $name: old (record)"
-  rm -rf "$S/store" "$S/old"; mkdir -p "$S/old"
-  proxy_start record "$S/store" "$S/proxy_record.log"
-  ( ${name}_old "$S/old" ) > "$S/old.log" 2>&1; local rc_old=$?
-  proxy_stop
+  local rc_old=reused
+  if [ -z "${REUSE_OLD:-}" ] || [ ! -d "$S/store/http" ]; then
+    log "== $name: old (record)"
+    rm -rf "$S/store" "$S/old"; mkdir -p "$S/old"
+    proxy_start record "$S/store" "$S/proxy_record.log"
+    ( ${name}_old "$S/old" ) > "$S/old.log" 2>&1; rc_old=$?
+    proxy_stop
+  fi
   log "== $name: new (replay)"
   rm -rf "$S/new"; mkdir -p "$S/new"
   proxy_start replay "$S/store" "$S/proxy_replay.log"
@@ -82,7 +87,7 @@ stage() {
 # MiniCPM-o suite, default set (the script's realtime / text / offline-replay takes have no bundle: expected only-in-old)
 suite_default_old() { old examples/minicpmo_suite.py --out "$1" --seeds $SEEDS; }
 suite_default_new() { new "$IG" run minicpmo_suite --out "$1" --seeds "$SEEDS"; }
-suite_default_cmp() { cmp_files "$1/episodes.jsonl" "$2/episodes.jsonl" episodes; cmp_files "$1/agent_traces.jsonl" "$2/agent_traces.jsonl" traces; }
+suite_default_cmp() { EXPECT_ONLY_REF="realtime|offline-replay"; cmp_files "$1/episodes.jsonl" "$2/episodes.jsonl" episodes; cmp_files "$1/agent_traces.jsonl" "$2/agent_traces.jsonl" traces; }
 
 CHAT_ONLY=${CHAT_ONLY:-chat-hiking-sam know-sky-zoe zh-know-moon-chen}
 suite_chat_old() { old examples/minicpmo_suite.py --out "$1" --seeds $SEEDS --set chat --only $CHAT_ONLY; }

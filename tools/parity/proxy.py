@@ -174,14 +174,24 @@ class Store:
             self.stats["ws"]["recorded"] += 1
             return SessionWriter(self.root / "ws" / f"{n}.jsonl")
 
-    def claim_session(self, first_hash: str) -> int | None:
+    def candidates(self, hashes: list[str], exclude: int | None = None) -> list[int]:
+        """Recorded sessions not yet taken whose client messages start with ``hashes`` (lazy binding: sessions that
+        start alike — the same ``session.update`` — are told apart by their later messages)."""
         with self.lock:
+            out = []
             for i, s in enumerate(self.ws_sessions):
-                if i not in self.ws_taken and s and s[0].get("h") == first_hash:
-                    self.ws_taken.add(i)
-                    self.stats["ws"]["sessions"] += 1
-                    return i
-        return None
+                if i in self.ws_taken and i != exclude:
+                    continue
+                cl = [e["h"] for e in s if "c" in e]
+                if len(cl) >= len(hashes) and cl[:len(hashes)] == hashes:
+                    out.append(i)
+            return out
+
+    def take_session(self, i: int) -> None:
+        with self.lock:
+            if i not in self.ws_taken:
+                self.ws_taken.add(i)
+                self.stats["ws"]["sessions"] += 1
 
     def summary(self) -> dict:
         return {"mode": self.mode, **self.stats, "ws_unused_sessions": len(self.ws_sessions) - len(self.ws_taken) if self.mode == "replay" else None}
@@ -311,34 +321,47 @@ async def ws_serve(port: int, upstream: str, store: Store, log):
             w.close()
 
     async def replay(client):
-        session, i = None, 0  # the claimed recorded session and the index of the next client message in it
-        async for m in client:
-            h = ws_hash(m)
-            if session is None:
-                idx = store.claim_session(h)
-                if idx is None:
-                    d = store.miss("ws", "connect", ws_picture(m), "no unused recorded session starts with this message")
-                    log(f"WS MISS at connect\n{pretty(ws_picture(m))[:2000]}")
-                    await client.send(json.dumps({"type": "error", "error": {"code": "parity_mismatch", "message": "no recorded session for this first message"}}))
+        """Each client message narrows the recorded sessions whose client messages match so far; the server messages
+        that followed the matching message in the chosen session are sent back. A session is taken for good at
+        its end (so two sessions with the same prefix can still be told apart while both run)."""
+        hashes, chosen = [], None
+        try:
+            async for m in client:
+                h = ws_hash(m)
+                hashes.append(h)
+                cands = store.candidates(hashes, exclude=chosen)
+                if not cands:
+                    exp = None
+                    prev = store.candidates(hashes[:-1], exclude=chosen) if len(hashes) > 1 else []
+                    if prev:  # the nearest: the previous candidate's next client message
+                        s0 = store.ws_sessions[chosen if chosen in prev else prev[0]]
+                        cl = [e["c"] for e in s0 if "c" in e]
+                        exp = cl[len(hashes) - 1] if len(cl) >= len(hashes) else None
+                    d = diff(exp, ws_picture(m))
+                    store.miss("ws", "message", ws_picture(m), d if exp is not None else "no recorded session continues this way")
+                    log(f"WS MISS at client message {len(hashes) - 1} (candidates before it: {len(prev)})\n{d}")
+                    await client.send(json.dumps({"type": "error", "error": {"code": "parity_mismatch",
+                                                   "message": f"client message {len(hashes) - 1} differs from every recorded session"}}))
                     await client.close()
                     return
-                session = store.ws_sessions[idx]
-            # the recorded client message i must be this one; then its server messages follow
-            while i < len(session) and "c" not in session[i]:
+                chosen = chosen if chosen in cands else cands[0]
+                session = store.ws_sessions[chosen]
+                # the server messages after the (len(hashes)-1)-th client message of the chosen session
+                k, i = -1, 0
+                while i < len(session):
+                    if "c" in session[i]:
+                        k += 1
+                        if k == len(hashes) - 1:
+                            break
+                    i += 1
                 i += 1
-            if i >= len(session) or session[i]["h"] != h:
-                exp = session[i]["c"] if i < len(session) else None
-                d = diff(exp, ws_picture(m))
-                store.miss("ws", "message", ws_picture(m), d)
-                log(f"WS MISS at client message {i}\n{d}")
-                await client.send(json.dumps({"type": "error", "error": {"code": "parity_mismatch", "message": f"client message {i} differs from the recording"}}))
-                await client.close()
-                return
-            i += 1
-            while i < len(session) and "s" in session[i]:
-                s = session[i]["s"]
-                await client.send(base64.b64decode(s["__bytes__"]) if isinstance(s, dict) and "__bytes__" in s else s)
-                i += 1
+                while i < len(session) and "s" in session[i]:
+                    sm = session[i]["s"]
+                    await client.send(base64.b64decode(sm["__bytes__"]) if isinstance(sm, dict) and "__bytes__" in sm else sm)
+                    i += 1
+        finally:
+            if chosen is not None:
+                store.take_session(chosen)
         await client.close()
 
     handler = record if store.mode == "record" else replay

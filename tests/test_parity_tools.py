@@ -129,7 +129,9 @@ def test_ws_record_then_replay(tmp_path):
 
         msgs = [{"type": "session.update", "session": {"model": "x"}}, {"type": "input_audio_buffer.append", "audio": "AAAA", "event_id": "in1.0"},
                 {"type": "input_audio_buffer.append", "audio": "BBBB", "event_id": "in2.0"}]
+        msgs2 = [msgs[0], {"type": "input_audio_buffer.append", "audio": "CCCC", "event_id": "in1.0"}]  # the same start, another audio
         got_rec = await client(p_rec, msgs)
+        got_rec2 = await client(p_rec, msgs2)
         srv.close()
         await srv.wait_closed()
         rec.flush()
@@ -137,6 +139,7 @@ def test_ws_record_then_replay(tmp_path):
         rep = proxy.Store(store, "replay")
         p_rep = _port()
         srv2 = await proxy.ws_serve(p_rep, "ws://127.0.0.1:1", rep, lambda m: None)
+        assert await client(p_rep, msgs2) == got_rec2  # the other order: the first message alone does not pick the session
         assert await client(p_rep, msgs) == got_rec
         # a diverging client message is a miss: an error event, then the connection closes
         async with websockets.connect(f"ws://127.0.0.1:{p_rep}/v1/realtime?duplex=1") as ws:
@@ -146,7 +149,7 @@ def test_ws_record_then_replay(tmp_path):
         srv2.close()
         await srv2.wait_closed()
         rep.flush()
-        assert rep.summary()["ws"] == {"sessions": 1, "miss": 1, "recorded": 0}
+        assert rep.summary()["ws"] == {"sessions": 2, "miss": 1, "recorded": 0}
         up.close()
         await up.wait_closed()
 

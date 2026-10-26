@@ -28,13 +28,34 @@ IGNORE = {  # dotted paths (prefix match) that two runs cannot share
 }
 IGNORE_KEYS = {"wall_s", "wall_ms", "elapsed_s", "started_at", "finished_at", "created_at", "run_id"}  # anywhere
 PATH_KEYS = {"wav", "path", "file", "audio_path", "media"}  # values that are file paths: compared by basename, media by hash
+# fields the plugin runs record and the scripts never did (added metadata, not a behavioural difference): present in
+# NEW and absent in REF is reported apart as "added"; any other disagreement on them is a difference
+DESCRIPTIVE = {"meta.agent"}  # how a run describes its agent (each script had its own dict): reported apart, not a verdict
+ADDED = {"meta.config", "meta.roles", "meta.controlled", "meta.standards", "meta.agent_events", "meta.agent_name", "meta.task_id",
+         "meta.user.behaviours", "meta.task.scenario.agent_instructions", "meta.nodes", "eval.interaction", "meta.condition",
+         "meta.agent_base", "meta.group", "meta.clock"}
+
+
+def norm_id(eid: str) -> str:
+    """``name``, ``name-s3``, ``name/s3``, ``tag/name/s3/A`` → ``name|s<seed>|<arm>`` (the schemes of the scripts and of
+    ``ig run`` unified; no seed means seed 0)."""
+    parts = eid.split("/")
+    arm = ""
+    if len(parts) >= 3 and re.fullmatch(r"s\d+", parts[-2]):
+        arm, parts = parts[-1], parts[:-1]
+    eid = "/".join(parts)
+    m = re.search(r"[-/]s(\d+)$", eid)
+    seed = m.group(1) if m else "0"
+    name = eid[:m.start()] if m else eid
+    return f"{name.split('/')[-1] if len(parts) >= 2 and not m else name}|s{seed}|{arm}"
 
 
 def join_key(ep: dict) -> str:
     if "meta" not in ep:  # an agent trace or another per-episode record: by its episode id, naming schemes unified
-        eid = str(ep.get("episode_id") or ep.get("id") or "")
-        return re.sub(r"-s(\d+)(?=/|$)", r"/s\1", eid)
+        return norm_id(str(ep.get("episode_id") or ep.get("id") or ""))
     m = ep.get("meta", {})
+    if m.get("episode_id"):
+        return norm_id(str(m["episode_id"]))
     task = (m.get("task") or {}).get("id") if isinstance(m.get("task"), dict) else m.get("task")
     arm = m.get("arm") or m.get("condition") or (m.get("ab") or {}).get("arm") or ""
     seed = m.get("seed")
@@ -57,22 +78,28 @@ def norm(x, path: str = ""):
     return x
 
 
-def walk(a, b, path, out, floats):
+def walk(a, b, path, out, floats, added=None):
     if any(path == p or path.startswith(p + ".") for p in IGNORE):
+        return
+    if added is not None and any(path == p or path.startswith(p + ".") for p in DESCRIPTIVE):
+        if a != b:
+            added.append((path, a, b))
         return
     if isinstance(a, dict) and isinstance(b, dict):
         for k in sorted(set(a) | set(b)):
             p = f"{path}.{k}" if path else k
-            if k not in a or k not in b:
+            if k not in a and k in b and p in ADDED:
+                (added if added is not None else out).append((p, "<absent>", b[k]))
+            elif k not in a or k not in b:
                 out.append((p, a.get(k, "<absent>"), b.get(k, "<absent>")))
             else:
-                walk(a[k], b[k], p, out, floats)
+                walk(a[k], b[k], p, out, floats, added)
         return
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             out.append((f"{path}.len", len(a), len(b)))
         for i, (x, y) in enumerate(zip(a, b)):
-            walk(x, y, f"{path}[{i}]", out, floats)
+            walk(x, y, f"{path}[{i}]", out, floats, added)
         return
     if isinstance(a, float) or isinstance(b, float):
         if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not (isinstance(a, bool) or isinstance(b, bool)):
@@ -118,14 +145,19 @@ def media_hashes(ep: dict, root: Path | None) -> dict[str, str]:
     return out
 
 
-def compare(ref: dict[str, dict], new: dict[str, dict], media_ref=None, media_new=None) -> dict:
+def compare(ref: dict[str, dict], new: dict[str, dict], media_ref=None, media_new=None, expect_only_ref: str | None = None) -> dict:
+    only_ref = sorted(set(ref) - set(new))
+    expected = [k for k in only_ref if expect_only_ref and re.search(expect_only_ref, k)]
     report = {"episodes": {"ref": len(ref), "new": len(new), "common": 0, "identical": 0, "differ": 0, "float_only": 0},
-              "only_ref": sorted(set(ref) - set(new)), "only_new": sorted(set(new) - set(ref)), "diffs": {}, "max_float_err": 0.0}
+              "only_ref": [k for k in only_ref if k not in expected], "only_ref_expected": expected,
+              "only_new": sorted(set(new) - set(ref)), "diffs": {}, "added": {}, "max_float_err": 0.0}
     for k in sorted(set(ref) & set(new)):
         report["episodes"]["common"] += 1
         a, b = norm(ref[k]), norm(new[k])
-        out, floats = [], []
-        walk(a, b, "", out, floats)
+        out, floats, added = [], [], []
+        walk(a, b, "", out, floats, added)
+        if added:
+            report["added"][k] = sorted({p for p, _, _ in added})
         if media_ref or media_new:
             ha, hb = media_hashes(ref[k], media_ref), media_hashes(new[k], media_new)
             for f in sorted(set(ha) | set(hb)):
@@ -155,6 +187,7 @@ def main(argv=None) -> int:
     ap.add_argument("--media-ref")
     ap.add_argument("--media-new")
     ap.add_argument("--out")
+    ap.add_argument("--expect-only-ref", help="regex of join keys the reference may have alone (runs the bundle does not make)")
     a = ap.parse_args(argv)
     if a.json:
         ra, rb = json.loads(Path(a.ref).read_text()), json.loads(Path(a.new).read_text())
@@ -169,12 +202,13 @@ def main(argv=None) -> int:
         for f in rep["fields"][:12]:
             print(f"    {f['path']}: {str(f['ref'])[:80]!r} -> {str(f['new'])[:80]!r}")
         return 0 if verdict == "IDENTICAL" else 1
-    rep = compare(load(a.ref), load(a.new), Path(a.media_ref) if a.media_ref else None, Path(a.media_new) if a.media_new else None)
+    rep = compare(load(a.ref), load(a.new), Path(a.media_ref) if a.media_ref else None, Path(a.media_new) if a.media_new else None, a.expect_only_ref)
     if a.out:
         Path(a.out).write_text(json.dumps(rep, indent=1, ensure_ascii=False, default=str))
     e = rep["episodes"]
     print(f"{rep['verdict']}: {e['identical']}/{e['common']} identical, {e['float_only']} float-only (max err {rep['max_float_err']:.3g}), "
-          f"{e['differ']} differ; only in ref {len(rep['only_ref'])}, only in new {len(rep['only_new'])}")
+          f"{e['differ']} differ; only in ref {len(rep['only_ref'])} (+{len(rep['only_ref_expected'])} expected), only in new {len(rep['only_new'])}; "
+          f"added-by-new fields in {len(rep['added'])} episodes")
     for k, d in list(rep["diffs"].items())[:5]:
         print(f"  {k}: {d['n']} fields differ")
         for f in d["fields"][:6]:
