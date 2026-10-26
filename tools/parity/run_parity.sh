@@ -103,7 +103,7 @@ audiomc_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "
 
 audiomc_cascaded_old() { local ids; ids=$(audiomc_ids); old examples/audiomc_ab.py run --data "$IG_AUDIOMC_DATA" --out "$1" --agent cascaded --seeds $SEEDS --ids "$ids" --concurrency 3 && old examples/audiomc_ab.py report --data "$IG_AUDIOMC_DATA" --out "$1" --agent cascaded; }
 audiomc_cascaded_new() { new "$IG" run audiomc_cascaded --out "$1" --seeds "$SEEDS" --ids "$(audiomc_ids)" --concurrency 3 && new "$IG" report audiomc_cascaded --out "$1"; }
-audiomc_cascaded_cmp() { for arm in A B; do cmp_files "$1/cascaded/$arm/episodes.jsonl" "$2/cascaded/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded/rows.json" "$2/cascaded/rows.json" rows --json; }
+audiomc_cascaded_cmp() { for arm in A B; do cmp_files "$1/cascaded/$arm/episodes.jsonl" "$2/agent/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded/rows.json" "$2/agent/rows.json" rows --json; }
 
 # FD-Bench v2: prepare (reference scripts from the LLM) + run (A: 120 s, B: closing rules) + report
 fdb2_old() { old examples/fdb2_ab.py prepare --data "$IG_FDB2_DATA" --out "$1" --limit $N --seeds $SEEDS && old examples/fdb2_ab.py run --data "$IG_FDB2_DATA" --out "$1" --agent minicpmo --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb2_ab.py report --data "$IG_FDB2_DATA" --out "$1" --agent minicpmo; }
@@ -112,16 +112,16 @@ fdb2_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "$2/
 
 fdb2_cascaded_old() { old examples/fdb2_ab.py prepare --data "$IG_FDB2_DATA" --out "$1" --limit $N --seeds $SEEDS && old examples/fdb2_ab.py run --data "$IG_FDB2_DATA" --out "$1" --agent cascaded --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb2_ab.py report --data "$IG_FDB2_DATA" --out "$1" --agent cascaded; }
 fdb2_cascaded_new() { new "$IG" prepare fdb2_cascaded --out "$1" --limit $N --seeds "$SEEDS" && new "$IG" run fdb2_cascaded --out "$1" --limit $N --seeds "$SEEDS" --concurrency 3 && new "$IG" report fdb2_cascaded --out "$1"; }
-fdb2_cascaded_cmp() { for arm in A B; do cmp_files "$1/cascaded/$arm/episodes.jsonl" "$2/cascaded/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded/rows.json" "$2/cascaded/rows.json" rows --json; }
+fdb2_cascaded_cmp() { for arm in A B; do cmp_files "$1/cascaded/$arm/episodes.jsonl" "$2/agent/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded/rows.json" "$2/agent/rows.json" rows --json; }
 
 # FD-Bench v3: A replay / B live, the official cascaded agent, then the duplex agent
-fdb3_old() { old examples/fdb3_ab.py run --data "$IG_FDB3_DATA" --out "$1" --agent cascaded-official --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb3_ab.py report --data "$IG_FDB3_DATA" --out "$1" --agent cascaded-official; }
+fdb3_old() { old examples/fdb3_ab.py run --data "$IG_FDB3_DATA" --out "$1" --agent cascaded-official --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb3_ab.py report --out "$1" --agent cascaded-official; }
 fdb3_new() { new "$IG" run fdb3 --out "$1" --limit $N --seeds "$SEEDS" --concurrency 3 && new "$IG" report fdb3 --out "$1"; }
-fdb3_cmp() { for arm in A B; do cmp_files "$1/cascaded-official/$arm/episodes.jsonl" "$2/cascaded-official/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded-official/rows.json" "$2/cascaded-official/rows.json" rows --json; }
+fdb3_cmp() { for arm in A B; do cmp_files "$1/cascaded-official/$arm/episodes.jsonl" "$2/agent/$arm/episodes.jsonl" "episodes_$arm"; done; cmp_files "$1/cascaded-official/rows.json" "$2/agent/rows.json" rows --json; }
 
-fdb3_duplex_old() { old examples/fdb3_ab.py run --data "$IG_FDB3_DATA" --out "$1" --agent minicpmo --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb3_ab.py report --data "$IG_FDB3_DATA" --out "$1" --agent minicpmo; }
+fdb3_duplex_old() { old examples/fdb3_ab.py run --data "$IG_FDB3_DATA" --out "$1" --agent minicpmo --limit $N --seeds $SEEDS --concurrency 3 && old examples/fdb3_ab.py report --out "$1" --agent minicpmo; }
 fdb3_duplex_new() { new "$IG" run fdb3_duplex --out "$1" --limit $N --seeds "$SEEDS" --concurrency 3 && new "$IG" report fdb3_duplex --out "$1"; }
-fdb3_duplex_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "$2/minicpmo/$arm/episodes.jsonl" "episodes_$arm"; cmp_files "$1/minicpmo/$arm/agent_traces.jsonl" "$2/minicpmo/$arm/agent_traces.jsonl" "traces_$arm"; done; cmp_files "$1/minicpmo/rows.json" "$2/minicpmo/rows.json" rows --json; }
+fdb3_duplex_cmp() { for arm in A B; do cmp_files "$1/minicpmo/$arm/episodes.jsonl" "$2/agent/$arm/episodes.jsonl" "episodes_$arm"; cmp_files "$1/minicpmo/$arm/agent_traces.jsonl" "$2/agent/$arm/agent_traces.jsonl" "traces_$arm"; done; cmp_files "$1/minicpmo/rows.json" "$2/agent/rows.json" rows --json; }
 
 # FD-Bench v1.0 / v1.5, Easy Turn, HumDial: a few samples per subset, the judges in the report
 FDB_SUBSETS=${FDB_SUBSETS:-v1.0/synthetic_pause_handling,v1.5/user_backchannel}
