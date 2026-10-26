@@ -32,8 +32,17 @@ from ..registry import CURRENT_EPISODE, EpisodeContext, PluginError, plugin
 
 
 async def run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, Env, object]:
+    """One episode: the env and agent of ``run`` on ``ep``, then the trajectory record and the scorers. The whole of it
+    runs with ``CURRENT_EPISODE`` set, so episode-seeded backends carry (and describe) the episode's seed."""
     token = CURRENT_EPISODE.set(ep)
     try:
+        return await _run_episode(run, ep, media)
+    finally:
+        CURRENT_EPISODE.reset(token)
+
+
+async def _run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, Env, object]:
+    if True:
         ep.task = run.prepare_task(ep.task, ep)  # the episode's view of the task (its arm's turns, overrides)
         env, agent = run.make_env(ep), run.agent(ep)
         wall = time.monotonic()
@@ -52,8 +61,6 @@ async def run_episode(run: Run, ep: EpisodeContext, media=None) -> tuple[dict, E
                 r = close()
                 if inspect.isawaitable(r):
                     await r
-    finally:
-        CURRENT_EPISODE.reset(token)
     meta = {**run.meta(), "task_id": ep.task.id, "wall_s": round(time.monotonic() - wall, 2), **ep.meta}
     if ep.arm is not None:
         meta["condition"] = ep.arm
@@ -109,7 +116,7 @@ class EvalDriver:
     async def run(self, run: Run, *, out: str | Path = "runs/ig", seeds=(0,), limit: int = 0, ids=(), tag: str = "", log=print) -> list[dict]:
         cfg, out = self.cfg, Path(out)
         arms = self.arms(run)
-        tag = tag or ((getattr(run.agent_factory, "name", None) or run.agent_id) if cfg.arms else "")
+        tag = tag or ((run.agent_label or "") if cfg.arms else "")
         run_id = cfg.run_id.format(tag=tag) if cfg.run_id else (tag or None)
         media = None
         if cfg.media:
@@ -173,6 +180,7 @@ class EvalDriver:
                     name = getattr(r.agent_factory, "name", None) or own.get("name") or r.agent_id or ""
                     record["meta"]["agent"] = {**declared, **own, "name": name}
                     record["meta"]["agent_name"] = tag or r.agent_id or ""
+                    record["meta"]["agent_base"] = r.agent_label or ""  # the agent's label (the scripts' --agent) under any --tag
                     for sink in r.sinks.values():
                         sink.write(record, env, agent)
                     eps.append(record)

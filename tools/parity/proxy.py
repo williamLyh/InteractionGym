@@ -150,6 +150,10 @@ class Store:
             self.served[key] = n + 1
             if n >= len(files):
                 self.stats["http"]["overflow"] += 1
+                req = json.loads((d / "req.json").read_text())
+                self.misses.write(json.dumps({"t": time.time(), "kind": "overflow", "path": req["path"], "got": abbreviate(req["body"]),
+                                              "note": f"request repeated {n + 1} times, recorded {len(files)}"}, ensure_ascii=False) + "\n")
+                self.misses.flush()
             else:
                 self.stats["http"]["hit"] += 1
             raw = files[min(n, len(files) - 1)].read_bytes()

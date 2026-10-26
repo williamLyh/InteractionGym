@@ -27,10 +27,11 @@ IGNORE = {  # dotted paths (prefix match) that two runs cannot share
     "meta.timestamp", "meta.date", "meta.version",
 }
 IGNORE_KEYS = {"wall_s", "wall_ms", "elapsed_s", "started_at", "finished_at", "created_at", "run_id", "episode_id"}  # anywhere (ids: the join key)
-PATH_KEYS = {"wav", "path", "file", "audio_path", "media"}  # values that are file paths: compared by basename, media by hash
+WALL_SUFFIXES = ("_wall_ms", "_wall_s")  # measured latencies of model calls (asr_wall_ms …): wall-clock, never equal
+PATH_KEYS = {"wav", "path", "file", "audio_path", "media", "audio"}  # values that are file paths: compared by basename, media by hash
 # fields the plugin runs record and the scripts never did (added metadata, not a behavioural difference): present in
 # NEW and absent in REF is reported apart as "added"; any other disagreement on them is a difference
-DESCRIPTIVE = {"meta.agent"}  # how a run describes its agent (each script had its own dict): reported apart, not a verdict
+DESCRIPTIVE = {"meta.agent", "meta.task.scenario._agent"}  # how a run describes its agent (each script had its own dict): reported apart, not a verdict
 ADDED = {"meta.config", "meta.roles", "meta.controlled", "meta.standards", "meta.agent_events", "meta.agent_name", "meta.task_id",
          "meta.user.behaviours", "meta.task.scenario.agent_instructions", "meta.nodes", "eval.interaction", "meta.condition",
          "meta.agent_base", "meta.group", "meta.clock"}
@@ -70,7 +71,7 @@ def join_key(ep: dict) -> str:
 
 def norm(x, path: str = ""):
     if isinstance(x, dict):
-        return {k: norm(v, f"{path}.{k}" if path else k) for k, v in x.items() if k not in IGNORE_KEYS}
+        return {k: norm(v, f"{path}.{k}" if path else k) for k, v in x.items() if k not in IGNORE_KEYS and not k.endswith(WALL_SUFFIXES)}
     if isinstance(x, list):
         return [norm(v, f"{path}[]") for v in x]
     if isinstance(x, str) and path.split(".")[-1].split("[")[0] in PATH_KEYS and "/" in x:
@@ -190,7 +191,13 @@ def main(argv=None) -> int:
     ap.add_argument("--expect-only-ref", help="regex of join keys the reference may have alone (runs the bundle does not make)")
     a = ap.parse_args(argv)
     if a.json:
-        ra, rb = json.loads(Path(a.ref).read_text()), json.loads(Path(a.new).read_text())
+        def keyed(x):  # dict keys that are episode ids: the two naming schemes unified
+            if isinstance(x, dict):
+                return {(norm_id(k) if isinstance(k, str) and re.search(r"[-/]s\d+(/[A-Za-z]+)?$|^[a-z]+-v?\d", k) else k): keyed(v) for k, v in x.items()}
+            if isinstance(x, list):
+                return [keyed(v) for v in x]
+            return x
+        ra, rb = keyed(json.loads(Path(a.ref).read_text())), keyed(json.loads(Path(a.new).read_text()))
         out, floats = [], []
         walk(norm(ra), norm(rb), "", out, floats)
         verdict = "IDENTICAL" if not out and not floats else "FLOAT_DRIFT" if not out else "DIFFER"

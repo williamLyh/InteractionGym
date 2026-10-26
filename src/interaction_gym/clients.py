@@ -412,6 +412,8 @@ def describe(client) -> dict | None:
     if client is None:
         return None
     while hasattr(client, "inner"):
+        if "describe" in type(client).__dict__:  # a wrapper that describes itself (what it adds to the calls)
+            return client.describe()
         client = client.inner
     out: dict = {"model": getattr(client, "model", type(client).__name__)}
     if getattr(client, "api", None) == "openai":

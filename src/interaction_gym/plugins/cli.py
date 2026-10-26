@@ -69,7 +69,7 @@ def cmd_report(args) -> int:
     run = compose(_composition(args).resolve())
     if not run.reports:
         raise PluginError("nothing to report: no report row in this composition (e.g. {id: report, plugin: report/fdb2, config: {judge: judge_llm}})")
-    tag = args.tag or (run.agent_id if getattr(getattr(run.driver, "cfg", None), "arms", None) else "")
+    tag = args.tag or ((run.agent_label or "") if getattr(getattr(run.driver, "cfg", None), "arms", None) else "")
     for rid, rep in run.reports.items():
         print(f"ig: report {rid} on {args.out}" + (f" (tag {tag})" if tag else ""), flush=True)
         asyncio.run(rep.run(Path(args.out), tag))

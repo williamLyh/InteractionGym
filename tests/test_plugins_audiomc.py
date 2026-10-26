@@ -95,7 +95,10 @@ def test_arms_reproduce_the_script_s_conditions_frame_for_frame(tmp_path):
         ep_bundle, env, _ = asyncio.run(run_episode(arms[arm], EpisodeContext(task, 0, arm, {}, f"x/{task.id}/s0/{arm}")))
         ep_main = asyncio.run(run_as_main(task, arm, 0))
         assert ep_bundle["turns"] == ep_main["turns"], arm
-        assert ep_bundle["meta"]["user"] == ep_main["meta"]["user"], arm  # same user profile (mode, content, voice, soundscape)
+        ub, um = json.loads(json.dumps(ep_bundle["meta"]["user"])), json.loads(json.dumps(ep_main["meta"]["user"]))
+        if "llm" in ub:  # the bundle's fake LLM is episode-seeded (as the script's real one, llm(seed)); the test's script side is a bare fake
+            assert ub["llm"].pop("params") == {"seed": 0}
+        assert ub == um, arm  # same user profile (mode, content, voice, soundscape)
     assert arms["B"].make_env().nodes["user"].source.__class__ is audiomc.ReplanSource
     assert arms["A"].make_env().nodes["user"].source.__class__ is audiomc.ScriptSource
 

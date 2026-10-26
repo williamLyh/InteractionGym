@@ -73,6 +73,12 @@ class Run:
     controlled_id: str | None = None
     agent_factory: Any = None  # (EpisodeContext) -> agent
     agent_id: str | None = None
+
+    @property
+    def agent_label(self) -> str | None:
+        """The run's label of its agent (the agent row's ``name``, as the scripts' ``--agent`` names; else the row id):
+        the A/B run folder, ``meta.agent_name`` / ``meta.agent_base``, the reports' default tag."""
+        return getattr(self.agent_factory, "name", None) or self.agent_id
     tasks: list[Task] = field(default_factory=list)
     task_sources: list[Any] = field(default_factory=list)  # objects with tasks() and optionally prepare / build
     scorers: dict[str, Any] = field(default_factory=dict)  # row id -> (ep, env, agent) -> dict

@@ -28,10 +28,16 @@ class EpisodeSeeded:
         return await self.inner.chat(messages, **kw)
 
     def describe(self) -> dict | None:
+        """Inside an episode: the seed the calls carry (what a runner building one client per episode recorded);
+        outside: ``"episode"`` (+ offset)."""
         from ...clients import describe
 
         d = describe(self.inner)
-        return {**d, "seed": "episode" + (f"+{self.offset}" if self.offset else "")} if d else d
+        if not d:
+            return d
+        ep = CURRENT_EPISODE.get()
+        seed = ep.seed + self.offset if ep is not None else "episode" + (f"+{self.offset}" if self.offset else "")
+        return {**d, "params": {**d.get("params", {}), "seed": seed}}
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
