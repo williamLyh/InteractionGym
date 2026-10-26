@@ -47,7 +47,7 @@ def norm_id(eid: str) -> str:
     m = re.search(r"[-/]s(\d+)$", eid)
     seed = m.group(1) if m else "0"
     name = eid[:m.start()] if m else eid
-    return f"{name.split('/')[-1] if len(parts) >= 2 and not m else name}|s{seed}|{arm}"
+    return f"{name.split('/')[-1]}|s{seed}|{arm}"  # a run-folder prefix (the scripts' --agent, the bundle's agent name) is not identity
 
 
 def join_key(ep: dict) -> str:

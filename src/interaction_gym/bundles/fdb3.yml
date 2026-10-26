@@ -79,7 +79,7 @@
       config:
         base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
         model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
-        defaults: {temperature: 0.0, max_tokens: 300}
+        defaults: {max_tokens: 300}  # as the script's judge (OpenAIChat(LLM_URL, LLM_MODEL, max_tokens=300): the server's sampling defaults)
 
     - id: report
       plugin: report/fdb3

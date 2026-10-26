@@ -109,7 +109,7 @@ class EvalDriver:
     async def run(self, run: Run, *, out: str | Path = "runs/ig", seeds=(0,), limit: int = 0, ids=(), tag: str = "", log=print) -> list[dict]:
         cfg, out = self.cfg, Path(out)
         arms = self.arms(run)
-        tag = tag or (run.agent_id if cfg.arms else "")
+        tag = tag or ((getattr(run.agent_factory, "name", None) or run.agent_id) if cfg.arms else "")
         run_id = cfg.run_id.format(tag=tag) if cfg.run_id else (tag or None)
         media = None
         if cfg.media:

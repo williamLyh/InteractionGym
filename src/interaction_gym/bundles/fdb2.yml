@@ -93,6 +93,7 @@
         base_url: "${IG_LLM_URL:-http://127.0.0.1:8000/v1}"
         model: "${IG_LLM_MODEL:-Qwen3.8-27B}"
         defaults: {temperature: 0.0, max_tokens: 1500}
+        seed: 0                      # the script's judge: llm(0, 0.0, 1500)
 
     - id: report
       plugin: report/fdb2
