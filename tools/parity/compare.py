@@ -194,17 +194,27 @@ def main(argv=None) -> int:
     ap.add_argument("--expect-only-ref", help="regex of join keys the reference may have alone (runs the bundle does not make)")
     a = ap.parse_args(argv)
     if a.json:
-        def keyed(x):  # dict keys that are episode ids: the two naming schemes unified
-            if isinstance(x, dict):
-                ids = any(isinstance(k, str) and re.search(r"/s\d+(/[A-Za-z]+)?$", k) for k in x)  # a dict keyed by episode ids on at least one side
-                return {(norm_id(k) if ids and isinstance(k, str) else k): keyed(v) for k, v in x.items()}
-            if isinstance(x, list):
-                xs = [keyed(v) for v in x]
-                if xs and all(isinstance(v, dict) and isinstance(v.get("id"), str) for v in xs):  # rows per episode: by id, not by completion order
-                    xs = sorted(xs, key=lambda v: norm_id(v["id"]))
-                return xs
-            return x
-        ra, rb = keyed(json.loads(Path(a.ref).read_text())), keyed(json.loads(Path(a.new).read_text()))
+        def keyed(x, y):  # the two documents side by side: dict keys that are episode ids (on either side) unified
+            if isinstance(x, dict) and isinstance(y, dict):
+                ids = any(isinstance(k, str) and re.search(r"/s\d+(/[A-Za-z]+)?$", k) for k in list(x) + list(y))
+                nx = {(norm_id(k) if ids and isinstance(k, str) else k): v for k, v in x.items()}
+                ny = {(norm_id(k) if ids and isinstance(k, str) else k): v for k, v in y.items()}
+                out_x, out_y = {}, {}
+                for k in set(nx) | set(ny):
+                    if k in nx and k in ny:
+                        out_x[k], out_y[k] = keyed(nx[k], ny[k])
+                    elif k in nx:
+                        out_x[k] = nx[k]
+                    else:
+                        out_y[k] = ny[k]
+                return out_x, out_y
+            if isinstance(x, list) and isinstance(y, list):
+                if x and y and all(isinstance(v, dict) and isinstance(v.get("id"), str) for v in x + y):  # rows per episode: by id, not by completion order
+                    x, y = sorted(x, key=lambda v: norm_id(v["id"])), sorted(y, key=lambda v: norm_id(v["id"]))
+                pairs = [keyed(u, v) for u, v in zip(x, y)]
+                return [u for u, _ in pairs] + x[len(pairs):], [v for _, v in pairs] + y[len(pairs):]
+            return x, y
+        ra, rb = keyed(json.loads(Path(a.ref).read_text()), json.loads(Path(a.new).read_text()))
         out, floats = [], []
         walk(norm(ra), norm(rb), "", out, floats)
         verdict = "IDENTICAL" if not out and not floats else "FLOAT_DRIFT" if not out else "DIFFER"
