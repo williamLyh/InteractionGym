@@ -91,7 +91,7 @@ class EvalConfig:
     retries: int = 1  # attempts per episode
     retry_wait_s: float = 45.0  # before another attempt, plus up to retry_jitter_s at random
     retry_jitter_s: float = 30.0
-    warmup: bool = False  # one throw-away episode per agent server before the run (duplex servers)
+    warmup: bool = False  # one throw-away episode per agent server before the run (agents with a server url, e.g. duplex; an in-process agent such as the cascaded one has none and is not warmed up, as the scripts did)
     run_id: str | None = None  # meta.run_id; "{tag}" is replaced (default: the tag)
     limit_stride: bool = False  # --limit N: every k-th task across the list (a spread sample) instead of the first N
     group_by: str | None = None  # a path into task.scenario (e.g. benchmark.subset): meta.group, and the sinks' files under <out>/<group>/
@@ -147,7 +147,7 @@ class EvalDriver:
         jobs = [(t, s) for s in seeds for t in tasks if any(eid(t, s, a) not in done[a] for a in arms)]
         n_done = sum(len(d) for d in done.values())
         log(f"ig: {len(tasks)} tasks × {len(seeds)} seeds × {len(arms)} arm(s), {len(jobs)} pairs to run ({n_done} episodes done) -> {out}", flush=True)
-        if cfg.warmup and jobs:
+        if cfg.warmup and jobs and getattr(next(iter(arms.values())).agent_factory, "url", None):
             await self._warmup(arms, jobs[0], log)
         sem, eps, t0 = asyncio.Semaphore(cfg.concurrency), [], time.monotonic()
 

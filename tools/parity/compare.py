@@ -198,7 +198,10 @@ def main(argv=None) -> int:
             if isinstance(x, dict):
                 return {(norm_id(k) if isinstance(k, str) and re.search(r"[-/]s\d+(/[A-Za-z]+)?$|^[a-z]+-v?\d", k) else k): keyed(v) for k, v in x.items()}
             if isinstance(x, list):
-                return [keyed(v) for v in x]
+                xs = [keyed(v) for v in x]
+                if xs and all(isinstance(v, dict) and isinstance(v.get("id"), str) for v in xs):  # rows per episode: by id, not by completion order
+                    xs = sorted(xs, key=lambda v: norm_id(v["id"]))
+                return xs
             return x
         ra, rb = keyed(json.loads(Path(a.ref).read_text())), keyed(json.loads(Path(a.new).read_text()))
         out, floats = [], []
