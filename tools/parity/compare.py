@@ -31,6 +31,9 @@ PATH_KEYS = {"wav", "path", "file", "audio_path", "media"}  # values that are fi
 
 
 def join_key(ep: dict) -> str:
+    if "meta" not in ep:  # an agent trace or another per-episode record: by its episode id, naming schemes unified
+        eid = str(ep.get("episode_id") or ep.get("id") or "")
+        return re.sub(r"-s(\d+)(?=/|$)", r"/s\1", eid)
     m = ep.get("meta", {})
     task = (m.get("task") or {}).get("id") if isinstance(m.get("task"), dict) else m.get("task")
     arm = m.get("arm") or m.get("condition") or (m.get("ab") or {}).get("arm") or ""
@@ -148,10 +151,24 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("ref")
     ap.add_argument("new")
+    ap.add_argument("--json", action="store_true", help="REF and NEW are single JSON documents (a report summary), not episode files")
     ap.add_argument("--media-ref")
     ap.add_argument("--media-new")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
+    if a.json:
+        ra, rb = json.loads(Path(a.ref).read_text()), json.loads(Path(a.new).read_text())
+        out, floats = [], []
+        walk(norm(ra), norm(rb), "", out, floats)
+        verdict = "IDENTICAL" if not out and not floats else "FLOAT_DRIFT" if not out else "DIFFER"
+        rep = {"verdict": verdict, "fields": [{"path": p, "ref": r, "new": n} for p, r, n in out[:80]],
+               "floats": [{"path": p, "ref": r, "new": n, "err": e} for p, r, n, e in floats[:40]], "n": len(out), "n_floats": len(floats)}
+        if a.out:
+            Path(a.out).write_text(json.dumps(rep, indent=1, ensure_ascii=False, default=str))
+        print(f"{verdict}: {len(out)} fields differ, {len(floats)} float-only" + (f" (max err {max(f[3] for f in floats):.3g})" if floats else ""))
+        for f in rep["fields"][:12]:
+            print(f"    {f['path']}: {str(f['ref'])[:80]!r} -> {str(f['new'])[:80]!r}")
+        return 0 if verdict == "IDENTICAL" else 1
     rep = compare(load(a.ref), load(a.new), Path(a.media_ref) if a.media_ref else None, Path(a.media_new) if a.media_new else None)
     if a.out:
         Path(a.out).write_text(json.dumps(rep, indent=1, ensure_ascii=False, default=str))
