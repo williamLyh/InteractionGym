@@ -61,6 +61,7 @@ class UserTurn:
     expects: str | None = None  # the reaction the user expects, when not the kind's default: "yield" | "wait" | "interrupt" | ...
     intent: str | None = None  # a barge-in's purpose: "correction" | "question" | "stop" | "other"
     label: str | None = None  # what a sound is (a noise's "door_slam", "called_away" ...)
+    then: tuple = ()  # the rest of this turn after a mid-thought pause: ((piece, gap ms before it), ...), e.g. a recording
 
 
 def as_turn(x) -> UserTurn:
@@ -68,6 +69,12 @@ def as_turn(x) -> UserTurn:
         return x
     if isinstance(x, str):
         return UserTurn(x)
+    if x.get("pieces"):  # a recorded turn with real mid-thought pauses: {"pieces": [{"audio", "text", "gap_ms"}, ...]}
+        ps = [as_turn({k: v for k, v in p.items() if k != "gap_ms"}) for p in x["pieces"]]
+        last = len(ps) - 1
+        rest = tuple((replace(q, expects="wait" if k < last else x.get("expects"), final=x.get("final", False) and k == last),
+                      int(x["pieces"][k].get("gap_ms", 0))) for k, q in enumerate(ps) if k)
+        return replace(ps[0], expects="wait", then=rest) if rest else replace(ps[0], final=x.get("final", False))
     audio = Audio.read_wav(x["audio"]) if isinstance(x.get("audio"), str) else x.get("audio")
     return UserTurn(x.get("text", ""), audio, x.get("t"), x.get("final", False), x.get("kind"), x.get("dur"), x.get("pause"),
                     x.get("expects"), x.get("intent"), x.get("label"))
@@ -1468,6 +1475,9 @@ class UserSim(Node):
             convo = conversation(list(st["mine"].values()), list(st["agent"].values()), t)
             kw = {"barge_in": True} if barge_in and _takes(self.source.next, "barge_in") else {}
             turn = await self.source.next(st["n"], st["task"], convo, **kw)
+        if turn is not None and turn.then:  # a turn given in pieces (a recording with its real pauses): the rest after its gaps
+            st["pending"] = list(turn.then) + st["pending"]
+            turn = replace(turn, then=())
         if barge_in and turn is not None and turn.expects is None and turn.kind is None:  # cutting in: the agent should yield
             turn = replace(turn, expects="yield", intent=intent or turn.intent)
         b = st["behaviors"]

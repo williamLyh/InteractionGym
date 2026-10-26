@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+- **Recorded turns with real pauses** (`scenario["first_turn"] = {"pieces": [{"audio", "text", "gap_ms"}, ...]}`,
+  `UserTurn.then`): a recording split at its real mid-thought pauses is said piece by piece with the recorded gaps,
+  each piece but the last expecting the agent to wait, like an LLM-placed pause. For training on real speech pauses
+  (synthesized pauses did not transfer to FDB v1.0 Candor).
 - **Sampled nudges** (`TurnTaking.nudge_sigma`, off by default): the silence before an unanswered user speaks again is
   drawn per user turn, lognormal around `nudge_after_ms`, clipped to `nudge_min_ms`–`nudge_max_ms` (was always
   exactly 5.000 s, a trivial cue).

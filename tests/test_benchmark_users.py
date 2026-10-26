@@ -144,3 +144,23 @@ def test_benchmark_user_defaults_and_overrides():
     assert u.background(task, 0, SR) == ([], [])
     assert u._resolve(task)[0].rates() == {"aside": 0.0, "noise": 0.0}
     assert benchmark_user(fdb3.UserSource(FakeChat(["x"])), soundscape=Soundscape()).soundscape.background
+
+
+def test_a_recorded_first_turn_in_pieces_keeps_its_real_pause(tmp_path):
+    from interaction_gym.user import LLMSource, as_turn
+
+    a, b = tmp_path / "a.wav", tmp_path / "b.wav"
+    tone(1200).write_wav(a)
+    tone(800, f=330.0).write_wav(b)
+    first = {"pieces": [{"audio": str(a), "text": "so I was thinking that we"}, {"audio": str(b), "text": "could go on Friday.", "gap_ms": 900}]}
+    t = as_turn(first)
+    assert t.expects == "wait" and t.text == "so I was thinking that we" and len(t.then) == 1
+    piece, gap = t.then[0]
+    assert gap == 900 and piece.expects is None and piece.text == "could go on Friday." and piece.audio is not None
+    task = Task(id="t", scenario={"first_turn": first, "persona": "p"})
+    user = UserSim(LLMSource(FakeChat(["Thanks, bye. ###STOP###"])), voice=Voice(FakeSpeech(sr=SR), voice="aiden", clone=FakeSpeech(sr=SR)),
+                   timing=closed_timing())
+    ep, _ = asyncio.run(drive(Env({"user": user}, SPEC, max_ms=20_000, end_idle_ms=3000), task))
+    users = [u for u in ep["turns"] if u["role"] == "user" and not u.get("kind")]
+    assert [u["text"] for u in users[:2]] == ["so I was thinking that we", "could go on Friday."]
+    assert users[1]["start_time"] - users[0]["end_time"] >= 900
