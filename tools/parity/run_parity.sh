@@ -66,7 +66,7 @@ stage() {
     proxy_stop
   fi
   log "== $name: new (replay)"
-  rm -rf "$S/new"; mkdir -p "$S/new"
+  rm -rf "$S/new" "$S/store/misses.jsonl" "$S/store/summary.json"; mkdir -p "$S/new"
   proxy_start replay "$S/store" "$S/proxy_replay.log"
   ( ${name}_new "$S/new" ) > "$S/new.log" 2>&1; local rc_new=$?
   proxy_stop

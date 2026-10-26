@@ -26,7 +26,7 @@ IGNORE = {  # dotted paths (prefix match) that two runs cannot share
     "meta.host", "meta.out", "meta.media_root", "meta.episode_id", "meta.arm_layers", "meta.pid", "meta.git",
     "meta.timestamp", "meta.date", "meta.version",
 }
-IGNORE_KEYS = {"wall_s", "wall_ms", "elapsed_s", "started_at", "finished_at", "created_at", "run_id"}  # anywhere
+IGNORE_KEYS = {"wall_s", "wall_ms", "elapsed_s", "started_at", "finished_at", "created_at", "run_id", "episode_id"}  # anywhere (ids: the join key)
 PATH_KEYS = {"wav", "path", "file", "audio_path", "media"}  # values that are file paths: compared by basename, media by hash
 # fields the plugin runs record and the scripts never did (added metadata, not a behavioural difference): present in
 # NEW and absent in REF is reported apart as "added"; any other disagreement on them is a difference
