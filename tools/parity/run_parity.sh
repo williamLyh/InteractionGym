@@ -28,7 +28,7 @@ export IG_CLONE_URL=http://127.0.0.1:18005/v1 IG_CLONE_MODEL=Qwen/Qwen3-TTS-12Hz
 export IG_ASR_URL=http://127.0.0.1:18006/v1 IG_ASR_MODEL=Qwen3-ASR-1.7B
 export IG_AGENT_URL="ws://127.0.0.1:18010/v1/realtime?duplex=1" IG_AGENT_MODEL=openbmb/MiniCPM-o-4_5
 export IG_AGENT_REF_AUDIO=$PARITY_DATA/models/MiniCPM-o-4_5/assets/system_ref_audio.wav
-export IG_SOUNDBANK=$PARITY_DATA/soundbank IG_SOUNDBANK_FETCH=0
+export IG_SOUNDBANK=${IG_SOUNDBANK:-$PARITY_DATA/ig_soundbank} IG_SOUNDBANK_FETCH=0   # the 5090-1 bank (DEMAND ambience): Zenodo is unreachable from the compute nodes
 export IG_AUDIOMC_DATA=$PARITY_DATA/data/audiomc/wav IG_FDB2_DATA=$PARITY_DATA/data/prompts_staged_200.json
 export IG_FDB3_DATA=$PARITY_DATA/data/fdb3_opus IG_FDB_DATA=$PARITY_DATA/data/full_duplex_bench
 export IG_HUMDIAL_DATA=$PARITY_DATA/data/humdial IG_EASY_TURN_DATA=$PARITY_DATA/data/easy_turn
