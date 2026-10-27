@@ -332,6 +332,6 @@ class FunctionBackend(ToolBackend):
             out = fn(**kwargs)
             if inspect.isawaitable(out):
                 out = await out
-            return ToolResult(call.id, call.name, out if isinstance(out, str) else json.dumps(out, default=str))
+            return ToolResult(call.id, call.name, out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str))
         except Exception as e:  # tool errors are part of the interaction, not crashes
             return ToolResult(call.id, call.name, f"Error: {e}", error=True)

@@ -245,6 +245,8 @@
   user sim and the judges had "it' s", "garden ing", "£1 0", "9. 30" in 6–8% of agent turns. The adapter drops that
   space only where it is never a real boundary (clitics, suffixes, hyphens, a number continued after a non-space);
   on r12 held-out traces the split patterns fell from 740 to 6. Spelled digits ("6 8 4") are kept.
+- `FunctionBackend` returns non-ASCII tool results as the characters themselves (`ensure_ascii=False`), not `\uXXXX`
+  escapes: a Chinese tool result read like `\u6d3e\u9001\u4e2d` to the LLM and in the traces.
 
 
 ### Changed
