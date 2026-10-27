@@ -178,7 +178,7 @@ def test_tools_and_fake_backends_compose_into_the_session():
     - {id: lines, plugin: source/llm, config: {llm: llm}}
 - id: user
   plugin: role/user
-  config: {source: lines, voice: {tts: tts, clone: false}, timing: {respond_after_ms: 500, response_delay: {median_ms: 200}}, behaviors: {noise_per_min: 0}}
+  config: {source: lines, voice: {tts: tts, clone: false}, timing: {respond_after_ms: 500, response_delay: {median_ms: 200}, nudge_sigma: 0.4}, behaviors: {noise_per_min: 0, pause_one_take: true}}
 """, "p")
     run = compose(c.resolve())
     ids = [r.id for r in run.resolved.rows]
@@ -189,6 +189,7 @@ def test_tools_and_fake_backends_compose_into_the_session():
     assert [t.name for t in env.initial_session(Task("t")).tools] == ["check"]
     user = env.nodes["user"]  # built per episode (a factory): the same configuration, a fresh object each time
     assert user.timing.respond_after_ms == 500 and user.timing.response_delay.median_ms == 200 and run.make_env().nodes["user"] is not user
+    assert user.timing.nudge_sigma == 0.4 and user.behaviors.pause_one_take is True  # every TurnTaking / Behaviors field passes through
 
 
 def check_availability(party: int) -> dict:

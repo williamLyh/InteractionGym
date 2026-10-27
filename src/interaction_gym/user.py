@@ -61,6 +61,7 @@ class UserTurn:
     expects: str | None = None  # the reaction the user expects, when not the kind's default: "yield" | "wait" | "interrupt" | ...
     intent: str | None = None  # a barge-in's purpose: "correction" | "question" | "stop" | "other"
     label: str | None = None  # what a sound is (a noise's "door_slam", "called_away" ...)
+    then: tuple = ()  # the rest of this turn after a mid-thought pause: ((piece, gap ms before it), ...), e.g. a recording
 
 
 def as_turn(x) -> UserTurn:
@@ -68,6 +69,12 @@ def as_turn(x) -> UserTurn:
         return x
     if isinstance(x, str):
         return UserTurn(x)
+    if x.get("pieces"):  # a recorded turn with real mid-thought pauses: {"pieces": [{"audio", "text", "gap_ms"}, ...]}
+        ps = [as_turn({k: v for k, v in p.items() if k != "gap_ms"}) for p in x["pieces"]]
+        last = len(ps) - 1
+        rest = tuple((replace(q, expects="wait" if k < last else x.get("expects"), final=x.get("final", False) and k == last),
+                      int(x["pieces"][k].get("gap_ms", 0))) for k, q in enumerate(ps) if k)
+        return replace(ps[0], expects="wait", then=rest) if rest else replace(ps[0], final=x.get("final", False))
     audio = Audio.read_wav(x["audio"]) if isinstance(x.get("audio"), str) else x.get("audio")
     return UserTurn(x.get("text", ""), audio, x.get("t"), x.get("final", False), x.get("kind"), x.get("dur"), x.get("pause"),
                     x.get("expects"), x.get("intent"), x.get("label"))
@@ -253,6 +260,25 @@ def clip_reference(audio: Audio, text: str, max_ms: int, window_ms: int = 40) ->
     return audio[:cut], " ".join(words[:keep])
 
 
+# minimal listening tokens: a backchannel is made only of these words (English, "i see" / "got it" as one word) or of
+# these characters (Chinese), at most 6 of them: "Uh-huh.", "Yeah yeah.", "Right, right.", "嗯对对对", "哦好的"
+LISTENING_WORDS = frozenset({"mm", "mmm", "mhm", "mmhmm", "mmmhmm", "mmhm", "uh", "huh", "uhhuh", "hmm", "yeah", "yes", "yep",
+                             "right", "okay", "ok", "oh", "ah", "isee", "gotit"})
+LISTENING_CHARS = frozenset("嗯哦噢喔啊对是的好哎诶呀哼")
+
+
+def is_listening_token(text: str) -> bool:
+    """``text`` is a minimal backchannel ("mm-hmm", "Yeah yeah.", "嗯嗯", "嗯对对对"), not a reply ("Well said.",
+    "Of course.", "应该没错", "有道理")."""
+    t = (text or "").lower()
+    zh = re.sub(r"[^\u4e00-\u9fff]", "", t)
+    if zh:
+        return not re.search(r"[a-z]", t) and len(zh) <= 6 and set(zh) <= LISTENING_CHARS
+    t = re.sub(r"\bi see\b", "isee", re.sub(r"\bgot it\b", "gotit", t)).replace("-", "")
+    words = re.findall(r"[a-z]+", t)
+    return 0 < len(words) <= 6 and set(words) <= LISTENING_WORDS
+
+
 @dataclass
 class VoicePack:
     """A recorded speaker for a simulated user (``task.scenario["voice_pack"]``): the user's voice is cloned from
@@ -272,7 +298,11 @@ class VoicePack:
             a = Audio.read_wav(path)
             return a if a.sr == sr else a.resample(sr)
 
-        clips = {k: [(read(c["audio"]), c["text"]) for c in spec.get(k, [])] for k in ("backchannel", "aside")}
+        # a recorded backchannel only if its words are a minimal listening token (many clip-bank "backchannels" are
+        # replies: "Well said.", "应该没错"); a recorded aside only if marked as said to someone else ("to": "other";
+        # clip-bank "asides" are mostly requests to an assistant). The rest are left to the synthesized lines.
+        keep = {"backchannel": lambda c: is_listening_token(c["text"]), "aside": lambda c: c.get("to") == "other"}
+        clips = {k: [(read(c["audio"]), c["text"]) for c in spec.get(k, []) if keep[k](c)] for k in ("backchannel", "aside")}
         meta = {k: spec[k] for k in ("lang", "license", "source") if k in spec}
         return cls(spec["id"], (read(spec["ref"]["audio"]), spec["ref"]["text"]), clips, meta)
 
@@ -883,6 +913,9 @@ class Behaviors:
     pause_ms: tuple[int, int] = (1200, 2500)
     long_pause_ms: tuple[int, int] = (3000, 6000)
     pause_min_words: int = 6
+    # a turn said in pieces (mid-thought pauses) is synthesized in one take and cut at the piece boundaries (the
+    # quietest point near each), so the words before a pause keep their mid-sentence intonation; False: one take a piece
+    pause_one_take: bool = False
     noise_ms: tuple[int, int] = (300, 700)  # unused (noise lengths come from the clips)
     noise_rates: dict | None = None  # {label: onsets per minute}: replaces the surroundings' table (soundscape.EVENT_RATES)
     # third-party speech (noise label "speech": someone else talking nearby, a TV), onsets per minute on top of the
@@ -1130,6 +1163,11 @@ class TurnTaking:
     respond_after_ms: int = 1000  # silence after the agent before the user replies (τ-Voice wait-to-respond); fixed
     response_delay: ResponseDelay | None = None  # a random, content-aware gap instead (replaces respond_after_ms)
     nudge_after_ms: int = 5000  # silence after the user's own turn before speaking again
+    # > 0: that silence is drawn per user turn, lognormal around nudge_after_ms with this sigma, clipped to
+    # [nudge_min_ms, nudge_max_ms] (a fixed delay is a trivial cue); 0 = always nudge_after_ms
+    nudge_sigma: float = 0.0
+    nudge_min_ms: int = 2000
+    nudge_max_ms: int = 10000
     max_decision_gap_ms: int = 3000  # while the agent talks without a phrase boundary, decide at least this often
     check_ms: int = 1000  # after yielding to the agent, how soon the user looks again
     reaction_ms: int = 300  # barge-in decision → start of speech
@@ -1344,6 +1382,8 @@ class UserSim(Node):
         b, levels = self._resolve(task)
         habits = {k: round(v, 4) for k, v in (("aside_per_min", b.aside_per_min), ("noise_per_min", b.noise_per_min),
                                               ("pause_p", b.pause_p)) if v}
+        if b.pause_one_take:
+            habits["pause_one_take"] = True
         if b.aside_per_min:
             habits["away_p"] = b.away_p
             habits["aside_lines"] = self._lines_profile(task)
@@ -1427,6 +1467,9 @@ class UserSim(Node):
             convo = conversation(list(st["mine"].values()), list(st["agent"].values()), t)
             kw = {"barge_in": True} if barge_in and _takes(self.source.next, "barge_in") else {}
             turn = await self.source.next(st["n"], st["task"], convo, **kw)
+        if turn is not None and turn.then:  # a turn given in pieces (a recording with its real pauses): the rest after its gaps
+            st["pending"] = list(turn.then) + st["pending"]
+            turn = replace(turn, then=())
         if barge_in and turn is not None and turn.expects is None and turn.kind is None:  # cutting in: the agent should yield
             turn = replace(turn, expects="yield", intent=intent or turn.intent)
         b = st["behaviors"]
@@ -1440,16 +1483,19 @@ class UserSim(Node):
                     rest.append((replace(turn, text=words, pause=None, expects=turn.expects if last and turn.expects != "yield" else
                                          None if last else "wait", intent=None, final=turn.final and last), gap))
                     prev = after
-                st["pending"] = rest + st["pending"]
                 turn = replace(turn, text=ps[0][0], expects=turn.expects or "wait", final=False)
+                turn, rest = await self._one_take(st, turn, rest)
+                st["pending"] = rest + st["pending"]
             elif turn.text != ps[0][0] and _INLINE.search(turn.text or ""):  # a stray marker (at the start or end)
                 turn = replace(turn, text=ps[0][0])
             elif b.pause_p and n_words(turn.text) >= b.pause_min_words and st["rng"].random() < b.pause_p:  # deprecated
                 split = _split_mid_thought(turn.text, st["rng"])
                 if split is not None:
-                    st["pending"] = [(replace(turn, text=split[1], pause=None, expects=None if turn.expects == "yield" else turn.expects),
-                                      st["rng"].randint(*b.pause_ms))] + st["pending"]
+                    rest = [(replace(turn, text=split[1], pause=None, expects=None if turn.expects == "yield" else turn.expects),
+                             st["rng"].randint(*b.pause_ms))]
                     turn = replace(turn, text=split[0], expects=turn.expects or "wait", final=False)
+                    turn, rest = await self._one_take(st, turn, rest)
+                    st["pending"] = rest + st["pending"]
         if turn is None:  # nothing more to say: the user simply stops talking
             st["done"] = True
             return [], None
@@ -1459,12 +1505,29 @@ class UserSim(Node):
         seg = frame.data
         st["ref"] = self.voice.reference(seg, st.get("ref"))
         st["uid"] += 1
+        tt = st["timing"]
+        if tt.nudge_sigma > 0:  # how long this user waits for an answer to this turn before speaking again
+            lo, hi = tt.nudge_min_ms, tt.nudge_max_ms
+            st["nudge_ms"] = int(min(max(tt.nudge_after_ms * math.exp(st["erng"]["nudge"].gauss(0.0, tt.nudge_sigma)), lo), hi))
         if not resumed:  # a new turn from the source (not the rest of one, nor a scripted step of being called away)
             st["n"] += 1
         if turn.final:  # the last thing the user says; the conversation then winds down by itself
             st["done"] = True
             return [frame], None
         return [frame], (seg.t0 if t0 > t else seg.end)
+
+    async def _one_take(self, st, first: UserTurn, rest: list) -> tuple[UserTurn, list]:
+        """With ``Behaviors.pause_one_take``: the pieces of one turn (``first`` and the ``rest`` of ``(turn, gap)``)
+        synthesized as one take and cut, each piece getting its share of the audio; unchanged otherwise."""
+        if not st["behaviors"].pause_one_take or self.voice.speech is None:
+            return first, rest
+        texts = [first.text] + [t.text for t, _ in rest]
+        whole = ("" if has_cjk(texts[0]) else " ").join(re.sub(r"(\.\.\.|…)$", "", x.strip()) for x in texts)
+        seg = await self.voice.render("take", 0, UserTurn(whole), st["task"], st.get("ref"))
+        if not isinstance(seg.data, Audio):
+            return first, rest
+        parts = take_cuts(seg.data, [n_chars(x) for x in texts])
+        return replace(first, audio=parts[0]), [(replace(t, audio=a), gap) for (t, gap), a in zip(rest, parts[1:])]
 
     def _delay(self, st, turn: UserTurn) -> int:
         attentiveness = st["task"].scenario.get("profile", {}).get("attentiveness")
@@ -1609,9 +1672,10 @@ class UserSim(Node):
                 return await self._speak(st, t, t)
             return [], agent_end + tt.respond_after_ms
         if my_end is not None:
-            if t - my_end >= tt.nudge_after_ms:
+            nudge = st.get("nudge_ms", tt.nudge_after_ms)
+            if t - my_end >= nudge:
                 return await self._speak(st, t, t)
-            return [], my_end + tt.nudge_after_ms
+            return [], my_end + nudge
         return [], None
 
 
@@ -1641,13 +1705,41 @@ def _has_background(sc: dict) -> bool:
     return bg is not None and bg is not False and bg != "silence" and not (isinstance(bg, dict) and bg.get("type") == "silence")
 
 
+def n_chars(text: str) -> int:
+    """How much there is to say in ``text``: its letters, digits and CJK characters (no spaces, no punctuation)."""
+    return max(1, sum(c.isalnum() for c in text))
+
+
+def take_cuts(audio: Audio, weights: list[int], search_ms: int = 250, window_ms: int = 30) -> list[Audio]:
+    """``audio`` cut into ``len(weights)`` parts in proportion to ``weights``, each cut moved to the quietest
+    ``window_ms`` within ``search_ms`` of its proportional place (the gap between two words)."""
+    n, sr = len(audio.samples), audio.sr
+    w, k = max(1, sr * window_ms // 1000), sr * search_ms // 1000
+    total, acc, cuts = sum(weights), 0, [0]
+    for x in weights[:-1]:
+        acc += x
+        at = round(n * acc / total)
+        lo, hi = max(cuts[-1] + w, at - k), min(n - w, at + k)
+        best, quiet = at, None
+        for i in range(lo, hi, max(1, w // 3)):
+            e = sum(abs(v) for v in audio.samples[i:i + w])
+            if quiet is None or e < quiet:
+                best, quiet = i + w // 2, e
+        cuts.append(min(max(best, cuts[-1] + 1), n - 1))
+    cuts.append(n)
+    return [audio[a:b] for a, b in zip(cuts, cuts[1:])]
+
+
 def _split_mid_thought(text: str, rng) -> tuple[str, str] | None:
     """Deprecated (``Behaviors.pause_p``): a random place where the user stops to think: (first half + "...", the rest).
     Between words for spaced text; CJK text only after an inner comma-like mark; None if there is none."""
     if not has_cjk(text):
         words = text.split()
-        k = rng.randint(2, len(words) - 2)
-        return " ".join(words[:k]) + "...", " ".join(words[k:])
+        ks = [k for k in range(2, len(words) - 1) if not re.search(r"[.!?…]$", words[k - 1])]  # mid-clause, not after a sentence
+        if not ks:
+            return None
+        k = rng.choice(ks)
+        return " ".join(words[:k]).rstrip(",;:") + "...", " ".join(words[k:])
     cuts = [m.end() for m in re.finditer(r"[，,、；;：:]\s*", text)
             if n_words(text[:m.start()]) >= 1 and n_words(text[m.end():]) >= 1.5]
     if not cuts:

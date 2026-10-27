@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Recorded turns with real pauses** (`scenario["first_turn"] = {"pieces": [{"audio", "text", "gap_ms"}, ...]}`,
+  `UserTurn.then`): a recording split at its real mid-thought pauses is said piece by piece with the recorded gaps,
+  each piece but the last expecting the agent to wait, like an LLM-placed pause. For training on real speech pauses
+  (synthesized pauses did not transfer to FDB v1.0 Candor).
+- **Sampled nudges** (`TurnTaking.nudge_sigma`, off by default): the silence before an unanswered user speaks again is
+  drawn per user turn, lognormal around `nudge_after_ms`, clipped to `nudge_min_ms`–`nudge_max_ms` (was always
+  exactly 5.000 s, a trivial cue).
+
 - **Plugin layer and `ig run`** ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). Everything above the kernel is a
   plugin of one kind (`role`, `node`, `behaviour`, `backend`, `tool`, `agent`, `task`, `scorer`, `sink`, `driver`,
   `latency`, `mixer`): a factory registered with `@plugin("kind", "name", requires=..., config=Dataclass)`; third
@@ -229,7 +237,24 @@
   - dry-runs the patch, backs up the touched files and applies it;
   - has `--status` and `--revert` (byte for byte).
 
+### Fixed
+- **Words split across a duplex unit are rejoined** (`agents.vllm_omni.rejoin_split`, r12 trajectory review): MiniCPM-o
+  decodes each unit's text alone and often opens a unit with a word-initial token mid-word, so the text read by the
+  user sim and the judges had "it' s", "garden ing", "£1 0", "9. 30" in 6–8% of agent turns. The adapter drops that
+  space only where it is never a real boundary (clitics, suffixes, hyphens, a number continued after a non-space);
+  on r12 held-out traces the split patterns fell from 740 to 6. Spelled digits ("6 8 4") are kept.
+
+
 ### Changed
+- **Voice packs keep only clips whose labels hold** (r12 trajectory review): a recorded backchannel only if its words
+  are a minimal listening token (`user.is_listening_token`: "mm-hmm", "yeah", "嗯嗯", "对对"; clip-bank
+  "backchannels" were often replies, "Well said.", "应该没错"); a recorded aside only if marked `"to": "other"`
+  (clip-bank "asides" were mostly requests to an assistant, labelled ignore). Others fall back to synthesized lines in
+  the pack's voice.
+- `pause_p` splits only mid-clause (never right after a full stop) and no longer doubles an ellipsis ("I see....").
+- **One-take pauses** (`Behaviors.pause_one_take`, off by default): a user turn said in pieces (a mid-thought
+  pause, LLM-placed or `pause_p`) is synthesized once and cut at the quietest point within 250 ms of each piece's
+  share of the audio (`user.take_cuts`), instead of one TTS take per piece, which ends each piece like a whole turn.
 - The former `examples/serving/reference/patches/{minicpmo_fe_per_session,minicpmo_thinker_only}.patch` are folded
   into the new patch, as parts 05 and 06, and removed. The serving reference, docs/agent_server.md,
   docs/GETTING_STARTED.md and the README now point at `patches/vllm-omni/`.

@@ -343,6 +343,6 @@ def default_behaviours(interrupt=None, listener=None) -> list[Behaviour]:
     return [NoiseEvents(), Asides(), Listening(interrupt, listener)]
 
 
-def seeded_streams(base: str, names=("noise", "aside", "barge")) -> dict[str, random.Random]:
+def seeded_streams(base: str, names=("noise", "aside", "barge", "nudge")) -> dict[str, random.Random]:
     """One seeded stream per behaviour, independent of the others (``f"{base}:{name}"``)."""
     return {k: random.Random(f"{base}:{k}") for k in names}

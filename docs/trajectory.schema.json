@@ -340,8 +340,9 @@
             },
             "behaviors": {
               "type": "object",
-              "description": "effective habits: random event rates per minute of the call (aside_per_min, noise_per_min), away_p, the deprecated pause_p if set, the safety caps, the persona levels in effect, the noise event process (noise_process) and how aside lines are written (aside_lines)",
+              "description": "effective habits: random event rates per minute of the call (aside_per_min, noise_per_min), away_p, the deprecated pause_p if set, pause_one_take (true) if set, the safety caps, the persona levels in effect, the noise event process (noise_process) and how aside lines are written (aside_lines)",
               "properties": {
+                "pause_one_take": {"type": "boolean", "description": "a turn said in pieces is one TTS take cut at the pauses"},
                 "noise_process": {
                   "type": "object",
                   "description": "the noise event process: model, onsets_per_min, jitter_db, labels: {label: {rate_per_min, source, level_db, burst_p, burst_max, gap_ms, mean_burst}}",
