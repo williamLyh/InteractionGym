@@ -95,6 +95,7 @@ class EvalConfig:
     run_id: str | None = None  # meta.run_id; "{tag}" is replaced (default: the tag)
     limit_stride: bool = False  # --limit N: every k-th task across the list (a spread sample) instead of the first N
     group_by: str | None = None  # a path into task.scenario (e.g. benchmark.subset): meta.group, and the sinks' files under <out>/<group>/
+    id_sep: str = "/"  # between the parts of an episode id (tag, task, s<seed>, arm): "-" gives the scripts' flat "task-s0" names
 
 
 class EvalDriver:
@@ -143,7 +144,7 @@ class EvalDriver:
                         for p in sink.paths():
                             check_output_mode(p, audio_out)
         tasks = select_tasks(run.tasks, ids, limit, cfg.limit_stride)
-        eid = lambda t, s, a: "/".join(x for x in (tag, t.id, f"s{s}", a) if x)  # noqa: E731
+        eid = lambda t, s, a: cfg.id_sep.join(x for x in (tag, t.id, f"s{s}", a) if x)  # noqa: E731
         jobs = [(t, s) for s in seeds for t in tasks if any(eid(t, s, a) not in done[a] for a in arms)]
         n_done = sum(len(d) for d in done.values())
         log(f"ig: {len(tasks)} tasks × {len(seeds)} seeds × {len(arms)} arm(s), {len(jobs)} pairs to run ({n_done} episodes done) -> {out}", flush=True)

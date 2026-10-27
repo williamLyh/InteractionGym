@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- `driver.id_sep` (default `/`): the separator of the parts of an episode id (tag, task, `s<seed>`, arm); `--set driver.id_sep='"-"'`
+  gives the scripts' flat `task-s0` names, which the viewer pages and the site use as file names.
 - **Recorded turns with real pauses** (`scenario["first_turn"] = {"pieces": [{"audio", "text", "gap_ms"}, ...]}`,
   `UserTurn.then`): a recording split at its real mid-thought pauses is said piece by piece with the recorded gaps,
   each piece but the last expecting the agent to wait, like an LLM-placed pause. For training on real speech pauses
