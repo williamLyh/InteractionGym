@@ -5,6 +5,7 @@ InteractionGym is a set of closed-loop environments for **training and evaluatin
 - **Virtual-time simulation.** Episodes are exact and reproducible, and can run faster than real time, including input-clocked lockstep with full-duplex models served by [vLLM-Omni](https://github.com/vllm-project/vllm-omni).
 - **LLM + TTS simulated users.** Model-decided backchannels, barge-ins and pauses come from a structured persona. Every user behaviour is a labelled, scored turn.
 - **Built-in pieces.** A trajectory format with a JSON Schema, one rule-based score per user turn (usable as metric and reward), an HTML viewer, benchmark loaders run open and closed loop, [pluggable tool environments](#adding-your-own-tool-environment), and a GPU tuner for serving layouts.
+- **A kernel and plugins.** The kernel moves timestamped frames between nodes on a deterministic simulated clock and writes the trajectory. Roles, behaviours, model backends, tools, tasks, scorers, sinks and drivers are plugins, composed from layered YAML bundles ([`ig run`](#runs-are-compositions-ig-run)); the resolved configuration is written into every episode, so a run is reproducible from that file alone.
 
 Status: research code, version 0.1.0; APIs may still change. **Demo and example episodes:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
 
@@ -36,8 +37,9 @@ The patch carries open upstream PRs ([vllm-omni#8485](https://github.com/vllm-pr
 ## Quick start (no GPU)
 
 ```bash
-uv run python examples/minimal.py --html runs/minimal.html    # scripted user and agent, open the HTML in a browser
-uv run ig run minimal --out runs/minimal                      # the same kind of episode from a configuration (docs/ARCHITECTURE.md)
+uv run ig run minimal --out runs/minimal                      # the built-in bundle: a replayed user, a scripted agent; open the HTML in runs/minimal
+uv run ig run minimal --set agent.yield_after=null --dump-config   # change one key; print the complete configuration the run would use
+uv run python examples/minimal.py --html runs/minimal.html    # the same episode built by hand in Python (below)
 ```
 
 ```python
@@ -53,6 +55,48 @@ while not done:
     obs, reward, done = await env.step(agent.act(env.t, obs))
 save([episode(env, "ep-0")], "runs/episodes.json")      # view: python -m interaction_gym.viewer runs/*.json -o viewer.html
 ```
+
+## Runs are compositions: `ig run`
+
+Everything above the kernel is a plugin of one kind: `role`, `source`, `behaviour`, `backend`, `tool`, `agent`, `task`, `scorer`, `sink`, `report`, `driver`, ... A run is a list of rows `{id, plugin, config}`, layered: the `core` bundle (the two roles, the default behaviour library and standards, the model backends, the driver), a benchmark bundle on top of it, and your patches. Resolving validates every row (the plugin exists, its config fields are known and typed, the rows it requires are there) and orders the build; the resolved configuration goes into each episode's `meta.config` with a digest.
+
+```bash
+uv run ig bundles                                        # the built-in bundles: fdb2, fdb3, audiomc, fdb_baseline, sop_calls, minicpmo_suite, tau, ...
+uv run ig plugins [kind]                                 # every plugin with its config fields
+uv run ig run fdb3 --out runs/fdb3 --seeds 0,1 --limit 20       # a benchmark: both arms, concurrent, resumable from --out
+uv run ig run fdb3 --set controlled.chunk_ms=100 --patch my.yml # change one key, or replace whole rows by id
+uv run ig report fdb3 --out runs/fdb3                    # the post-hoc report: judges, tables, pages (ig prepare: a benchmark's preparation stage)
+```
+
+A bundle is a YAML list of operations; a patch replaces a row's config by id:
+
+```yaml
+- extends: core
+- insert:
+    - {id: user, plugin: role/replay, config: {stream: user.speech, turns: [{t: 0, text: "Hi"}]}}
+    - {id: agent, plugin: agent/canned, config: {replies: ["Hello"]}}
+    - {id: tasks, plugin: task/inline, config: {tasks: [{id: t1}]}}
+- id: env
+  config: {max_ms: 60000}
+```
+
+A plugin is a factory with a name, its requirements and a validated config. Third-party packages register theirs through the entry point group `interaction_gym.plugins`:
+
+```python
+from dataclasses import dataclass
+from interaction_gym.plugins import plugin
+
+@dataclass
+class EchoConfig:
+    prefix: str = "You said: "            # every field is a config key; unknown or mistyped keys fail at load
+
+@plugin("agent", "echo", requires=("controlled",), config=EchoConfig)
+def echo(ctx, cfg: EchoConfig):
+    """Repeats the user."""               # what `ig plugins` shows
+    return lambda seed: EchoAgent(ctx["controlled"].spec, cfg.prefix)
+```
+
+The `examples/*.py` scripts still run and are the bundles' references: every benchmark bundle was checked against its script frame for frame, on fakes in the test suite and on the real model servers (the record / replay proxy in [tools/parity/](tools/parity/); what the runs caught is in [docs/ARCHITECTURE.md §8](docs/ARCHITECTURE.md)). The design — layers, the seams, the clock, kernel rules — is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); roles and per-speaker standards are [docs/ROLES.md](docs/ROLES.md).
 
 ## Output data
 
@@ -80,6 +124,7 @@ uv run python examples/live_user.py --html runs/live_user.html              # LL
 uv sync --extra vllm-omni
 IG_AGENT_URL='ws://localhost:8010/v1/realtime?duplex=1' IG_MODEL_DIR=/path/to/models \
   uv run python examples/minicpmo_suite.py --out runs/suite                 # MiniCPM-o 4.5 as the agent
+uv run ig run minicpmo_suite --out runs/suite --seeds 0,1,2                 # the same run as a bundle (minicpmo_suite_chat, sop_calls: see `ig bundles`)
 ```
 
 With the OpenAI API instead (key in `$OPENAI_API_KEY`; costs money, and results depend on this machine's network — see [Getting started](docs/GETTING_STARTED.md#an-openai-realtime-model-as-the-agent)):
@@ -89,6 +134,7 @@ IG_LLM_URL=https://api.openai.com/v1 IG_LLM_MODEL=gpt-5.4-mini \
   uv run python examples/live_user.py --html runs/live_user.html             # user's words from OpenAI, voice from local TTS
 uv sync --extra vllm-omni                                                    # websockets, for the Realtime agent
 uv run python examples/openai_realtime_demo.py --html runs/openai_realtime.html  # gpt-realtime as the agent, all-OpenAI user
+uv run ig run openai_realtime --out runs/openai_realtime                     # the same as a bundle (--set agent.model=gpt-realtime)
 uv run python examples/openai_realtime_checks.py                             # live checks: barge-in, backchannel, tools, VAD modes
 ```
 
@@ -168,6 +214,7 @@ Optional hooks:
 - **Several services.** `ToolWorld({"shop": shop, "crm": crm})` exposes their tools as `shop__find_order`, `crm__get_customer`, and so on. Backends with the same `state_group` share one world.
 - **`mode="discover"`.** The agent starts with only a list of the services and three meta-tools (`list_services`, `search_tools`, `load_tools`), and loads a service before calling its tools. This is the realistic setting when there are many tools.
 - **User-side tools.** `tools(caller="user")` lets the simulated user call tools too, on `user.tool_call`.
+- **As a plugin.** Register the backend as `@plugin("tool", "crm", config=CRMConfig)` and a bundle runs it through `node/tool_world` (`{id: crm, plugin: tool/crm}`, `{id: tools, plugin: node/tool_world, config: {backends: [crm], latency_ms: 300}}`); plain functions go in as `tool/functions`. τ-bench (`tool/tau`) and FD-Bench v3's mock APIs (`tool/fdb3_mock`) are registered this way.
 
 **Agent support.** `CascadedAgent` (ASR → tool-calling LLM → TTS) and your own agents call tools. The vLLM-Omni duplex agent does not, because the duplex server takes no tool schemas.
 
@@ -202,7 +249,11 @@ PYTHONPATH=src:. python examples/gpu_tuner.py loop --layout "agent=2/3/4/5,llm=0
 
 ```bash
 uv sync --extra vllm-omni --extra fdbench
-uv run python examples/fdb3_ab.py --help                      # e.g. Full-Duplex-Bench v3, open vs closed loop
+uv run ig prepare fdb2 --out runs/fdb2 && uv run ig run fdb2 --out runs/fdb2 && uv run ig report fdb2 --out runs/fdb2   # FD-Bench v2: reference scripts, both arms, report
+uv run ig run fdb3 --out runs/fdb3 && uv run ig report fdb3 --out runs/fdb3            # FD-Bench v3, open vs closed loop (fdb3_natural, fdb3_duplex)
+uv run ig run audiomc --out runs/audiomc && uv run ig report audiomc --out runs/audiomc   # Audio MultiChallenge (audiomc_cascaded)
+uv run ig run fdb_baseline --set tasks.bench=easy_turn --out runs/easy_turn            # FD-Bench v1.0 / v1.5 (fdb), Easy Turn, HumDial
+uv run python examples/fdb3_ab.py --help                                                # the scripts: the same runs, identical output
 ```
 
 The repository ships loaders only, no benchmark data, and several datasets are non-commercial. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) and [THIRD_PARTY.md](THIRD_PARTY.md). The release results are in [results/BENCHMARKS.md](results/BENCHMARKS.md).
@@ -213,7 +264,9 @@ The repository ships loaders only, no benchmark data, and several datasets are n
 |---|---|
 | [GETTING_STARTED](docs/GETTING_STARTED.md) | install, extras, first episodes, real models, τ²-bench / AutomationBench |
 | [DESIGN](docs/DESIGN.md) | the simulation model and its concepts |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | kernel vs plugins, layered configuration, `ig run`, the migration plan |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | kernel vs plugins, the seams, layered configuration, `ig run`, what the parity runs found |
+| [ROLES](docs/ROLES.md) | roles: the controlled role, what each role perceives, standards per speaker, swapping sides |
+| [SOP](docs/SOP.md) | procedures as a source format, the rendering formats, spoken SOP tasks and their judge |
 | [FORMAT](docs/FORMAT.md) | output data: trajectory format, scoring ([schema](docs/trajectory.schema.json)) |
 | [BENCHMARKS](docs/BENCHMARKS.md) | benchmark loaders, open vs closed loop, metrics |
 | [agent_server](docs/agent_server.md), [AGENT_TRACE](docs/AGENT_TRACE.md) | agent-server protocol, token trace |
