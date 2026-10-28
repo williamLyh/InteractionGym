@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Build the GitHub Pages site in ``demo/``: the demo page plus a browsable run of example episodes.
+"""Build the GitHub Pages site in ``demo/``: the project page, the demo page and browsable runs of example episodes.
 
     python scripts/build_site.py --examples runs/suite_v2          # copy a run into demo/examples/
     python scripts/build_site.py --examples runs/aww2 --tab autowebworld   # ... or into another tab's directory
     python scripts/build_site.py                                   # only refresh the tab bar on existing pages
 
-The site has two tabs, shown as one bar at the top of every page:
+The site has these tabs, shown as one bar at the top of every page:
 
-- ``demo/index.html``: the interactive demo (three recorded episodes, written by hand).
+- ``demo/index.html``: the project page (written by hand).
+- ``demo/demo/index.html``: the interactive demo (recorded takes, written by hand; ``scripts/inline_demo.py``).
 - ``demo/examples/``: a run written by ``viewer.export_run`` (``index.html``, ``env.html``, ``*.agent.html``,
   ``media/``), e.g. from ``examples/minicpmo_suite.py``.
 - ``demo/openapps/``, ``demo/autowebworld/``: co-browsing runs on a shared screen, from ``examples/openapps_demo.py``
@@ -29,7 +30,8 @@ from pathlib import Path
 
 SITE = Path(__file__).resolve().parent.parent / "demo"
 REPO_URL = "https://github.com/williamLyh/InteractionGym"
-TABS = [("demo", "Demo", "index.html"), ("examples", "Example episodes", "examples/index.html"),
+TABS = [("home", "Overview", "index.html"), ("demo", "Demo", "demo/index.html"),
+        ("examples", "Example episodes", "examples/index.html"),
         ("openapps", "Co-browsing: OpenApps", "openapps/index.html"),
         ("autowebworld", "Co-browsing: AutoWebWorld", "autowebworld/index.html")]
 BAR_H = 38  # px
@@ -69,7 +71,7 @@ def put_nav(page: Path, active: str, root: str) -> None:
     m = re.search(r"<body[^>]*>\n?", s)
     if m:
         s = s[: m.end()] + bar + s[m.end():]
-    else:  # the demo page has no <body> tag: the bar goes before its first element after <style>
+    else:  # a page with no <body> tag: the bar goes before its first element after <style>
         i = s.index("</style>") + len("</style>")
         s = s[:i] + "\n" + bar + s[i:]
     page.write_text(s)
@@ -114,12 +116,12 @@ def check_media(out: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--examples", type=Path, help="a run directory written by viewer.export_run")
-    ap.add_argument("--tab", default="examples", choices=[k for k, _, _ in TABS[1:]], help="the tab (directory) the run goes to")
+    ap.add_argument("--tab", default="examples", choices=[k for k, _, _ in TABS[2:]], help="the tab (directory) the run goes to")
     ap.add_argument("--bitrate", default="48k", help="MP3 bitrate for the examples' audio")
     args = ap.parse_args()
     if args.examples:
         copy_examples(args.examples, args.bitrate, args.tab)
-    put_nav(SITE / "index.html", "demo", "")
+    put_nav(SITE / "index.html", "home", "")
     for key, _, _ in TABS[1:]:
         for page in sorted((SITE / key).glob("*.html")):
             put_nav(page, key, "../")

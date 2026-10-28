@@ -1,7 +1,7 @@
-"""Put freshly recorded takes into the demo page (``demo/index.html``).
+"""Put freshly recorded takes into the demo page (``demo/demo/index.html``).
 
     python scripts/inline_demo.py --export runs/demo_export --raw a=runs/demo/a/a-...-s3.json b=... c=... \
-        [--note a="what happens in this take ..."] [--out demo/index.html]
+        [--note a="what happens in this take ..."] [--out demo/demo/index.html]
 
 ``--export`` is the folder ``export_demo.py`` wrote (``<key>.json``, ``<key>.user.m4a``, ``<key>.agent.m4a`` per key
 a / b / c); ``--raw`` names each take's raw recording (``record_demo.py`` output) for the context card (the agent's
@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PAGE = ROOT / "demo" / "index.html"
+PAGE = ROOT / "demo" / "demo" / "index.html"
 PREFIX = "<script>window.__EPS = "
 
 

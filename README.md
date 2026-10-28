@@ -7,7 +7,7 @@ InteractionGym is a set of closed-loop environments for **training and evaluatin
 - **Built-in pieces.** A trajectory format with a JSON Schema, one rule-based score per user turn (usable as metric and reward), an HTML viewer, benchmark loaders run open and closed loop, [pluggable tool environments](#adding-your-own-tool-environment), and a GPU tuner for serving layouts.
 - **A kernel and plugins.** The kernel moves timestamped frames between nodes on a deterministic simulated clock and writes the trajectory. Roles, behaviours, model backends, tools, tasks, scorers, sinks and drivers are plugins, composed from layered YAML bundles ([`ig run`](#runs-are-compositions-ig-run)); the resolved configuration is written into every episode, so a run is reproducible from that file alone.
 
-Status: research code, version 0.1.0; APIs may still change. **Demo and example episodes:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
+Status: research code, version 0.1.0; APIs may still change. **Project page, demo and example episodes:** https://yinhongliu.com/InteractionGym/ (source in [demo/](demo/))
 
 ## Install
 

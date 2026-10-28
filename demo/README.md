@@ -2,7 +2,8 @@
 
 This directory is the GitHub Pages site at **https://yinhongliu.com/InteractionGym/**. `.github/workflows/pages.yml` publishes it, and only it, on every push to `main` that changes it. A tab bar at the top of every page switches between its parts:
 
-- **Demo** (`index.html`): the interactive demo. It plays back three recorded episodes (A, B, C) of MiniCPM-o 4.5 and a cascaded agent against the simulated user. The page is self-contained, with audio and episode data embedded.
+- **Overview** (`index.html`): the project page. What the env does, how it is built, tools and SOPs, and how to write a run file, with one scored episode from `examples/` in an embedded player (`know-travel-nina-s2`, and `zh-chat-overtime-zhao-s1` in Chinese). Written by hand and self-contained.
+- **Demo** (`demo/index.html`): the interactive demo. It plays back recorded takes of MiniCPM-o 4.5 and cascaded agents against the simulated user (`scripts/inline_demo.py` puts new takes in). The page is self-contained, with audio and episode data embedded.
 - **Co-browsing: OpenApps / AutoWebWorld** (`openapps/`, `autowebworld/`): a caller asks, by voice, for things done on a screen both sides see, and speaks up when it shows something wrong; from `examples/openapps_demo.py` and `examples/autowebworld_demo.py` (`python scripts/build_site.py --examples runs/<run> --tab openapps`).
 - **Example episodes** (`examples/`): synthetic episodes from `examples/minicpmo_suite.py` (MiniCPM-o 4.5 against the simulated user, seven scenarios). They are shown in the trajectory viewer and the agent-server token-trace pages. Audio is transcoded to MP3.
 
@@ -17,6 +18,7 @@ python scripts/build_site.py                           # only refresh the tab ba
 
 This directory is **not** covered by the repository's Apache-2.0 licence. The page's "Data and licences" paragraph gives the full credits:
 
+- **Overview player**: the two episodes from `examples/` above; see Example episodes.
 - **Demo episode B** uses a recording, task, tool schemas, mock APIs and agent instructions from Full-Duplex-Bench v3, licensed [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). It is for non-commercial use only.
 - **Demo episodes A and C** mix in DEMAND ambience (Thiemann, Ito & Vincent 2013, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)). Their user audio is shared under the same licence.
 - **Demo episode C's first user turn** is from the Easy Turn test set (Apache-2.0).
